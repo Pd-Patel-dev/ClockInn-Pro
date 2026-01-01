@@ -1,0 +1,57 @@
+from pydantic import BaseModel, Field
+from typing import Optional
+from datetime import datetime
+from uuid import UUID
+from app.models.time_entry import TimeEntrySource, TimeEntryStatus
+
+
+class TimeEntryBase(BaseModel):
+    clock_in_at: datetime
+    clock_out_at: Optional[datetime] = None
+    break_minutes: int = 0
+    note: Optional[str] = None
+
+
+class TimeEntryCreate(BaseModel):
+    employee_email: Optional[str] = None
+    employee_id: Optional[UUID] = None
+    pin: str = Field(..., min_length=4, max_length=4)
+    source: TimeEntrySource = TimeEntrySource.KIOSK
+
+
+class TimeEntryPunchMe(BaseModel):
+    pin: str = Field(..., min_length=4, max_length=4)
+
+
+class TimeEntryPunchByPin(BaseModel):
+    pin: str = Field(..., min_length=4, max_length=4)
+
+
+class TimeEntryEdit(BaseModel):
+    clock_in_at: Optional[datetime] = None
+    clock_out_at: Optional[datetime] = None
+    break_minutes: Optional[int] = None
+    edit_reason: str = Field(..., min_length=1, max_length=500)
+
+
+class TimeEntryResponse(BaseModel):
+    id: UUID
+    employee_id: UUID
+    employee_name: str
+    clock_in_at: datetime
+    clock_out_at: Optional[datetime] = None
+    break_minutes: int
+    source: TimeEntrySource
+    status: TimeEntryStatus
+    note: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class TimeEntryListResponse(BaseModel):
+    entries: list[TimeEntryResponse]
+    total: int
+
