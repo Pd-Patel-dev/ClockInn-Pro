@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, ForeignKey, Enum, DateTime, Boolean, Numeric
+from sqlalchemy import Column, String, ForeignKey, Enum, DateTime, Boolean, Numeric, Integer
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
@@ -17,6 +17,10 @@ class UserStatus(str, enum.Enum):
     INACTIVE = "inactive"
 
 
+class PayRateType(str, enum.Enum):
+    HOURLY = "HOURLY"
+
+
 class User(Base):
     __tablename__ = "users"
 
@@ -29,7 +33,10 @@ class User(Base):
     pin_hash = Column(String(255), nullable=True)
     status = Column(Enum(UserStatus, values_callable=lambda x: [e.value for e in x]), nullable=False, default=UserStatus.ACTIVE)
     job_role = Column(String(255), nullable=True)
-    pay_rate = Column(Numeric(10, 2), nullable=True)
+    pay_rate = Column(Numeric(10, 2), nullable=True)  # Legacy field, kept for backward compatibility
+    pay_rate_cents = Column(Integer, nullable=False, default=0)  # Pay rate in cents (e.g., 2500 = $25.00)
+    pay_rate_type = Column(Enum(PayRateType, values_callable=lambda x: [e.value for e in x]), nullable=False, default=PayRateType.HOURLY)
+    overtime_multiplier = Column(Numeric(4, 2), nullable=True)  # Employee-specific override, defaults to company setting
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
     last_login_at = Column(DateTime(timezone=True), nullable=True)

@@ -213,6 +213,17 @@ async def delete_employee(
     from app.models.time_entry import TimeEntry
     from app.models.leave_request import LeaveRequest
     from app.models.session import Session
+    from app.models.payroll import PayrollLineItem, PayrollAdjustment
+    
+    # Delete payroll adjustments
+    await db.execute(
+        sql_delete(PayrollAdjustment).where(PayrollAdjustment.employee_id == employee_id)
+    )
+    
+    # Delete payroll line items
+    await db.execute(
+        sql_delete(PayrollLineItem).where(PayrollLineItem.employee_id == employee_id)
+    )
     
     # Delete time entries
     await db.execute(
@@ -227,6 +238,12 @@ async def delete_employee(
     # Delete sessions
     await db.execute(
         sql_delete(Session).where(Session.user_id == employee_id)
+    )
+    
+    # Delete audit logs where employee is actor
+    from app.models.audit_log import AuditLog
+    await db.execute(
+        sql_delete(AuditLog).where(AuditLog.actor_user_id == employee_id)
     )
     
     # Delete the user

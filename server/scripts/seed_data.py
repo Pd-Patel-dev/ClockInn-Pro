@@ -13,8 +13,9 @@ from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sess
 from app.core.config import settings
 from app.core.security import get_password_hash, get_pin_hash
 from app.models.company import Company
-from app.models.user import User, UserRole, UserStatus
+from app.models.user import User, UserRole, UserStatus, PayRateType
 import uuid
+from decimal import Decimal
 
 
 async def seed_data():
@@ -40,8 +41,11 @@ async def seed_data():
             name="Demo Company",
             settings_json={
                 "timezone": "America/New_York",
-                "week_start_day": "monday",
-                "rounding_rule": "none",
+                "payroll_week_start_day": 0,  # Monday (0=Mon, 6=Sun)
+                "overtime_enabled": True,
+                "overtime_threshold_hours_per_week": 40,
+                "overtime_multiplier_default": 1.5,
+                "rounding_policy": "none",  # none, 5, 10, 15
             },
         )
         db.add(company)
@@ -89,6 +93,9 @@ async def seed_data():
         ]
         
         for emp_data in employees_data:
+            pay_rate = emp_data.get("pay_rate", 0)
+            pay_rate_cents = int(Decimal(str(pay_rate)) * 100) if pay_rate else 0
+            
             employee = User(
                 id=uuid.uuid4(),
                 company_id=company.id,
@@ -99,7 +106,10 @@ async def seed_data():
                 pin_hash=get_pin_hash(emp_data["pin"]),
                 status=UserStatus.ACTIVE,
                 job_role=emp_data.get("job_role"),
-                pay_rate=emp_data.get("pay_rate"),
+                pay_rate=pay_rate,  # Legacy field
+                pay_rate_cents=pay_rate_cents,
+                pay_rate_type=PayRateType.HOURLY,
+                overtime_multiplier=None,  # Use company default
             )
             db.add(employee)
         
