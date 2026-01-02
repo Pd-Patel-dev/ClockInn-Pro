@@ -87,7 +87,7 @@ export default function EmployeeDetailPage() {
     defaultValues: {
       clock_in_at: new Date().toISOString().split('T')[0],
       clock_in_time: new Date().toTimeString().slice(0, 5),
-      break_minutes: '0',
+      break_minutes: 0,
     },
   })
 
