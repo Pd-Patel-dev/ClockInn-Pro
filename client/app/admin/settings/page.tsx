@@ -165,10 +165,10 @@ export default function AdminSettingsPage() {
         breaks_paid: data.breaks_paid,
       }
       
-      logger.debug('Updating settings', undefined, { updateData })
+      logger.debug('Updating settings', { updateData })
       
       const response = await api.put('/admin/company/settings', updateData)
-      logger.debug('Settings updated successfully', undefined, { response: response.data })
+      logger.debug('Settings updated successfully', { response: response.data })
       
       // Update company info state FIRST
       setCompanyInfo(response.data)
