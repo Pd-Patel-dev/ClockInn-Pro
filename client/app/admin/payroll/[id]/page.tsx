@@ -53,6 +53,9 @@ export default function PayrollDetailsPage() {
   const [payrollRun, setPayrollRun] = useState<PayrollRun | null>(null)
   const [voidReason, setVoidReason] = useState('')
   const [showVoidModal, setShowVoidModal] = useState(false)
+  const [finalizing, setFinalizing] = useState(false)
+  const [exporting, setExporting] = useState(false)
+  const [deleting, setDeleting] = useState(false)
 
   useEffect(() => {
     const checkAdminAndFetch = async () => {
