@@ -56,6 +56,7 @@ interface Employee {
 
 export default function AdminEmployeesPage() {
   const router = useRouter()
+  const toast = useToast()
   const [employees, setEmployees] = useState<Employee[]>([])
   const [loading, setLoading] = useState(false)
   const [showForm, setShowForm] = useState(false)
