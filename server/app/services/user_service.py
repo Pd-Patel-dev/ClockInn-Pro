@@ -5,6 +5,8 @@ from sqlalchemy import select, and_, func, delete as sql_delete
 from fastapi import HTTPException, status
 
 from app.models.user import User, UserRole, UserStatus
+from app.models.audit_log import AuditLog
+from app.core.query_builder import get_paginated_results, build_company_filtered_query
 from app.core.security import (
     get_password_hash,
     get_pin_hash,
@@ -52,20 +54,13 @@ async def list_employees(
     limit: int = 100,
 ) -> tuple[List[User], int]:
     """List employees for a company."""
-    query = select(User).where(
-        and_(
-            User.company_id == company_id,
-            User.role == UserRole.EMPLOYEE,
-        )
+    query = build_company_filtered_query(
+        User,
+        company_id,
+        additional_filters={"role": UserRole.EMPLOYEE}
     )
     
-    count_result = await db.execute(select(func.count()).select_from(query.subquery()))
-    total = count_result.scalar() or 0
-    
-    result = await db.execute(query.offset(skip).limit(limit))
-    users = result.scalars().all()
-    
-    return list(users), total
+    return await get_paginated_results(db, query, skip=skip, limit=limit)
 
 
 async def create_employee(
@@ -114,11 +109,17 @@ async def create_employee(
         pay_rate=data.pay_rate,
     )
     
-    db.add(user)
-    await db.commit()
-    await db.refresh(user)
-    
-    return user
+    try:
+        db.add(user)
+        await db.commit()
+        await db.refresh(user)
+        return user
+    except Exception as e:
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to create employee: {str(e)}",
+        )
 
 
 async def update_employee(
@@ -126,20 +127,25 @@ async def update_employee(
     employee_id: UUID,
     company_id: UUID,
     data: UserUpdate,
+    actor_user_id: Optional[UUID] = None,
 ) -> User:
     """Update employee."""
     user = await get_user_by_id(db, employee_id, company_id)
     if not user:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Employee not found",
+            detail=f"Employee with ID {employee_id} not found in your company",
         )
     
     if user.role != UserRole.EMPLOYEE:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="User is not an employee",
+            detail=f"User {user.email} is not an employee. Only employees can be updated through this endpoint.",
         )
+    
+    # Track changes for audit logging
+    old_status = user.status
+    had_pin = user.pin_hash is not None
     
     if data.name is not None:
         user.name = data.name
@@ -156,10 +162,65 @@ async def update_employee(
     if data.pay_rate is not None:
         user.pay_rate = data.pay_rate
     
-    await db.commit()
-    await db.refresh(user)
-    
-    return user
+    try:
+        # Log status changes
+        if data.status is not None and old_status != user.status and actor_user_id:
+            audit_log = AuditLog(
+                id=uuid.uuid4(),
+                company_id=company_id,
+                actor_user_id=actor_user_id,
+                action="employee_status_changed",
+                entity_type="user",
+                entity_id=employee_id,
+                metadata_json={
+                    "old_status": old_status.value,
+                    "new_status": user.status.value,
+                    "employee_email": user.email,
+                    "employee_name": user.name,
+                },
+            )
+            db.add(audit_log)
+        
+        # Log PIN changes
+        if data.pin is not None and actor_user_id:
+            pin_changed = False
+            if data.pin == "" and had_pin:
+                # PIN was cleared
+                pin_changed = True
+                action_type = "pin_cleared"
+            elif data.pin != "" and not had_pin:
+                # PIN was set
+                pin_changed = True
+                action_type = "pin_set"
+            elif data.pin != "" and had_pin:
+                # PIN was changed
+                pin_changed = True
+                action_type = "pin_changed"
+            
+            if pin_changed:
+                audit_log = AuditLog(
+                    id=uuid.uuid4(),
+                    company_id=company_id,
+                    actor_user_id=actor_user_id,
+                    action=action_type,
+                    entity_type="user",
+                    entity_id=employee_id,
+                    metadata_json={
+                        "employee_email": user.email,
+                        "employee_name": user.name,
+                    },
+                )
+                db.add(audit_log)
+        
+        await db.commit()
+        await db.refresh(user)
+        return user
+    except Exception as e:
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to update employee: {str(e)}",
+        )
 
 
 async def reset_password(
@@ -167,6 +228,7 @@ async def reset_password(
     employee_id: UUID,
     company_id: UUID,
     new_password: str,
+    actor_user_id: Optional[UUID] = None,
 ) -> User:
     """Reset employee password."""
     is_valid, error_msg = validate_password_strength(new_password)
@@ -180,14 +242,37 @@ async def reset_password(
     if not user:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Employee not found",
+            detail=f"Employee with ID {employee_id} not found in your company",
         )
     
     user.password_hash = get_password_hash(new_password)
-    await db.commit()
-    await db.refresh(user)
     
-    return user
+    # Log password change
+    if actor_user_id:
+        audit_log = AuditLog(
+            id=uuid.uuid4(),
+            company_id=company_id,
+            actor_user_id=actor_user_id,
+            action="password_changed",
+            entity_type="user",
+            entity_id=employee_id,
+            metadata_json={
+                "employee_email": user.email,
+                "employee_name": user.name,
+            },
+        )
+        db.add(audit_log)
+    
+    try:
+        await db.commit()
+        await db.refresh(user)
+        return user
+    except Exception as e:
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to reset password: {str(e)}",
+        )
 
 
 async def delete_employee(

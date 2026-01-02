@@ -42,9 +42,9 @@ class CompanyInfoResponse(BaseModel):
 
 class CompanySettingsUpdate(BaseModel):
     """Update company settings."""
-    timezone: Optional[str] = Field(None, description="Company timezone (e.g., America/New_York)")
+    timezone: Optional[str] = Field(None, max_length=100, description="Company timezone (e.g., America/New_York)")
     payroll_week_start_day: Optional[int] = Field(None, ge=0, le=6, description="Week start day: 0=Monday, 6=Sunday")
-    biweekly_anchor_date: Optional[str] = Field(None, description="Biweekly payroll anchor date (YYYY-MM-DD format, or null to clear)")
+    biweekly_anchor_date: Optional[str] = Field(None, max_length=10, description="Biweekly payroll anchor date (YYYY-MM-DD format, or null to clear)")
     overtime_enabled: Optional[bool] = Field(None, description="Enable/disable overtime calculation")
     overtime_threshold_hours_per_week: Optional[int] = Field(None, ge=1, le=168, description="Hours before overtime kicks in")
     overtime_multiplier_default: Optional[float] = Field(None, ge=1, le=3, description="Default overtime multiplier (e.g., 1.5)")

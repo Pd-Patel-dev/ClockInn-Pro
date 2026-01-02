@@ -9,6 +9,7 @@ import { getCurrentUser } from '@/lib/auth'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
+import logger from '@/lib/logger'
 
 const payrollGenerateSchema = z.object({
   payroll_type: z.enum(['WEEKLY', 'BIWEEKLY']),
@@ -38,6 +39,12 @@ export default function AdminPayrollPage() {
   const [generating, setGenerating] = useState(false)
   const [payrollRuns, setPayrollRuns] = useState<PayrollRunSummary[]>([])
   const [showGenerateForm, setShowGenerateForm] = useState(false)
+  const [filters, setFilters] = useState({
+    from_date: '',
+    to_date: '',
+    status: '',
+    payroll_type: '',
+  })
 
   const {
     register,
@@ -55,6 +62,29 @@ export default function AdminPayrollPage() {
 
   const payrollType = watch('payroll_type')
 
+  const fetchPayrollRuns = async () => {
+    setLoading(true)
+    try {
+      const params = new URLSearchParams()
+      if (filters.from_date) params.append('from_date', filters.from_date)
+      if (filters.to_date) params.append('to_date', filters.to_date)
+      if (filters.status) params.append('status', filters.status)
+      if (filters.payroll_type) params.append('payroll_type', filters.payroll_type)
+      
+      const queryString = params.toString()
+      const url = queryString ? `/admin/payroll/runs?${queryString}` : '/admin/payroll/runs'
+      const response = await api.get(url)
+      setPayrollRuns(response.data || [])
+    } catch (error: any) {
+      logger.error('Failed to fetch payroll runs', error as Error, { endpoint: '/admin/payroll/runs' })
+      if (error.response?.status === 403) {
+        router.push('/dashboard')
+      }
+    } finally {
+      setLoading(false)
+    }
+  }
+
   useEffect(() => {
     const checkAdminAndFetch = async () => {
       try {
@@ -70,22 +100,8 @@ export default function AdminPayrollPage() {
       }
     }
     checkAdminAndFetch()
-  }, [router])
-
-  const fetchPayrollRuns = async () => {
-    setLoading(true)
-    try {
-      const response = await api.get('/admin/payroll/runs')
-      setPayrollRuns(response.data || [])
-    } catch (error: any) {
-      logger.error('Failed to fetch payroll runs', error as Error, { endpoint: '/admin/payroll/runs' })
-      if (error.response?.status === 403) {
-        router.push('/dashboard')
-      }
-    } finally {
-      setLoading(false)
-    }
-  }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [router, filters])
 
   const handleViewPayrollRun = (runId: string) => {
     router.push(`/admin/payroll/${runId}`)
@@ -106,10 +122,14 @@ export default function AdminPayrollPage() {
       router.push(`/admin/payroll/${response.data.id}`)
     } catch (error: any) {
       logger.error('Failed to generate payroll', error as Error, { endpoint: '/admin/payroll/runs/generate' })
-      alert(error.response?.data?.detail || 'Failed to generate payroll')
+      toast.error(error.response?.data?.detail || 'Failed to generate payroll')
     } finally {
       setGenerating(false)
     }
+  }
+
+  const handleClearFilters = () => {
+    setFilters({ from_date: '', to_date: '', status: '', payroll_type: '' })
   }
 
 
@@ -142,6 +162,64 @@ export default function AdminPayrollPage() {
           >
             {showGenerateForm ? 'Cancel' : 'Generate Payroll'}
           </button>
+        </div>
+
+        {/* Filters */}
+        <div className="bg-white shadow rounded-lg p-6 mb-6">
+          <h2 className="text-lg font-semibold mb-4">Filters</h2>
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">From Date</label>
+              <input
+                type="date"
+                value={filters.from_date}
+                onChange={(e) => setFilters({ ...filters, from_date: e.target.value })}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">To Date</label>
+              <input
+                type="date"
+                value={filters.to_date}
+                onChange={(e) => setFilters({ ...filters, to_date: e.target.value })}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
+              <select
+                value={filters.status}
+                onChange={(e) => setFilters({ ...filters, status: e.target.value })}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm"
+              >
+                <option value="">All</option>
+                <option value="DRAFT">Draft</option>
+                <option value="FINALIZED">Finalized</option>
+                <option value="VOID">Void</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Payroll Type</label>
+              <select
+                value={filters.payroll_type}
+                onChange={(e) => setFilters({ ...filters, payroll_type: e.target.value })}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm"
+              >
+                <option value="">All</option>
+                <option value="WEEKLY">Weekly</option>
+                <option value="BIWEEKLY">Biweekly</option>
+              </select>
+            </div>
+          </div>
+          <div className="mt-4">
+            <button
+              onClick={() => setFilters({ from_date: '', to_date: '', status: '', payroll_type: '' })}
+              className="px-4 py-2 text-sm text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200"
+            >
+              Clear Filters
+            </button>
+          </div>
         </div>
 
         {showGenerateForm && (
@@ -202,7 +280,14 @@ export default function AdminPayrollPage() {
                 disabled={generating}
                 className="px-4 py-2 bg-primary-600 text-white rounded-md hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {generating ? 'Generating...' : 'Generate Payroll'}
+                {generating ? (
+                  <>
+                    <ButtonSpinner />
+                    Generating...
+                  </>
+                ) : (
+                  'Generate Payroll'
+                )}
               </button>
             </form>
           </div>

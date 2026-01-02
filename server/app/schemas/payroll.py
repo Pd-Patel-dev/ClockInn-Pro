@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 from typing import Optional, List
 from datetime import date, datetime
 from uuid import UUID
@@ -11,6 +11,13 @@ class PayrollGenerateRequest(BaseModel):
     start_date: date
     include_inactive: bool = False
     employee_ids: Optional[List[UUID]] = None
+    
+    @model_validator(mode='after')
+    def validate_start_date(self):
+        """Validate that start_date is not in the future."""
+        if self.start_date > date.today():
+            raise ValueError("start_date cannot be in the future")
+        return self
 
 
 class PayrollLineItemResponse(BaseModel):
@@ -71,18 +78,18 @@ class PayrollRunSummaryResponse(BaseModel):
 
 
 class PayrollFinalizeRequest(BaseModel):
-    note: Optional[str] = None
+    note: Optional[str] = Field(None, max_length=500)
 
 
 class PayrollVoidRequest(BaseModel):
-    reason: str = Field(..., min_length=1)
+    reason: str = Field(..., min_length=1, max_length=500)
 
 
 class PayrollAdjustmentCreate(BaseModel):
     employee_id: UUID
     type: AdjustmentType
     amount_cents: int  # Positive for bonus/reimbursement, negative for deduction
-    note: Optional[str] = None
+    note: Optional[str] = Field(None, max_length=500)
 
 
 class PayrollAdjustmentResponse(BaseModel):

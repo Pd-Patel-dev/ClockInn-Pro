@@ -1,10 +1,12 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select, and_
 from typing import List
 
 from app.core.database import get_db
 from app.core.dependencies import get_current_user, get_current_admin
-from app.models.user import User
+from app.core.error_handling import handle_endpoint_errors, parse_uuid
+from app.models.user import User, UserRole
 from app.schemas.user import (
     UserCreate,
     UserUpdate,
@@ -13,6 +15,7 @@ from app.schemas.user import (
 )
 from app.services.user_service import (
     get_user_me,
+    get_user_by_id,
     list_employees,
     create_employee,
     update_employee,
@@ -26,6 +29,7 @@ router = APIRouter()
 
 
 @router.get("/me", response_model=UserMeResponse)
+@handle_endpoint_errors(operation_name="get_current_user")
 async def get_me(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
@@ -55,6 +59,7 @@ async def get_me(
 
 
 @router.post("/admin/employees", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
+@handle_endpoint_errors(operation_name="create_employee")
 async def create_employee_endpoint(
     data: UserCreate,
     current_user: User = Depends(get_current_admin),
@@ -92,6 +97,7 @@ async def create_employee_endpoint(
 
 
 @router.get("/admin/employees", response_model=List[UserResponse])
+@handle_endpoint_errors(operation_name="list_employees")
 async def list_employees_endpoint(
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=1000),
@@ -163,7 +169,88 @@ async def list_employees_endpoint(
     ]
 
 
+@router.get("/admin/employees/{employee_id}", response_model=UserResponse)
+@handle_endpoint_errors(operation_name="get_employee")
+async def get_employee_endpoint(
+    employee_id: str,
+    current_user: User = Depends(get_current_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Get a single employee by ID (admin only)."""
+    from app.models.time_entry import TimeEntry
+    from sqlalchemy import select, and_
+    
+    emp_id = parse_uuid(employee_id, "Employee ID")
+    
+    employee = await get_user_by_id(db, emp_id, current_user.company_id)
+    if not employee:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Employee not found",
+        )
+    
+    if employee.role != UserRole.EMPLOYEE:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="User is not an employee",
+        )
+    
+    # Get last punch time and clock status
+    last_punch = None
+    is_clocked_in = False
+    
+    # Check for open entry
+    open_entry_result = await db.execute(
+        select(TimeEntry)
+        .where(
+            and_(
+                TimeEntry.employee_id == emp_id,
+                TimeEntry.company_id == current_user.company_id,
+                TimeEntry.clock_out_at.is_(None)
+            )
+        )
+        .order_by(TimeEntry.clock_in_at.desc())
+    )
+    open_entry = open_entry_result.scalar_one_or_none()
+    if open_entry:
+        is_clocked_in = True
+        last_punch = open_entry.clock_in_at
+    else:
+        # Get latest entry
+        latest_result = await db.execute(
+            select(TimeEntry)
+            .where(
+                and_(
+                    TimeEntry.employee_id == emp_id,
+                    TimeEntry.company_id == current_user.company_id
+                )
+            )
+            .order_by(TimeEntry.clock_in_at.desc())
+            .limit(1)
+        )
+        latest_entry = latest_result.scalar_one_or_none()
+        if latest_entry:
+            last_punch = latest_entry.clock_out_at if latest_entry.clock_out_at else latest_entry.clock_in_at
+    
+    return UserResponse(
+        id=employee.id,
+        company_id=employee.company_id,
+        name=employee.name,
+        email=employee.email,
+        role=employee.role,
+        status=employee.status,
+        has_pin=employee.pin_hash is not None,
+        job_role=employee.job_role,
+        pay_rate=float(employee.pay_rate) if employee.pay_rate is not None else None,
+        created_at=employee.created_at,
+        last_login_at=employee.last_login_at,
+        last_punch_at=last_punch,
+        is_clocked_in=is_clocked_in,
+    )
+
+
 @router.put("/admin/employees/{employee_id}", response_model=UserResponse)
+@handle_endpoint_errors(operation_name="update_employee")
 async def update_employee_endpoint(
     employee_id: str,
     data: UserUpdate,
@@ -171,29 +258,26 @@ async def update_employee_endpoint(
     db: AsyncSession = Depends(get_db),
 ):
     """Update employee (admin only)."""
-    from uuid import UUID
-    try:
-        emp_id = UUID(employee_id)
-    except ValueError:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid employee ID",
+    emp_id = parse_uuid(employee_id, "Employee ID")
+    
+    employee = await update_employee(db, emp_id, current_user.company_id, data, actor_user_id=current_user.id)
+    
+    # Create general audit log for other changes (name, job_role, pay_rate)
+    changes = data.dict(exclude_unset=True)
+    # Remove status and pin from general log as they're logged separately
+    general_changes = {k: v for k, v in changes.items() if k not in ['status', 'pin']}
+    if general_changes:
+        audit_log = AuditLog(
+            id=uuid.uuid4(),
+            company_id=current_user.company_id,
+            actor_user_id=current_user.id,
+            action="employee_updated",
+            entity_type="user",
+            entity_id=employee.id,
+            metadata_json={"changes": general_changes},
         )
-    
-    employee = await update_employee(db, emp_id, current_user.company_id, data)
-    
-    # Create audit log
-    audit_log = AuditLog(
-        id=uuid.uuid4(),
-        company_id=current_user.company_id,
-        actor_user_id=current_user.id,
-        action="employee_updated",
-        entity_type="user",
-        entity_id=employee.id,
-        metadata_json={"changes": data.dict(exclude_unset=True)},
-    )
-    db.add(audit_log)
-    await db.commit()
+        db.add(audit_log)
+        await db.commit()
     
     return UserResponse(
         id=employee.id,
@@ -211,6 +295,7 @@ async def update_employee_endpoint(
 
 
 @router.post("/admin/employees/{employee_id}/reset-password")
+@handle_endpoint_errors(operation_name="reset_password")
 async def reset_password_endpoint(
     employee_id: str,
     new_password: str,
@@ -218,48 +303,22 @@ async def reset_password_endpoint(
     db: AsyncSession = Depends(get_db),
 ):
     """Reset employee password (admin only)."""
-    from uuid import UUID
-    try:
-        emp_id = UUID(employee_id)
-    except ValueError:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid employee ID",
-        )
+    emp_id = parse_uuid(employee_id, "Employee ID")
     
-    employee = await reset_password(db, emp_id, current_user.company_id, new_password)
-    
-    # Create audit log
-    audit_log = AuditLog(
-        id=uuid.uuid4(),
-        company_id=current_user.company_id,
-        actor_user_id=current_user.id,
-        action="password_reset",
-        entity_type="user",
-        entity_id=employee.id,
-        metadata_json={},
-    )
-    db.add(audit_log)
-    await db.commit()
+    employee = await reset_password(db, emp_id, current_user.company_id, new_password, actor_user_id=current_user.id)
     
     return {"message": "Password reset successfully"}
 
 
 @router.delete("/admin/employees/{employee_id}", status_code=status.HTTP_204_NO_CONTENT)
+@handle_endpoint_errors(operation_name="delete_employee")
 async def delete_employee_endpoint(
     employee_id: str,
     current_user: User = Depends(get_current_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """Delete employee (admin only)."""
-    from uuid import UUID
-    try:
-        emp_id = UUID(employee_id)
-    except ValueError:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid employee ID",
-        )
+    emp_id = parse_uuid(employee_id, "Employee ID")
     
     # Get employee info before deletion for audit log
     from app.services.user_service import get_user_by_id

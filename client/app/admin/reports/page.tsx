@@ -11,8 +11,10 @@ interface Employee {
 }
 
 export default function AdminReportsPage() {
+  const toast = useToast()
   const [employees, setEmployees] = useState<Employee[]>([])
   const [loading, setLoading] = useState(false)
+  const [exporting, setExporting] = useState(false)
   const [formData, setFormData] = useState({
     range_type: 'weekly',
     start_date: '',
@@ -39,9 +41,11 @@ export default function AdminReportsPage() {
 
   const handleExport = async () => {
     if (!formData.start_date || !formData.end_date) {
-      alert('Please select start and end dates')
+      toast.warning('Please select start and end dates')
       return
     }
+    
+    setExporting(true)
 
     try {
       const payload = {

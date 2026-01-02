@@ -4,6 +4,7 @@ from typing import Optional
 
 from app.core.database import get_db
 from app.core.dependencies import get_current_user, get_current_admin
+from app.core.error_handling import handle_endpoint_errors, parse_uuid
 from app.models.user import User
 from app.models.leave_request import LeaveStatus
 from app.schemas.leave_request import (
@@ -23,6 +24,7 @@ router = APIRouter()
 
 
 @router.post("/request", response_model=LeaveRequestResponse, status_code=status.HTTP_201_CREATED)
+@handle_endpoint_errors(operation_name="create_leave_request")
 async def create_leave_request_endpoint(
     data: LeaveRequestCreate,
     current_user: User = Depends(get_current_user),
@@ -59,6 +61,7 @@ async def create_leave_request_endpoint(
 
 
 @router.get("/my", response_model=LeaveRequestListResponse)
+@handle_endpoint_errors(operation_name="get_my_leave_requests")
 async def get_my_leave_requests_endpoint(
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=1000),
@@ -104,6 +107,7 @@ async def get_my_leave_requests_endpoint(
 
 
 @router.get("/admin/leave", response_model=LeaveRequestListResponse)
+@handle_endpoint_errors(operation_name="get_admin_leave_requests")
 async def get_admin_leave_requests_endpoint(
     status: Optional[LeaveStatus] = Query(None),
     skip: int = Query(0, ge=0),
@@ -150,6 +154,7 @@ async def get_admin_leave_requests_endpoint(
 
 
 @router.put("/admin/leave/{request_id}/approve", response_model=LeaveRequestResponse)
+@handle_endpoint_errors(operation_name="approve_leave_request")
 async def approve_leave_request_endpoint(
     request_id: str,
     review_comment: Optional[str] = None,
@@ -157,14 +162,7 @@ async def approve_leave_request_endpoint(
     db: AsyncSession = Depends(get_db),
 ):
     """Approve a leave request (admin only)."""
-    from uuid import UUID
-    try:
-        req_id = UUID(request_id)
-    except ValueError:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid request ID",
-        )
+    req_id = parse_uuid(request_id, "Leave request ID")
     
     leave_req = await update_leave_request(
         db,
@@ -197,6 +195,7 @@ async def approve_leave_request_endpoint(
 
 
 @router.put("/admin/leave/{request_id}/reject", response_model=LeaveRequestResponse)
+@handle_endpoint_errors(operation_name="reject_leave_request")
 async def reject_leave_request_endpoint(
     request_id: str,
     review_comment: Optional[str] = None,
@@ -204,14 +203,7 @@ async def reject_leave_request_endpoint(
     db: AsyncSession = Depends(get_db),
 ):
     """Reject a leave request (admin only)."""
-    from uuid import UUID
-    try:
-        req_id = UUID(request_id)
-    except ValueError:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid request ID",
-        )
+    req_id = parse_uuid(request_id, "Leave request ID")
     
     leave_req = await update_leave_request(
         db,

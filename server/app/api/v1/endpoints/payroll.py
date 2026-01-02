@@ -8,8 +8,9 @@ from sqlalchemy.orm import selectinload
 from sqlalchemy import select, and_
 
 from app.core.dependencies import get_db, get_current_admin
+from app.core.error_handling import handle_endpoint_errors, parse_uuid
 from app.models.user import User
-from app.models.payroll import PayrollRun, PayrollLineItem
+from app.models.payroll import PayrollRun, PayrollLineItem, PayrollStatus, PayrollType
 from app.schemas.payroll import (
     PayrollGenerateRequest,
     PayrollRunResponse,
@@ -25,6 +26,7 @@ from app.services.payroll_service import (
     list_payroll_runs,
     finalize_payroll_run,
     void_payroll_run,
+    delete_payroll_run,
 )
 from app.services.export_service import (
     generate_payroll_pdf,
@@ -36,86 +38,82 @@ router = APIRouter()
 
 
 @router.post("/admin/payroll/runs/generate", response_model=PayrollRunResponse, status_code=status.HTTP_201_CREATED)
+@handle_endpoint_errors(operation_name="generate_payroll")
 async def generate_payroll_endpoint(
     request: PayrollGenerateRequest,
     current_user: User = Depends(get_current_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """Generate a new payroll run (admin only)."""
-    try:
-        payroll_run = await generate_payroll_run(
-            db,
-            current_user.company_id,
-            request.payroll_type,
-            request.start_date,
-            current_user.id,
-            request.include_inactive,
-            request.employee_ids,
-            allow_duplicate=False,
+    payroll_run = await generate_payroll_run(
+        db,
+        current_user.company_id,
+        request.payroll_type,
+        request.start_date,
+        current_user.id,
+        request.include_inactive,
+        request.employee_ids,
+        allow_duplicate=False,
+    )
+    
+    # Load line items with employees
+    result = await db.execute(
+        select(PayrollRun)
+        .options(
+            selectinload(PayrollRun.line_items).selectinload(PayrollLineItem.employee),
+            selectinload(PayrollRun.generator),
         )
-        
-        # Load line items with employees
-        result = await db.execute(
-            select(PayrollRun)
-            .options(
-                selectinload(PayrollRun.line_items).selectinload(PayrollLineItem.employee),
-                selectinload(PayrollRun.generator),
-            )
-            .where(PayrollRun.id == payroll_run.id)
+        .where(PayrollRun.id == payroll_run.id)
+    )
+    payroll_run = result.scalar_one()
+    
+    # Convert to response
+    line_items = [
+        PayrollLineItemResponse(
+            id=item.id,
+            employee_id=item.employee_id,
+            employee_name=item.employee.name,
+            regular_minutes=item.regular_minutes,
+            overtime_minutes=item.overtime_minutes,
+            total_minutes=item.total_minutes,
+            pay_rate_cents=item.pay_rate_cents,
+            overtime_multiplier=item.overtime_multiplier,
+            regular_pay_cents=item.regular_pay_cents,
+            overtime_pay_cents=item.overtime_pay_cents,
+            total_pay_cents=item.total_pay_cents,
+            exceptions_count=item.exceptions_count,
+            details_json=item.details_json,
         )
-        payroll_run = result.scalar_one()
-        
-        # Convert to response
-        line_items = [
-            PayrollLineItemResponse(
-                id=item.id,
-                employee_id=item.employee_id,
-                employee_name=item.employee.name,
-                regular_minutes=item.regular_minutes,
-                overtime_minutes=item.overtime_minutes,
-                total_minutes=item.total_minutes,
-                pay_rate_cents=item.pay_rate_cents,
-                overtime_multiplier=item.overtime_multiplier,
-                regular_pay_cents=item.regular_pay_cents,
-                overtime_pay_cents=item.overtime_pay_cents,
-                total_pay_cents=item.total_pay_cents,
-                exceptions_count=item.exceptions_count,
-                details_json=item.details_json,
-            )
-            for item in payroll_run.line_items
-        ]
-        
-        return PayrollRunResponse(
-            id=payroll_run.id,
-            company_id=payroll_run.company_id,
-            payroll_type=payroll_run.payroll_type,
-            period_start_date=payroll_run.period_start_date,
-            period_end_date=payroll_run.period_end_date,
-            timezone=payroll_run.timezone,
-            status=payroll_run.status,
-            generated_by=payroll_run.generated_by,
-            generated_by_name=payroll_run.generator.name if payroll_run.generator else None,
-            generated_at=payroll_run.generated_at,
-            total_regular_hours=payroll_run.total_regular_hours,
-            total_overtime_hours=payroll_run.total_overtime_hours,
-            total_gross_pay_cents=payroll_run.total_gross_pay_cents,
-            created_at=payroll_run.created_at,
-            updated_at=payroll_run.updated_at,
-            line_items=line_items,
-        )
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to generate payroll: {str(e)}",
-        )
+        for item in payroll_run.line_items
+    ]
+    
+    return PayrollRunResponse(
+        id=payroll_run.id,
+        company_id=payroll_run.company_id,
+        payroll_type=payroll_run.payroll_type,
+        period_start_date=payroll_run.period_start_date,
+        period_end_date=payroll_run.period_end_date,
+        timezone=payroll_run.timezone,
+        status=payroll_run.status,
+        generated_by=payroll_run.generated_by,
+        generated_by_name=payroll_run.generator.name if payroll_run.generator else None,
+        generated_at=payroll_run.generated_at,
+        total_regular_hours=payroll_run.total_regular_hours,
+        total_overtime_hours=payroll_run.total_overtime_hours,
+        total_gross_pay_cents=payroll_run.total_gross_pay_cents,
+        created_at=payroll_run.created_at,
+        updated_at=payroll_run.updated_at,
+        line_items=line_items,
+    )
 
 
 @router.get("/admin/payroll/runs", response_model=List[PayrollRunSummaryResponse])
+@handle_endpoint_errors(operation_name="list_payroll_runs")
 async def list_payroll_runs_endpoint(
     from_date: Optional[date] = Query(None),
     to_date: Optional[date] = Query(None),
+    status: Optional[PayrollStatus] = Query(None),
+    payroll_type: Optional[PayrollType] = Query(None),
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=1000),
     current_user: User = Depends(get_current_admin),
@@ -127,6 +125,8 @@ async def list_payroll_runs_endpoint(
         current_user.company_id,
         from_date,
         to_date,
+        status,
+        payroll_type,
         skip,
         limit,
     )
@@ -161,19 +161,14 @@ async def list_payroll_runs_endpoint(
 
 
 @router.get("/admin/payroll/runs/{payroll_run_id}", response_model=PayrollRunResponse)
+@handle_endpoint_errors(operation_name="get_payroll_run")
 async def get_payroll_run_endpoint(
     payroll_run_id: str,
     current_user: User = Depends(get_current_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """Get a payroll run with line items (admin only)."""
-    try:
-        run_id = UUID(payroll_run_id)
-    except ValueError:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid payroll run ID",
-        )
+    run_id = parse_uuid(payroll_run_id, "Payroll run ID")
     
     payroll_run = await get_payroll_run(db, run_id, current_user.company_id)
     if not payroll_run:
@@ -233,6 +228,7 @@ async def get_payroll_run_endpoint(
 
 
 @router.post("/admin/payroll/runs/{payroll_run_id}/finalize", response_model=PayrollRunResponse)
+@handle_endpoint_errors(operation_name="finalize_payroll_run")
 async def finalize_payroll_run_endpoint(
     payroll_run_id: str,
     request: PayrollFinalizeRequest,
@@ -240,13 +236,7 @@ async def finalize_payroll_run_endpoint(
     db: AsyncSession = Depends(get_db),
 ):
     """Finalize a payroll run (admin only)."""
-    try:
-        run_id = UUID(payroll_run_id)
-    except ValueError:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid payroll run ID",
-        )
+    run_id = parse_uuid(payroll_run_id, "Payroll run ID")
     
     payroll_run = await finalize_payroll_run(
         db,
@@ -307,6 +297,7 @@ async def finalize_payroll_run_endpoint(
 
 
 @router.post("/admin/payroll/runs/{payroll_run_id}/void", response_model=PayrollRunResponse)
+@handle_endpoint_errors(operation_name="void_payroll_run")
 async def void_payroll_run_endpoint(
     payroll_run_id: str,
     request: PayrollVoidRequest,
@@ -314,13 +305,7 @@ async def void_payroll_run_endpoint(
     db: AsyncSession = Depends(get_db),
 ):
     """Void a payroll run (admin only)."""
-    try:
-        run_id = UUID(payroll_run_id)
-    except ValueError:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid payroll run ID",
-        )
+    run_id = parse_uuid(payroll_run_id, "Payroll run ID")
     
     payroll_run = await void_payroll_run(
         db,
@@ -380,7 +365,26 @@ async def void_payroll_run_endpoint(
     )
 
 
+@router.delete("/admin/payroll/runs/{payroll_run_id}", status_code=status.HTTP_204_NO_CONTENT)
+@handle_endpoint_errors(operation_name="delete_payroll_run")
+async def delete_payroll_run_endpoint(
+    payroll_run_id: str,
+    current_user: User = Depends(get_current_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Delete a payroll run (only DRAFT status allowed, admin only)."""
+    run_id = parse_uuid(payroll_run_id, "Payroll run ID")
+    
+    await delete_payroll_run(
+        db,
+        run_id,
+        current_user.company_id,
+        current_user.id,
+    )
+
+
 @router.post("/admin/payroll/runs/{payroll_run_id}/export")
+@handle_endpoint_errors(operation_name="export_payroll")
 async def export_payroll_endpoint(
     payroll_run_id: str,
     format: str = Query(..., regex="^(pdf|xlsx)$"),
@@ -388,13 +392,7 @@ async def export_payroll_endpoint(
     db: AsyncSession = Depends(get_db),
 ):
     """Export payroll run to PDF or Excel (admin only)."""
-    try:
-        run_id = UUID(payroll_run_id)
-    except ValueError:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid payroll run ID",
-        )
+    run_id = parse_uuid(payroll_run_id, "Payroll run ID")
     
     payroll_run = await get_payroll_run(db, run_id, current_user.company_id)
     if not payroll_run:
@@ -450,6 +448,7 @@ async def export_payroll_endpoint(
 
 
 @router.get("/payroll/my", response_model=List[EmployeePayrollResponse])
+@handle_endpoint_errors(operation_name="get_my_payroll")
 async def get_my_payroll_endpoint(
     from_date: Optional[date] = Query(None),
     to_date: Optional[date] = Query(None),

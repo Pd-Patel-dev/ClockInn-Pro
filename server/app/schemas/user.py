@@ -1,4 +1,4 @@
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, field_validator
 from typing import Optional
 from datetime import datetime
 from uuid import UUID
@@ -14,9 +14,9 @@ class UserBase(BaseModel):
 class UserCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=255)
     email: EmailStr
-    password: str = Field(..., min_length=8)
+    password: str = Field(..., min_length=8, max_length=255)
     role: UserRole = UserRole.EMPLOYEE
-    pin: Optional[str] = Field(None, min_length=4, max_length=4)
+    pin: Optional[str] = Field(None, min_length=4, max_length=4, pattern="^[0-9]{4}$")
     job_role: Optional[str] = Field(None, max_length=255)
     pay_rate: Optional[float] = Field(None, ge=0)
 
@@ -24,9 +24,19 @@ class UserCreate(BaseModel):
 class UserUpdate(BaseModel):
     name: Optional[str] = Field(None, min_length=1, max_length=255)
     status: Optional[UserStatus] = None
-    pin: Optional[str] = Field(None, min_length=4, max_length=4)
+    pin: Optional[str] = Field(None, min_length=0, max_length=4)
     job_role: Optional[str] = Field(None, max_length=255)
     pay_rate: Optional[float] = Field(None, ge=0)
+    
+    @field_validator('pin')
+    @classmethod
+    def validate_pin(cls, v: Optional[str]) -> Optional[str]:
+        """Validate PIN is either empty string or exactly 4 numeric digits."""
+        if v is None or v == "":
+            return v
+        if not v.isdigit() or len(v) != 4:
+            raise ValueError("PIN must be exactly 4 numeric digits")
+        return v
 
 
 class UserResponse(BaseModel):

@@ -15,8 +15,10 @@ interface LeaveRequest {
 }
 
 export default function AdminLeavePage() {
+  const toast = useToast()
   const [requests, setRequests] = useState<LeaveRequest[]>([])
   const [loading, setLoading] = useState(false)
+  const [processing, setProcessing] = useState<string | null>(null)
 
   useEffect(() => {
     fetchRequests()
@@ -35,23 +37,33 @@ export default function AdminLeavePage() {
   }
 
   const handleApprove = async (id: string) => {
+    setProcessing(id)
     try {
       await api.put(`/leave/admin/leave/${id}/approve`)
+      toast.success('Leave request approved successfully!')
       fetchRequests()
     } catch (error: any) {
-      alert(error.response?.data?.detail || 'Failed to approve request')
+      toast.error(error.response?.data?.detail || 'Failed to approve request')
+    } finally {
+      setProcessing(null)
     }
   }
 
   const handleReject = async (id: string) => {
     const comment = prompt('Enter rejection reason (optional):')
+    if (comment === null) return // User cancelled
+    
+    setProcessing(id)
     try {
       await api.put(`/leave/admin/leave/${id}/reject`, {
         review_comment: comment || null,
       })
+      toast.success('Leave request rejected successfully!')
       fetchRequests()
     } catch (error: any) {
-      alert(error.response?.data?.detail || 'Failed to reject request')
+      toast.error(error.response?.data?.detail || 'Failed to reject request')
+    } finally {
+      setProcessing(null)
     }
   }
 

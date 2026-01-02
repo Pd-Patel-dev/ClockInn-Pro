@@ -3,7 +3,7 @@ from uuid import UUID
 from datetime import datetime, date, timedelta
 from decimal import Decimal, ROUND_HALF_UP
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_, or_, func
+from sqlalchemy import select, and_, or_, func, delete
 from sqlalchemy.orm import selectinload
 from fastapi import HTTPException, status
 import pytz
@@ -13,6 +13,7 @@ from app.models.time_entry import TimeEntry, TimeEntryStatus
 from app.models.user import User, UserRole, UserStatus, PayRateType
 from app.models.company import Company
 from app.models.audit_log import AuditLog
+from app.core.query_builder import get_paginated_results, build_company_filtered_query, filter_by_status
 import uuid
 
 
@@ -535,28 +536,35 @@ async def list_payroll_runs(
     company_id: UUID,
     from_date: Optional[date] = None,
     to_date: Optional[date] = None,
+    status: Optional[PayrollStatus] = None,
+    payroll_type: Optional[PayrollType] = None,
     skip: int = 0,
     limit: int = 100,
 ) -> Tuple[List[PayrollRun], int]:
     """List payroll runs for a company."""
-    query = select(PayrollRun).where(PayrollRun.company_id == company_id)
+    additional_filters = {}
+    if payroll_type:
+        additional_filters["payroll_type"] = payroll_type
     
+    query = build_company_filtered_query(PayrollRun, company_id, additional_filters)
+    
+    # Apply date range filters
     if from_date:
         query = query.where(PayrollRun.period_start_date >= from_date)
     if to_date:
         query = query.where(PayrollRun.period_end_date <= to_date)
     
-    # Count total
-    count_query = select(func.count()).select_from(query.subquery())
-    count_result = await db.execute(count_query)
-    total = count_result.scalar_one()
+    # Apply status filter
+    if status:
+        query = filter_by_status(query, PayrollRun, status)
     
-    # Get paginated results
-    query = query.order_by(PayrollRun.period_start_date.desc()).offset(skip).limit(limit)
-    result = await db.execute(query)
-    runs = list(result.scalars().all())
-    
-    return runs, total
+    return await get_paginated_results(
+        db,
+        query,
+        skip=skip,
+        limit=limit,
+        order_by=PayrollRun.period_start_date.desc()
+    )
 
 
 async def finalize_payroll_run(
@@ -571,19 +579,19 @@ async def finalize_payroll_run(
     if not payroll_run:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Payroll run not found",
+            detail=f"Payroll run with ID {payroll_run_id} not found in your company",
         )
     
     if payroll_run.status == PayrollStatus.FINALIZED:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Payroll run is already finalized",
+            detail=f"This payroll run for period {payroll_run.period_start_date} to {payroll_run.period_end_date} has already been finalized and cannot be modified.",
         )
     
     if payroll_run.status == PayrollStatus.VOID:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Cannot finalize a voided payroll run",
+            detail=f"This payroll run has been voided and cannot be finalized. Please create a new payroll run if needed.",
         )
     
     payroll_run.status = PayrollStatus.FINALIZED
@@ -647,4 +655,51 @@ async def void_payroll_run(
     await db.refresh(payroll_run)
     
     return payroll_run
+
+
+async def delete_payroll_run(
+    db: AsyncSession,
+    payroll_run_id: UUID,
+    company_id: UUID,
+    deleted_by: UUID,
+) -> None:
+    """Delete a payroll run (only DRAFT status allowed)."""
+    payroll_run = await get_payroll_run(db, payroll_run_id, company_id)
+    if not payroll_run:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Payroll run not found",
+        )
+    
+    if payroll_run.status != PayrollStatus.DRAFT:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Only DRAFT payroll runs can be deleted",
+        )
+    
+    # Create audit log before deletion
+    audit_log = AuditLog(
+        id=uuid.uuid4(),
+        company_id=company_id,
+        actor_user_id=deleted_by,
+        action="PAYROLL_DELETE",
+        entity_type="payroll_run",
+        entity_id=payroll_run_id,
+        metadata_json={
+            "payroll_type": payroll_run.payroll_type.value,
+            "period_start": payroll_run.period_start_date.isoformat(),
+            "period_end": payroll_run.period_end_date.isoformat(),
+        },
+    )
+    db.add(audit_log)
+    await db.flush()  # Flush audit log first
+    
+    # Delete related records first to ensure proper cascade
+    from app.models.payroll import PayrollLineItem, PayrollAdjustment
+    await db.execute(delete(PayrollLineItem).where(PayrollLineItem.payroll_run_id == payroll_run_id))
+    await db.execute(delete(PayrollAdjustment).where(PayrollAdjustment.payroll_run_id == payroll_run_id))
+    
+    # Delete the payroll run
+    await db.execute(delete(PayrollRun).where(PayrollRun.id == payroll_run_id))
+    await db.commit()
 

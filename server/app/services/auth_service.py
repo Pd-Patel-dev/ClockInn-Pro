@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta
 from typing import Optional
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, func
 from fastapi import HTTPException, status
 
 from app.models.user import User, UserRole, UserStatus
@@ -103,12 +103,25 @@ async def login(
     """Authenticate user and create session."""
     normalized_email = normalize_email(request.email)
     
+    # Query with limit to prevent MultipleResultsFound error if duplicates exist
     result = await db.execute(
-        select(User).where(User.email == normalized_email)
+        select(User).where(User.email == normalized_email).limit(1)
     )
     user = result.scalar_one_or_none()
     
-    if not user or not verify_password(request.password, user.password_hash):
+    # Security: Always verify password even if user doesn't exist to prevent email enumeration
+    # This prevents attackers from determining if an email exists by timing differences
+    if not user:
+        # Verify against a dummy hash to maintain constant-time operation
+        # This prevents timing attacks that could reveal if email exists
+        dummy_hash = "$argon2id$v=19$m=65536,t=3,p=4$dummy$dummy"
+        verify_password(request.password, dummy_hash)
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid email or password",
+        )
+    
+    if not verify_password(request.password, user.password_hash):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid email or password",
@@ -117,7 +130,7 @@ async def login(
     if user.status != UserStatus.ACTIVE:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="User account is inactive",
+            detail="Your account has been deactivated. Please contact your administrator.",
         )
     
     # Update last login

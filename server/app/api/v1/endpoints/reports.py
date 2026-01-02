@@ -5,6 +5,7 @@ from typing import List
 
 from app.core.database import get_db
 from app.core.dependencies import get_current_admin
+from app.core.error_handling import handle_endpoint_errors
 from app.models.user import User
 from app.schemas.report import ReportExportRequest
 from app.services.export_service import generate_pdf_report, generate_excel_report
@@ -13,6 +14,7 @@ router = APIRouter()
 
 
 @router.post("/export")
+@handle_endpoint_errors(operation_name="export_report")
 async def export_report(
     request: ReportExportRequest,
     current_user: User = Depends(get_current_admin),

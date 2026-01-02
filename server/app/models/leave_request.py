@@ -27,12 +27,12 @@ class LeaveRequest(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     company_id = Column(UUID(as_uuid=True), ForeignKey("companies.id"), nullable=False, index=True)
     employee_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True)
-    type = Column(Enum(LeaveType), nullable=False)
+    type = Column(Enum(LeaveType, values_callable=lambda x: [e.value for e in x]), nullable=False)
     start_date = Column(Date, nullable=False)
     end_date = Column(Date, nullable=False)
     partial_day_hours = Column(Integer, nullable=True)
     reason = Column(String(1000), nullable=True)
-    status = Column(Enum(LeaveStatus), nullable=False, default=LeaveStatus.PENDING)
+    status = Column(Enum(LeaveStatus, values_callable=lambda x: [e.value for e in x]), nullable=False, default=LeaveStatus.PENDING)
     reviewed_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
     review_comment = Column(String(1000), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
@@ -45,5 +45,6 @@ class LeaveRequest(Base):
     __table_args__ = (
         Index("idx_leave_requests_employee_company", "employee_id", "company_id"),
         Index("idx_leave_requests_status", "status"),
+        Index("idx_leave_requests_company_status_created", "company_id", "status", "created_at"),
     )
 

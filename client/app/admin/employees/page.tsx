@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import Layout from '@/components/Layout'
 import api from '@/lib/api'
@@ -9,6 +9,12 @@ import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import logger from '@/lib/logger'
+import { useDebounce } from '@/hooks/useDebounce'
+import { TableSkeleton } from '@/components/LoadingSkeleton'
+import { EmployeeRow } from '@/components/EmployeeRow'
+import { useToast } from '@/components/Toast'
+import { LoadingSpinner, ButtonSpinner } from '@/components/LoadingSpinner'
+import { FormField, Input, Select } from '@/components/FormField'
 
 const employeeSchema = z.object({
   name: z.string().min(1, 'Name is required'),
@@ -54,8 +60,12 @@ export default function AdminEmployeesPage() {
   const [loading, setLoading] = useState(false)
   const [showForm, setShowForm] = useState(false)
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive'>('all')
+  const [searchQuery, setSearchQuery] = useState('')
   const [deletingEmployee, setDeletingEmployee] = useState<string | null>(null)
   const [editingEmployee, setEditingEmployee] = useState<Employee | null>(null)
+  
+  // Debounce search query
+  const debouncedSearchQuery = useDebounce(searchQuery, 300)
 
   const {
     register,
@@ -97,7 +107,7 @@ export default function AdminEmployeesPage() {
     setLoading(true)
     try {
       const response = await api.get('/users/admin/employees')
-      console.log('Employees data:', response.data)
+      logger.debug('Employees data fetched', undefined, { count: response.data?.length })
       setEmployees(response.data || [])
     } catch (error: any) {
       logger.error('Failed to fetch employees', error as Error, { endpoint: '/users/admin/employees' })
@@ -111,13 +121,17 @@ export default function AdminEmployeesPage() {
   }
 
   const onSubmit = async (data: EmployeeForm) => {
+    setSubmitting(true)
     try {
       await api.post('/users/admin/employees', data)
+      toast.success('Employee created successfully!')
       reset()
       setShowForm(false)
       fetchEmployees()
     } catch (error: any) {
-      alert(error.response?.data?.detail || 'Failed to create employee')
+      toast.error(error.response?.data?.detail || 'Failed to create employee')
+    } finally {
+      setSubmitting(false)
     }
   }
 
@@ -129,9 +143,10 @@ export default function AdminEmployeesPage() {
     setDeletingEmployee(employeeId)
     try {
       await api.delete(`/users/admin/employees/${employeeId}`)
+      toast.success('Employee deleted successfully!')
       fetchEmployees()
     } catch (error: any) {
-      alert(error.response?.data?.detail || 'Failed to delete employee')
+      toast.error(error.response?.data?.detail || 'Failed to delete employee')
     } finally {
       setDeletingEmployee(null)
     }
@@ -154,6 +169,7 @@ export default function AdminEmployeesPage() {
   const onEditSubmit = async (data: EditEmployeeForm) => {
     if (!editingEmployee) return
 
+    setUpdating(true)
     try {
       const updateData: any = {
         name: data.name,
@@ -174,17 +190,36 @@ export default function AdminEmployeesPage() {
       }
 
       await api.put(`/users/admin/employees/${editingEmployee.id}`, updateData)
+      toast.success('Employee updated successfully!')
       closeEditForm()
       fetchEmployees()
     } catch (error: any) {
-      alert(error.response?.data?.detail || 'Failed to update employee')
+      toast.error(error.response?.data?.detail || 'Failed to update employee')
+    } finally {
+      setUpdating(false)
     }
   }
 
-  const filteredEmployees = employees.filter((emp) => {
-    if (statusFilter === 'all') return true
-    return emp.status === statusFilter
-  })
+  const filteredEmployees = useMemo(() => {
+    return employees.filter((emp) => {
+      // Status filter
+      if (statusFilter !== 'all' && emp.status !== statusFilter) {
+        return false
+      }
+      
+      // Search filter (debounced)
+      if (debouncedSearchQuery.trim()) {
+        const query = debouncedSearchQuery.toLowerCase()
+        return (
+          emp.name.toLowerCase().includes(query) ||
+          emp.email.toLowerCase().includes(query) ||
+          (emp.job_role && emp.job_role.toLowerCase().includes(query))
+        )
+      }
+      
+      return true
+    })
+  }, [employees, statusFilter, debouncedSearchQuery])
 
   return (
     <Layout>
@@ -199,118 +234,88 @@ export default function AdminEmployeesPage() {
           </button>
         </div>
 
-        {/* Status Filter */}
-        <div className="mb-4 flex gap-2">
-          <button
-            onClick={() => setStatusFilter('all')}
-            className={`px-4 py-2 rounded-md text-sm font-medium ${
-              statusFilter === 'all'
-                ? 'bg-primary-600 text-white'
-                : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-            }`}
-          >
-            All
-          </button>
-          <button
-            onClick={() => setStatusFilter('active')}
-            className={`px-4 py-2 rounded-md text-sm font-medium ${
-              statusFilter === 'active'
-                ? 'bg-green-600 text-white'
-                : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-            }`}
-          >
-            Active
-          </button>
-          <button
-            onClick={() => setStatusFilter('inactive')}
-            className={`px-4 py-2 rounded-md text-sm font-medium ${
-              statusFilter === 'inactive'
-                ? 'bg-red-600 text-white'
-                : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-            }`}
-          >
-            Inactive
-          </button>
+        {/* Search and Filters */}
+        <div className="mb-4 space-y-3">
+          {/* Search Input */}
+          <div>
+            <input
+              type="text"
+              placeholder="Search by name, email, or job role..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full px-4 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm"
+            />
+          </div>
+          
+          {/* Status Filter */}
+          <div className="flex gap-2">
+            <button
+              onClick={() => setStatusFilter('all')}
+              className={`px-4 py-2 rounded-md text-sm font-medium ${
+                statusFilter === 'all'
+                  ? 'bg-primary-600 text-white'
+                  : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+              }`}
+            >
+              All
+            </button>
+            <button
+              onClick={() => setStatusFilter('active')}
+              className={`px-4 py-2 rounded-md text-sm font-medium ${
+                statusFilter === 'active'
+                  ? 'bg-green-600 text-white'
+                  : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+              }`}
+            >
+              Active
+            </button>
+            <button
+              onClick={() => setStatusFilter('inactive')}
+              className={`px-4 py-2 rounded-md text-sm font-medium ${
+                statusFilter === 'inactive'
+                  ? 'bg-red-600 text-white'
+                  : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+              }`}
+            >
+              Inactive
+            </button>
+          </div>
         </div>
         {showForm && (
           <div className="bg-white shadow rounded-lg p-6 mb-6">
             <h2 className="text-xl font-semibold mb-4">New Employee</h2>
             <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700">Name</label>
-                <input
-                  {...register('name')}
-                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm"
-                />
-                {errors.name && (
-                  <p className="mt-1 text-sm text-red-600">{errors.name.message}</p>
-                )}
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700">Email</label>
-                <input
-                  {...register('email')}
-                  type="email"
-                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm"
-                />
-                {errors.email && (
-                  <p className="mt-1 text-sm text-red-600">{errors.email.message}</p>
-                )}
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700">Password</label>
-                <input
-                  {...register('password')}
-                  type="password"
-                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm"
-                />
-                {errors.password && (
-                  <p className="mt-1 text-sm text-red-600">{errors.password.message}</p>
-                )}
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700">PIN (optional)</label>
-                <input
-                  {...register('pin')}
-                  type="text"
-                  maxLength={4}
-                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm"
-                />
-                {errors.pin && (
-                  <p className="mt-1 text-sm text-red-600">{errors.pin.message}</p>
-                )}
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700">Job Role (optional)</label>
-                <input
-                  {...register('job_role')}
-                  type="text"
-                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm"
-                  placeholder="e.g., Manager, Developer, Sales"
-                />
-                {errors.job_role && (
-                  <p className="mt-1 text-sm text-red-600">{errors.job_role.message}</p>
-                )}
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700">Pay Rate (optional)</label>
-                <input
-                  {...register('pay_rate')}
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm"
-                  placeholder="0.00"
-                />
-                {errors.pay_rate && (
-                  <p className="mt-1 text-sm text-red-600">{errors.pay_rate.message}</p>
-                )}
-              </div>
+              <FormField label="Name" error={errors.name?.message} required>
+                <Input {...register('name')} error={!!errors.name} />
+              </FormField>
+              
+              <FormField label="Email" error={errors.email?.message} required>
+                <Input {...register('email')} type="email" error={!!errors.email} />
+              </FormField>
+              
+              <FormField label="Password" error={errors.password?.message} required>
+                <Input {...register('password')} type="password" error={!!errors.password} />
+              </FormField>
+              
+              <FormField label="PIN" error={errors.pin?.message} hint="4-digit PIN for kiosk access (optional)">
+                <Input {...register('pin')} type="text" maxLength={4} error={!!errors.pin} />
+              </FormField>
+              
+              <FormField label="Job Role" error={errors.job_role?.message} hint="e.g., Manager, Developer, Sales">
+                <Input {...register('job_role')} type="text" error={!!errors.job_role} />
+              </FormField>
+              
+              <FormField label="Pay Rate" error={errors.pay_rate?.message} hint="Hourly rate in dollars (optional)">
+                <Input {...register('pay_rate')} type="number" step="0.01" min="0" error={!!errors.pay_rate} />
+              </FormField>
+              
               <button
                 type="submit"
-                className="px-4 py-2 bg-primary-600 text-white rounded-md hover:bg-primary-700"
+                disabled={submitting}
+                className="px-4 py-2 bg-primary-600 text-white rounded-md hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
               >
-                Create Employee
+                {submitting && <ButtonSpinner />}
+                {submitting ? 'Creating...' : 'Create Employee'}
               </button>
             </form>
           </div>
@@ -364,88 +369,13 @@ export default function AdminEmployeesPage() {
                   </tr>
                 ) : (
                   filteredEmployees.map((employee) => (
-                    <tr key={employee.id}>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                        {employee.name}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                        {employee.email}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm">
-                        <span
-                          className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
-                            employee.status === 'active'
-                              ? 'bg-green-100 text-green-800'
-                              : 'bg-red-100 text-red-800'
-                          }`}
-                        >
-                          {employee.status === 'active' ? 'Active' : 'Inactive'}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm">
-                        {employee.is_clocked_in !== null ? (
-                          <span
-                            className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
-                              employee.is_clocked_in
-                                ? 'bg-blue-100 text-blue-800'
-                                : 'bg-gray-100 text-gray-800'
-                            }`}
-                          >
-                            {employee.is_clocked_in ? 'In' : 'Out'}
-                          </span>
-                        ) : (
-                          <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-gray-100 text-gray-500">
-                            -
-                          </span>
-                        )}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                        {employee.has_pin ? 'Yes' : 'No'}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                        {employee.job_role || '-'}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                        {employee.pay_rate ? `$${employee.pay_rate.toFixed(2)}` : '-'}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                        {employee.created_at
-                          ? new Date(employee.created_at).toLocaleDateString('en-US', {
-                              year: 'numeric',
-                              month: 'short',
-                              day: 'numeric',
-                            })
-                          : '-'}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                        {employee.last_punch_at
-                          ? new Date(employee.last_punch_at).toLocaleString('en-US', {
-                              year: 'numeric',
-                              month: 'short',
-                              day: 'numeric',
-                              hour: '2-digit',
-                              minute: '2-digit',
-                            })
-                          : 'Never'}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm">
-                        <div className="flex gap-2">
-                          <button
-                            onClick={() => openEditForm(employee)}
-                            className="px-3 py-1 rounded-md text-xs font-medium bg-blue-100 text-blue-800 hover:bg-blue-200"
-                          >
-                            Edit
-                          </button>
-                          <button
-                            onClick={() => deleteEmployee(employee.id, employee.name)}
-                            disabled={deletingEmployee === employee.id}
-                            className="px-3 py-1 rounded-md text-xs font-medium bg-red-100 text-red-800 hover:bg-red-200 disabled:opacity-50 disabled:cursor-not-allowed"
-                          >
-                            {deletingEmployee === employee.id ? 'Deleting...' : 'Delete'}
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
+                    <EmployeeRow
+                      key={employee.id}
+                      employee={employee}
+                      onEdit={openEditForm}
+                      onDelete={deleteEmployee}
+                      deletingEmployee={deletingEmployee}
+                    />
                   ))
                 )}
               </tbody>
@@ -468,94 +398,61 @@ export default function AdminEmployeesPage() {
                 </button>
               </div>
               <form onSubmit={handleSubmitEdit(onEditSubmit)} className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700">Name</label>
-                  <input
-                    {...registerEdit('name')}
-                    className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm"
-                  />
-                  {editErrors.name && (
-                    <p className="mt-1 text-sm text-red-600">{editErrors.name.message}</p>
-                  )}
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700">Email</label>
-                  <input
+                <FormField label="Name" error={editErrors.name?.message} required>
+                  <Input {...registerEdit('name')} error={!!editErrors.name} />
+                </FormField>
+                
+                <FormField label="Email" hint="Email cannot be changed">
+                  <Input
                     type="email"
                     value={editingEmployee.email}
                     disabled
-                    className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm bg-gray-100 text-gray-500 sm:text-sm cursor-not-allowed"
+                    className="bg-gray-100 text-gray-500 cursor-not-allowed"
                   />
-                  <p className="mt-1 text-xs text-gray-500">Email cannot be changed</p>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700">Status</label>
-                  <select
-                    {...registerEdit('status')}
-                    className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm"
-                  >
+                </FormField>
+                
+                <FormField label="Status" error={editErrors.status?.message} required>
+                  <Select {...registerEdit('status')} error={!!editErrors.status}>
                     <option value="active">Active</option>
                     <option value="inactive">Inactive</option>
-                  </select>
-                  {editErrors.status && (
-                    <p className="mt-1 text-sm text-red-600">{editErrors.status.message}</p>
-                  )}
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700">
-                    PIN (leave blank to keep current)
-                  </label>
-                  <input
-                    {...registerEdit('pin')}
-                    type="text"
-                    maxLength={4}
+                  </Select>
+                </FormField>
+                
+                <FormField 
+                  label="PIN" 
+                  error={editErrors.pin?.message}
+                  hint={editingEmployee.has_pin ? 'Leave empty to keep current PIN, or enter new 4-digit PIN' : 'Enter 4-digit PIN or leave empty'}
+                >
+                  <Input 
+                    {...registerEdit('pin')} 
+                    type="text" 
+                    maxLength={4} 
+                    error={!!editErrors.pin}
                     placeholder="Enter new 4-digit PIN"
-                    className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm"
                   />
-                  {editErrors.pin && (
-                    <p className="mt-1 text-sm text-red-600">{editErrors.pin.message}</p>
-                  )}
-                  <p className="mt-1 text-xs text-gray-500">
-                    {editingEmployee.has_pin ? 'Current PIN is set' : 'No PIN currently set'}
-                  </p>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700">Job Role</label>
-                  <input
-                    {...registerEdit('job_role')}
-                    type="text"
-                    className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm"
-                    placeholder="e.g., Manager, Developer, Sales"
-                  />
-                  {editErrors.job_role && (
-                    <p className="mt-1 text-sm text-red-600">{editErrors.job_role.message}</p>
-                  )}
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700">Pay Rate</label>
-                  <input
-                    {...registerEdit('pay_rate')}
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm"
-                    placeholder="0.00"
-                  />
-                  {editErrors.pay_rate && (
-                    <p className="mt-1 text-sm text-red-600">{editErrors.pay_rate.message}</p>
-                  )}
-                </div>
+                </FormField>
+                
+                <FormField label="Job Role" error={editErrors.job_role?.message} hint="e.g., Manager, Developer, Sales">
+                  <Input {...registerEdit('job_role')} type="text" error={!!editErrors.job_role} />
+                </FormField>
+                
+                <FormField label="Pay Rate" error={editErrors.pay_rate?.message} hint="Hourly rate in dollars">
+                  <Input {...registerEdit('pay_rate')} type="number" step="0.01" min="0" error={!!editErrors.pay_rate} />
+                </FormField>
                 <div className="flex gap-3 pt-4">
                   <button
                     type="submit"
-                    className="flex-1 px-4 py-2 bg-primary-600 text-white rounded-md hover:bg-primary-700"
+                    disabled={updating}
+                    className="flex-1 px-4 py-2 bg-primary-600 text-white rounded-md hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                   >
-                    Save Changes
+                    {updating && <ButtonSpinner />}
+                    {updating ? 'Saving...' : 'Save Changes'}
                   </button>
                   <button
                     type="button"
                     onClick={closeEditForm}
-                    className="flex-1 px-4 py-2 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300"
+                    disabled={updating}
+                    className="flex-1 px-4 py-2 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     Cancel
                   </button>

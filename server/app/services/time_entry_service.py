@@ -7,6 +7,7 @@ from fastapi import HTTPException, status
 
 from app.models.time_entry import TimeEntry, TimeEntryStatus, TimeEntrySource
 from app.models.user import User, UserRole, UserStatus
+from app.core.query_builder import get_paginated_results, build_employee_company_filtered_query, build_company_filtered_query, filter_by_date_range, filter_by_status
 from app.core.security import verify_pin, normalize_email
 from app.schemas.time_entry import TimeEntryEdit
 from app.services.rounding_service import (
@@ -58,23 +59,29 @@ async def punch(
     
     employee = result.scalar_one_or_none()
     if not employee:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Employee not found",
-        )
+        if employee_email:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"No active employee found with email {employee_email}",
+            )
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Employee with ID {employee_id} not found or is not active",
+            )
     
     # Only verify PIN if not skipped (for cases where PIN was already verified)
     if not skip_pin_verification:
         if not employee.pin_hash:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="PIN not set for employee",
+                detail=f"PIN is not configured for employee {employee.email}. Please contact your administrator to set up a PIN.",
             )
         
         if not verify_pin(pin, employee.pin_hash):
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid PIN",
+                detail="The PIN you entered is incorrect. Please try again.",
             )
     
     # Check for open entry
@@ -91,27 +98,34 @@ async def punch(
     
     now = datetime.utcnow()
     
-    if open_entry:
-        # Clock out
-        open_entry.clock_out_at = now
-        open_entry.status = TimeEntryStatus.CLOSED
-        await db.commit()
-        await db.refresh(open_entry)
-        return open_entry
-    else:
-        # Clock in
-        new_entry = TimeEntry(
-            id=uuid.uuid4(),
-            company_id=company_id,
-            employee_id=employee.id,
-            clock_in_at=now,
-            source=source,
-            status=TimeEntryStatus.OPEN,
+    try:
+        if open_entry:
+            # Clock out
+            open_entry.clock_out_at = now
+            open_entry.status = TimeEntryStatus.CLOSED
+            await db.commit()
+            await db.refresh(open_entry)
+            return open_entry
+        else:
+            # Clock in
+            new_entry = TimeEntry(
+                id=uuid.uuid4(),
+                company_id=company_id,
+                employee_id=employee.id,
+                clock_in_at=now,
+                source=source,
+                status=TimeEntryStatus.OPEN,
+            )
+            db.add(new_entry)
+            await db.commit()
+            await db.refresh(new_entry)
+            return new_entry
+    except Exception as e:
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to process punch: {str(e)}",
         )
-        db.add(new_entry)
-        await db.commit()
-        await db.refresh(new_entry)
-        return new_entry
 
 
 async def get_my_time_entries(
@@ -124,25 +138,19 @@ async def get_my_time_entries(
     limit: int = 100,
 ) -> tuple[List[TimeEntry], int]:
     """Get employee's own time entries."""
-    query = select(TimeEntry).where(
-        and_(
-            TimeEntry.employee_id == employee_id,
-            TimeEntry.company_id == company_id,
-        )
+    query = build_employee_company_filtered_query(TimeEntry, employee_id, company_id)
+    
+    # Apply date range filter
+    if from_date or to_date:
+        query = filter_by_date_range(query, TimeEntry, "clock_in_at", from_date, to_date)
+    
+    return await get_paginated_results(
+        db,
+        query,
+        skip=skip,
+        limit=limit,
+        order_by=TimeEntry.clock_in_at.desc()
     )
-    
-    if from_date:
-        query = query.where(TimeEntry.clock_in_at >= datetime.combine(from_date, datetime.min.time()))
-    if to_date:
-        query = query.where(TimeEntry.clock_in_at <= datetime.combine(to_date, datetime.max.time()))
-    
-    count_result = await db.execute(select(func.count()).select_from(query.subquery()))
-    total = count_result.scalar() or 0
-    
-    result = await db.execute(query.order_by(TimeEntry.clock_in_at.desc()).offset(skip).limit(limit))
-    entries = result.scalars().all()
-    
-    return list(entries), total
 
 
 async def get_admin_time_entries(
@@ -156,24 +164,27 @@ async def get_admin_time_entries(
     limit: int = 100,
 ) -> tuple[List[TimeEntry], int]:
     """Get time entries for admin view."""
-    query = select(TimeEntry).where(TimeEntry.company_id == company_id)
-    
+    additional_filters = {}
     if employee_id:
-        query = query.where(TimeEntry.employee_id == employee_id)
-    if from_date:
-        query = query.where(TimeEntry.clock_in_at >= datetime.combine(from_date, datetime.min.time()))
-    if to_date:
-        query = query.where(TimeEntry.clock_in_at <= datetime.combine(to_date, datetime.max.time()))
+        additional_filters["employee_id"] = employee_id
+    
+    query = build_company_filtered_query(TimeEntry, company_id, additional_filters)
+    
+    # Apply date range filter
+    if from_date or to_date:
+        query = filter_by_date_range(query, TimeEntry, "clock_in_at", from_date, to_date)
+    
+    # Apply status filter
     if status_filter:
-        query = query.where(TimeEntry.status == status_filter)
+        query = filter_by_status(query, TimeEntry, status_filter)
     
-    count_result = await db.execute(select(func.count()).select_from(query.subquery()))
-    total = count_result.scalar() or 0
-    
-    result = await db.execute(query.order_by(TimeEntry.clock_in_at.desc()).offset(skip).limit(limit))
-    entries = result.scalars().all()
-    
-    return list(entries), total
+    return await get_paginated_results(
+        db,
+        query,
+        skip=skip,
+        limit=limit,
+        order_by=TimeEntry.clock_in_at.desc()
+    )
 
 
 async def calculate_rounded_hours(
@@ -234,7 +245,7 @@ async def edit_time_entry(
     if not entry:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Time entry not found",
+            detail=f"Time entry with ID {entry_id} not found in your company",
         )
     
     if data.clock_in_at is not None:
@@ -264,10 +275,15 @@ async def edit_time_entry(
             "reason": data.edit_reason,
         },
     )
-    db.add(audit_log)
-    
-    await db.commit()
-    await db.refresh(entry)
-    
-    return entry
+    try:
+        db.add(audit_log)
+        await db.commit()
+        await db.refresh(entry)
+        return entry
+    except Exception as e:
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to edit time entry: {str(e)}",
+        )
 

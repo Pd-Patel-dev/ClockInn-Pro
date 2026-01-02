@@ -8,6 +8,9 @@ import { getCurrentUser } from '@/lib/auth'
 import { useForm, Controller } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
+import logger from '@/lib/logger'
+import { useToast } from '@/components/Toast'
+import { ButtonSpinner } from '@/components/LoadingSpinner'
 
 const companyNameSchema = z.object({
   name: z.string().min(1, 'Company name is required').max(255, 'Company name is too long'),
@@ -60,6 +63,7 @@ interface CompanyInfo {
 
 export default function AdminSettingsPage() {
   const router = useRouter()
+  const toast = useToast()
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [companyInfo, setCompanyInfo] = useState<CompanyInfo | null>(null)
@@ -125,7 +129,7 @@ export default function AdminSettingsPage() {
       if (error.response?.status === 403) {
         router.push('/dashboard')
       } else {
-        alert(error.response?.data?.detail || 'Failed to fetch company information')
+        toast.error(error.response?.data?.detail || 'Failed to fetch company information')
       }
     } finally {
       setLoading(false)
@@ -137,10 +141,10 @@ export default function AdminSettingsPage() {
     try {
       const response = await api.put('/admin/company/name', data)
       setCompanyInfo(response.data)
-      alert('Company name updated successfully!')
+      toast.success('Company name updated successfully!')
     } catch (error: any) {
       logger.error('Failed to update company name', error as Error, { endpoint: '/admin/company/name' })
-      alert(error.response?.data?.detail || 'Failed to update company name')
+      toast.error(error.response?.data?.detail || 'Failed to update company name')
     } finally {
       setSaving(false)
     }
@@ -160,10 +164,10 @@ export default function AdminSettingsPage() {
         breaks_paid: data.breaks_paid,
       }
       
-      console.log('Updating settings with:', updateData)
+      logger.debug('Updating settings', undefined, { updateData })
       
       const response = await api.put('/admin/company/settings', updateData)
-      console.log('Settings update response:', response.data)
+      logger.debug('Settings updated successfully', undefined, { response: response.data })
       
       // Update company info state FIRST
       setCompanyInfo(response.data)
@@ -187,13 +191,13 @@ export default function AdminSettingsPage() {
         fetchCompanyInfo()
       }, 200)
       
-      alert('Company settings updated successfully!')
+      toast.success('Company settings updated successfully!')
     } catch (error: any) {
       logger.error('Failed to update company settings', error as Error, { 
         endpoint: '/admin/company/settings',
         errorDetails: error.response?.data 
       })
-      alert(error.response?.data?.detail || 'Failed to update company settings')
+      toast.error(error.response?.data?.detail || 'Failed to update company settings')
     } finally {
       setSaving(false)
     }

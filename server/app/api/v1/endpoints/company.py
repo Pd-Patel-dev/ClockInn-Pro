@@ -3,6 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from datetime import date as date_type
 
 from app.core.dependencies import get_db, get_current_admin
+from app.core.error_handling import handle_endpoint_errors
 from app.models.user import User, UserRole
 from app.schemas.company import (
     CompanyInfoResponse,
@@ -23,6 +24,7 @@ router = APIRouter()
 
 
 @router.get("/admin/company", response_model=CompanyInfoResponse)
+@handle_endpoint_errors(operation_name="get_company_info")
 async def get_company_info_endpoint(
     current_user: User = Depends(get_current_admin),
     db: AsyncSession = Depends(get_db),
@@ -77,6 +79,7 @@ async def get_company_info_endpoint(
 
 
 @router.put("/admin/company/name", response_model=CompanyInfoResponse)
+@handle_endpoint_errors(operation_name="update_company_name")
 async def update_company_name_endpoint(
     data: CompanyNameUpdate,
     current_user: User = Depends(get_current_admin),
@@ -137,6 +140,7 @@ async def update_company_name_endpoint(
 
 
 @router.put("/admin/company/settings", response_model=CompanyInfoResponse)
+@handle_endpoint_errors(operation_name="update_company_settings")
 async def update_company_settings_endpoint(
     data: CompanySettingsUpdate,
     current_user: User = Depends(get_current_admin),

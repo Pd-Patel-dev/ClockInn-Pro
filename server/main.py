@@ -1,5 +1,7 @@
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
 from contextlib import asynccontextmanager
 import time
 import logging
@@ -80,6 +82,39 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Custom exception handler for validation errors
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    """Return detailed validation errors to help users fix their input."""
+    errors = []
+    for error in exc.errors():
+        field = " -> ".join(str(loc) for loc in error["loc"])
+        message = error["msg"]
+        error_type = error["type"]
+        
+        # Provide more user-friendly messages
+        if error_type == "value_error.missing":
+            message = f"{field.replace('body.', '').replace('query.', '').replace('path.', '')} is required"
+        elif error_type == "type_error":
+            message = f"{field.replace('body.', '').replace('query.', '').replace('path.', '')} has an invalid type"
+        elif error_type == "value_error":
+            message = f"{field.replace('body.', '').replace('query.', '').replace('path.', '')}: {message}"
+        
+        errors.append({
+            "field": field.replace("body.", "").replace("query.", "").replace("path.", ""),
+            "message": message,
+            "type": error_type
+        })
+    
+    return JSONResponse(
+        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        content={
+            "detail": "Validation error",
+            "errors": errors,
+            "message": "Please check your input and try again."
+        }
+    )
 
 # Include routers
 app.include_router(api_router, prefix="/api/v1")

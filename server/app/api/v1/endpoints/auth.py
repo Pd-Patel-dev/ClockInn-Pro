@@ -3,6 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.core.dependencies import get_current_user
+from app.core.error_handling import handle_endpoint_errors
 from app.schemas.auth import (
     RegisterCompanyRequest,
     LoginRequest,
@@ -17,6 +18,7 @@ router = APIRouter()
 
 
 @router.post("/register-company", response_model=TokenResponse, status_code=status.HTTP_201_CREATED)
+@handle_endpoint_errors(operation_name="register_company")
 async def register_company_endpoint(
     request: RegisterCompanyRequest,
     db: AsyncSession = Depends(get_db),
@@ -30,6 +32,7 @@ async def register_company_endpoint(
 
 
 @router.post("/login", response_model=TokenResponse)
+@handle_endpoint_errors(operation_name="login")
 async def login_endpoint(
     login_data: LoginRequest,
     db: AsyncSession = Depends(get_db),
@@ -44,6 +47,7 @@ async def login_endpoint(
 
 
 @router.post("/refresh", response_model=TokenResponse)
+@handle_endpoint_errors(operation_name="refresh_token")
 async def refresh_token_endpoint(
     refresh_data: RefreshTokenRequest,
     db: AsyncSession = Depends(get_db),
@@ -63,6 +67,7 @@ async def refresh_token_endpoint(
 
 
 @router.post("/logout")
+@handle_endpoint_errors(operation_name="logout")
 async def logout_endpoint(
     request: LogoutRequest,
     db: AsyncSession = Depends(get_db),

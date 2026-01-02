@@ -11,11 +11,11 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
   const [user, setUser] = useState<User | null>(null)
   const [loading, setLoading] = useState(true)
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
 
   useEffect(() => {
     const fetchUser = async () => {
       try {
-        // Initialize auth (restore tokens or refresh if needed)
         await initializeAuth()
         const currentUser = await getCurrentUser()
         setUser(currentUser)
@@ -35,8 +35,11 @@ export default function Layout({ children }: { children: React.ReactNode }) {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-lg">Loading...</div>
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
+          <div className="mt-4 h-4 w-24 bg-gray-200 rounded mx-auto animate-pulse"></div>
+        </div>
       </div>
     )
   }
@@ -48,142 +51,111 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   const isAdmin = user.role === 'ADMIN'
   const isEmployee = user.role === 'EMPLOYEE'
 
+  const employeeLinks = [
+    { href: '/dashboard', label: 'Dashboard' },
+    { href: '/my/punch', label: 'Punch In/Out' },
+    { href: '/my/logs', label: 'My Logs' },
+    { href: '/my/leave', label: 'Leave' },
+  ]
+
+  const adminLinks = [
+    { href: '/dashboard', label: 'Dashboard' },
+    { href: '/admin/employees', label: 'Employees' },
+    { href: '/admin/payroll', label: 'Payroll' },
+    { href: '/admin/time', label: 'Time Entries' },
+    { href: '/admin/leave', label: 'Leave Requests' },
+    { href: '/admin/reports', label: 'Reports' },
+    { href: '/admin/settings', label: 'Settings' },
+  ]
+
+  const links = isAdmin ? adminLinks : employeeLinks
+
+  const isActive = (href: string) => {
+    if (href === '/dashboard') {
+      return pathname === href
+    }
+    return pathname.startsWith(href)
+  }
+
   return (
     <div className="min-h-screen bg-gray-50">
-      <nav className="bg-white shadow-sm">
+      {/* Navigation */}
+      <nav className="bg-white border-b border-gray-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between h-16">
+          <div className="flex justify-between h-14">
             <div className="flex">
               <div className="flex-shrink-0 flex items-center">
-                <Link href="/dashboard" className="text-xl font-bold text-primary-600">
+                <Link href="/dashboard" className="text-xl font-semibold text-gray-900">
                   ClockInn
                 </Link>
               </div>
-              <div className="hidden sm:ml-6 sm:flex sm:space-x-8">
-                <Link
-                  href="/dashboard"
-                  className={`inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium ${
-                    pathname === '/dashboard'
-                      ? 'border-primary-500 text-gray-900'
-                      : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700'
-                  }`}
-                >
-                  Dashboard
-                </Link>
-                {isEmployee && (
-                  <>
-                    <Link
-                      href="/my/punch"
-                      className={`inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium ${
-                        pathname === '/my/punch'
-                          ? 'border-primary-500 text-gray-900'
-                          : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700'
-                      }`}
-                    >
-                      Punch In/Out
-                    </Link>
-                    <Link
-                      href="/my/logs"
-                      className={`inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium ${
-                        pathname === '/my/logs'
-                          ? 'border-primary-500 text-gray-900'
-                          : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700'
-                      }`}
-                    >
-                      My Logs
-                    </Link>
-                    <Link
-                      href="/my/leave"
-                      className={`inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium ${
-                        pathname === '/my/leave'
-                          ? 'border-primary-500 text-gray-900'
-                          : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700'
-                      }`}
-                    >
-                      Leave
-                    </Link>
-                  </>
-                )}
-                {isAdmin && (
-                  <>
-                    <Link
-                      href="/admin/employees"
-                      className={`inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium ${
-                        pathname === '/admin/employees'
-                          ? 'border-primary-500 text-gray-900'
-                          : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700'
-                      }`}
-                    >
-                      Employees
-                    </Link>
-                    <Link
-                      href="/admin/payroll"
-                      className={`inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium ${
-                        pathname === '/admin/payroll'
-                          ? 'border-primary-500 text-gray-900'
-                          : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700'
-                      }`}
-                    >
-                      Payroll
-                    </Link>
-                    <Link
-                      href="/admin/time"
-                      className={`inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium ${
-                        pathname === '/admin/time'
-                          ? 'border-primary-500 text-gray-900'
-                          : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700'
-                      }`}
-                    >
-                      Time Entries
-                    </Link>
-                    <Link
-                      href="/admin/leave"
-                      className={`inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium ${
-                        pathname === '/admin/leave'
-                          ? 'border-primary-500 text-gray-900'
-                          : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700'
-                      }`}
-                    >
-                      Leave Requests
-                    </Link>
-                    <Link
-                      href="/admin/reports"
-                      className={`inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium ${
-                        pathname === '/admin/reports'
-                          ? 'border-primary-500 text-gray-900'
-                          : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700'
-                      }`}
-                    >
-                      Reports
-                    </Link>
-                    <Link
-                      href="/admin/settings"
-                      className={`inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium ${
-                        pathname === '/admin/settings'
-                          ? 'border-primary-500 text-gray-900'
-                          : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700'
-                      }`}
-                    >
-                      Settings
-                    </Link>
-                  </>
-                )}
+              {/* Desktop Navigation */}
+              <div className="hidden md:ml-8 md:flex md:space-x-1">
+                {links.map((link) => (
+                  <Link
+                    key={link.href}
+                    href={link.href}
+                    className={`inline-flex items-center px-3 py-2 text-sm font-medium border-b-2 transition-colors ${
+                      isActive(link.href)
+                        ? 'border-blue-600 text-blue-600'
+                        : 'border-transparent text-gray-700 hover:text-gray-900 hover:border-gray-300'
+                    }`}
+                  >
+                    {link.label}
+                  </Link>
+                ))}
               </div>
             </div>
-            <div className="flex items-center">
-              <span className="text-sm text-gray-700 mr-4">{user.name}</span>
+            {/* User Menu */}
+            <div className="flex items-center space-x-3">
+              <div className="hidden sm:block">
+                <p className="text-sm text-gray-700">{user.name}</p>
+              </div>
               <button
                 onClick={handleLogout}
-                className="text-sm text-gray-500 hover:text-gray-700"
+                className="px-3 py-1.5 text-sm text-gray-700 hover:text-gray-900 hover:bg-gray-100 rounded"
               >
                 Logout
+              </button>
+              {/* Mobile menu button */}
+              <button
+                onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+                className="md:hidden inline-flex items-center justify-center p-2 rounded-md text-gray-700 hover:text-gray-900 hover:bg-gray-100"
+              >
+                <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  {mobileMenuOpen ? (
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  ) : (
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+                  )}
+                </svg>
               </button>
             </div>
           </div>
         </div>
+        {/* Mobile Navigation */}
+        {mobileMenuOpen && (
+          <div className="md:hidden border-t border-gray-200 bg-white">
+            <div className="px-2 pt-2 pb-3 space-y-1">
+              {links.map((link) => (
+                <Link
+                  key={link.href}
+                  href={link.href}
+                  onClick={() => setMobileMenuOpen(false)}
+                  className={`block px-3 py-2 text-sm font-medium border-l-4 transition-colors ${
+                    isActive(link.href)
+                      ? 'border-blue-600 text-blue-600 bg-blue-50'
+                      : 'border-transparent text-gray-700 hover:bg-gray-100'
+                  }`}
+                >
+                  {link.label}
+                </Link>
+              ))}
+            </div>
+          </div>
+        )}
       </nav>
       <main className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">{children}</main>
     </div>
   )
 }
-

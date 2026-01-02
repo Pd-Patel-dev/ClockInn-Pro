@@ -43,5 +43,6 @@ class TimeEntry(Base):
     __table_args__ = (
         Index("idx_time_entries_employee_company", "employee_id", "company_id"),
         Index("idx_time_entries_clock_in", "clock_in_at"),
+        Index("idx_time_entries_company_employee_clock_in", "company_id", "employee_id", "clock_in_at"),
     )
 

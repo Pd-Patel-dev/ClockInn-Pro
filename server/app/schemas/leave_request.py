@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 from typing import Optional
 from datetime import date, datetime
 from uuid import UUID
@@ -11,6 +11,13 @@ class LeaveRequestCreate(BaseModel):
     end_date: date
     partial_day_hours: Optional[int] = Field(None, ge=0, le=8)
     reason: Optional[str] = Field(None, max_length=1000)
+    
+    @model_validator(mode='after')
+    def validate_date_range(self):
+        """Validate that start_date is before or equal to end_date."""
+        if self.start_date > self.end_date:
+            raise ValueError("start_date must be before or equal to end_date")
+        return self
 
 
 class LeaveRequestUpdate(BaseModel):

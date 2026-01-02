@@ -6,6 +6,7 @@ from sqlalchemy import select, and_, func
 from fastapi import HTTPException, status
 
 from app.models.leave_request import LeaveRequest, LeaveStatus
+from app.core.query_builder import get_paginated_results, build_employee_company_filtered_query, build_company_filtered_query, filter_by_status
 from app.schemas.leave_request import LeaveRequestCreate, LeaveRequestUpdate
 import uuid
 
@@ -37,11 +38,17 @@ async def create_leave_request(
         status=LeaveStatus.PENDING,
     )
     
-    db.add(leave_request)
-    await db.commit()
-    await db.refresh(leave_request)
-    
-    return leave_request
+    try:
+        db.add(leave_request)
+        await db.commit()
+        await db.refresh(leave_request)
+        return leave_request
+    except Exception as e:
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to create leave request: {str(e)}",
+        )
 
 
 async def get_my_leave_requests(
@@ -52,20 +59,15 @@ async def get_my_leave_requests(
     limit: int = 100,
 ) -> tuple[List[LeaveRequest], int]:
     """Get employee's own leave requests."""
-    query = select(LeaveRequest).where(
-        and_(
-            LeaveRequest.employee_id == employee_id,
-            LeaveRequest.company_id == company_id,
-        )
+    query = build_employee_company_filtered_query(LeaveRequest, employee_id, company_id)
+    
+    return await get_paginated_results(
+        db,
+        query,
+        skip=skip,
+        limit=limit,
+        order_by=LeaveRequest.created_at.desc()
     )
-    
-    count_result = await db.execute(select(func.count()).select_from(query.subquery()))
-    total = count_result.scalar() or 0
-    
-    result = await db.execute(query.order_by(LeaveRequest.created_at.desc()).offset(skip).limit(limit))
-    requests = result.scalars().all()
-    
-    return list(requests), total
 
 
 async def get_admin_leave_requests(
@@ -76,18 +78,19 @@ async def get_admin_leave_requests(
     limit: int = 100,
 ) -> tuple[List[LeaveRequest], int]:
     """Get leave requests for admin view."""
-    query = select(LeaveRequest).where(LeaveRequest.company_id == company_id)
+    query = build_company_filtered_query(LeaveRequest, company_id)
     
+    # Apply status filter
     if status_filter:
-        query = query.where(LeaveRequest.status == status_filter)
+        query = filter_by_status(query, LeaveRequest, status_filter)
     
-    count_result = await db.execute(select(func.count()).select_from(query.subquery()))
-    total = count_result.scalar() or 0
-    
-    result = await db.execute(query.order_by(LeaveRequest.created_at.desc()).offset(skip).limit(limit))
-    requests = result.scalars().all()
-    
-    return list(requests), total
+    return await get_paginated_results(
+        db,
+        query,
+        skip=skip,
+        limit=limit,
+        order_by=LeaveRequest.created_at.desc()
+    )
 
 
 async def update_leave_request(
@@ -111,13 +114,14 @@ async def update_leave_request(
     if not leave_request:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Leave request not found",
+            detail=f"Leave request with ID {request_id} not found in your company",
         )
     
     if leave_request.status != LeaveStatus.PENDING:
+        status_display = leave_request.status.value.title()
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Leave request already processed",
+            detail=f"This leave request has already been {status_display.lower()}. Only pending requests can be updated.",
         )
     
     leave_request.status = data.status
@@ -138,10 +142,15 @@ async def update_leave_request(
             "comment": data.review_comment,
         },
     )
-    db.add(audit_log)
-    
-    await db.commit()
-    await db.refresh(leave_request)
-    
-    return leave_request
+    try:
+        db.add(audit_log)
+        await db.commit()
+        await db.refresh(leave_request)
+        return leave_request
+    except Exception as e:
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to update leave request: {str(e)}",
+        )
 

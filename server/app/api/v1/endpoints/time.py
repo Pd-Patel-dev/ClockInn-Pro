@@ -7,7 +7,8 @@ from uuid import UUID
 
 from app.core.database import get_db
 from app.core.dependencies import get_current_user, get_current_admin
-from app.models.user import User, UserRole, UserStatus, UserStatus
+from app.core.error_handling import handle_endpoint_errors, parse_uuid
+from app.models.user import User, UserRole, UserStatus
 from app.models.time_entry import TimeEntryStatus
 from app.schemas.time_entry import (
     TimeEntryCreate,
@@ -16,6 +17,7 @@ from app.schemas.time_entry import (
     TimeEntryListResponse,
     TimeEntryPunchMe,
     TimeEntryPunchByPin,
+    TimeEntryManualCreate,
 )
 from app.services.time_entry_service import (
     punch,
@@ -57,6 +59,7 @@ async def get_timezone_formatted_times(
 
 
 @router.post("/punch", response_model=TimeEntryResponse, status_code=status.HTTP_201_CREATED)
+@handle_endpoint_errors(operation_name="punch")
 async def punch_endpoint(
     data: TimeEntryCreate,
     db: AsyncSession = Depends(get_db),
@@ -138,6 +141,7 @@ async def punch_endpoint(
 
 
 @router.post("/punch-by-pin", response_model=TimeEntryResponse, status_code=status.HTTP_201_CREATED)
+@handle_endpoint_errors(operation_name="punch_by_pin")
 async def punch_by_pin_endpoint(
     data: TimeEntryPunchByPin,
     db: AsyncSession = Depends(get_db),
@@ -206,6 +210,7 @@ async def punch_by_pin_endpoint(
 
 
 @router.post("/punch-me", response_model=TimeEntryResponse, status_code=status.HTTP_201_CREATED)
+@handle_endpoint_errors(operation_name="punch_me")
 async def punch_me_endpoint(
     data: TimeEntryPunchMe,
     current_user: User = Depends(get_current_user),
@@ -262,6 +267,7 @@ async def punch_me_endpoint(
 
 
 @router.get("/my", response_model=TimeEntryListResponse)
+@handle_endpoint_errors(operation_name="get_my_time_entries")
 async def get_my_time_entries_endpoint(
     from_date: Optional[date] = Query(None),
     to_date: Optional[date] = Query(None),
@@ -325,6 +331,7 @@ async def get_my_time_entries_endpoint(
 
 
 @router.get("/admin/time", response_model=TimeEntryListResponse)
+@handle_endpoint_errors(operation_name="get_admin_time_entries")
 async def get_admin_time_entries_endpoint(
     employee_id: Optional[str] = Query(None),
     from_date: Optional[date] = Query(None),
@@ -336,16 +343,9 @@ async def get_admin_time_entries_endpoint(
     db: AsyncSession = Depends(get_db),
 ):
     """Get time entries for admin view."""
-    from uuid import UUID
     emp_id = None
     if employee_id:
-        try:
-            emp_id = UUID(employee_id)
-        except ValueError:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Invalid employee ID",
-            )
+        emp_id = parse_uuid(employee_id, "Employee ID")
     
     entries, total = await get_admin_time_entries(
         db,
@@ -401,7 +401,82 @@ async def get_admin_time_entries_endpoint(
     )
 
 
+@router.post("/admin/time/manual", response_model=TimeEntryResponse, status_code=status.HTTP_201_CREATED)
+async def create_manual_time_entry_endpoint(
+    data: TimeEntryManualCreate,
+    current_user: User = Depends(get_current_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Create a manual time entry (admin only)."""
+    from app.models.time_entry import TimeEntry, TimeEntrySource, TimeEntryStatus
+    
+    # Verify employee exists and belongs to company
+    result = await db.execute(
+        select(User).where(
+            and_(
+                User.id == data.employee_id,
+                User.company_id == current_user.company_id,
+                User.role == UserRole.EMPLOYEE,
+            )
+        )
+    )
+    employee = result.scalar_one_or_none()
+    
+    if not employee:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Employee not found",
+        )
+    
+    # Create manual time entry
+    entry = TimeEntry(
+        id=uuid.uuid4(),
+        company_id=current_user.company_id,
+        employee_id=data.employee_id,
+        clock_in_at=data.clock_in_at,
+        clock_out_at=data.clock_out_at,
+        break_minutes=data.break_minutes,
+        note=data.note,
+        source=TimeEntrySource.WEB,
+        status=TimeEntryStatus.CLOSED if data.clock_out_at else TimeEntryStatus.OPEN,
+    )
+    
+    db.add(entry)
+    await db.commit()
+    await db.refresh(entry)
+    
+    # Calculate rounded hours
+    rounded_hours, rounded_minutes = await get_rounded_hours_for_entry(
+        db, entry, current_user.company_id
+    )
+    
+    # Get timezone-formatted times
+    clock_in_local, clock_out_local, timezone_str = await get_timezone_formatted_times(
+        db, entry, current_user.company_id
+    )
+    
+    return TimeEntryResponse(
+        id=entry.id,
+        employee_id=entry.employee_id,
+        employee_name=employee.name,
+        clock_in_at=entry.clock_in_at,
+        clock_out_at=entry.clock_out_at,
+        break_minutes=entry.break_minutes,
+        source=entry.source,
+        status=entry.status,
+        note=entry.note,
+        created_at=entry.created_at,
+        updated_at=entry.updated_at,
+        rounded_hours=rounded_hours,
+        rounded_minutes=rounded_minutes,
+        clock_in_at_local=clock_in_local,
+        clock_out_at_local=clock_out_local,
+        company_timezone=timezone_str,
+    )
+
+
 @router.put("/admin/time/{entry_id}", response_model=TimeEntryResponse)
+@handle_endpoint_errors(operation_name="edit_time_entry")
 async def edit_time_entry_endpoint(
     entry_id: str,
     data: TimeEntryEdit,
@@ -409,14 +484,7 @@ async def edit_time_entry_endpoint(
     db: AsyncSession = Depends(get_db),
 ):
     """Edit a time entry (admin only)."""
-    from uuid import UUID
-    try:
-        e_id = UUID(entry_id)
-    except ValueError:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid entry ID",
-        )
+    e_id = parse_uuid(entry_id, "Time entry ID")
     
     entry = await edit_time_entry(db, e_id, current_user.company_id, current_user.id, data)
     

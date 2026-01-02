@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, ForeignKey, Enum, DateTime, Boolean, Numeric, Integer
+from sqlalchemy import Column, String, ForeignKey, Enum, DateTime, Boolean, Numeric, Integer, UniqueConstraint, Index
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
@@ -45,4 +45,9 @@ class User(Base):
     company = relationship("Company", backref="users")
     time_entries = relationship("TimeEntry", back_populates="employee", foreign_keys="TimeEntry.employee_id")
     leave_requests = relationship("LeaveRequest", back_populates="employee", foreign_keys="LeaveRequest.employee_id")
+
+    __table_args__ = (
+        UniqueConstraint("company_id", "email", name="uq_user_company_email"),
+        Index("idx_users_company_status", "company_id", "status"),
+    )
 

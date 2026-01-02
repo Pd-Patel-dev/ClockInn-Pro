@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from typing import Optional
 from datetime import datetime
 from uuid import UUID
@@ -9,22 +9,30 @@ class TimeEntryBase(BaseModel):
     clock_in_at: datetime
     clock_out_at: Optional[datetime] = None
     break_minutes: int = 0
-    note: Optional[str] = None
+    note: Optional[str] = Field(None, max_length=500)
 
 
 class TimeEntryCreate(BaseModel):
     employee_email: Optional[str] = None
     employee_id: Optional[UUID] = None
-    pin: str = Field(..., min_length=4, max_length=4)
+    pin: str = Field(..., min_length=4, max_length=4, pattern="^[0-9]{4}$")
     source: TimeEntrySource = TimeEntrySource.KIOSK
 
 
 class TimeEntryPunchMe(BaseModel):
-    pin: str = Field(..., min_length=4, max_length=4)
+    pin: str = Field(..., min_length=4, max_length=4, pattern="^[0-9]{4}$")
 
 
 class TimeEntryPunchByPin(BaseModel):
-    pin: str = Field(..., min_length=4, max_length=4)
+    pin: str = Field(..., min_length=4, max_length=4, pattern="^[0-9]{4}$")
+
+
+class TimeEntryManualCreate(BaseModel):
+    employee_id: UUID
+    clock_in_at: datetime
+    clock_out_at: Optional[datetime] = None
+    break_minutes: int = Field(0, ge=0)
+    note: Optional[str] = Field(None, max_length=500)
 
 
 class TimeEntryEdit(BaseModel):
@@ -61,4 +69,3 @@ class TimeEntryResponse(BaseModel):
 class TimeEntryListResponse(BaseModel):
     entries: list[TimeEntryResponse]
     total: int
-

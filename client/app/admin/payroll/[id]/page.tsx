@@ -5,6 +5,9 @@ import { useRouter, useParams } from 'next/navigation'
 import Layout from '@/components/Layout'
 import api from '@/lib/api'
 import { getCurrentUser } from '@/lib/auth'
+import logger from '@/lib/logger'
+import { useToast } from '@/components/Toast'
+import { ButtonSpinner } from '@/components/LoadingSpinner'
 
 interface PayrollLineItem {
   id: string
@@ -76,12 +79,12 @@ export default function PayrollDetailsPage() {
     } catch (error: any) {
       logger.error('Failed to fetch payroll run', error as Error, { endpoint: `/admin/payroll/runs/${params.id}` })
       if (error.response?.status === 404) {
-        alert('Payroll run not found')
+        toast.error('Payroll run not found')
         router.push('/admin/payroll')
       } else if (error.response?.status === 403) {
         router.push('/dashboard')
       } else {
-        alert(error.response?.data?.detail || 'Failed to fetch payroll run')
+        toast.error(error.response?.data?.detail || 'Failed to fetch payroll run')
       }
     } finally {
       setLoading(false)
@@ -92,34 +95,43 @@ export default function PayrollDetailsPage() {
     if (!confirm('Are you sure you want to finalize this payroll run? This action cannot be undone.')) {
       return
     }
+    setFinalizing(true)
     try {
       await api.post(`/admin/payroll/runs/${payrollRunId}/finalize`, {})
+      toast.success('Payroll run finalized successfully!')
       fetchPayrollRun()
     } catch (error: any) {
       logger.error('Failed to finalize payroll', error as Error, { endpoint: `/admin/payroll/runs/${params.id}/finalize` })
-      alert(error.response?.data?.detail || 'Failed to finalize payroll')
+      toast.error(error.response?.data?.detail || 'Failed to finalize payroll')
+    } finally {
+      setFinalizing(false)
     }
   }
 
   const handleVoid = async () => {
     if (!voidReason.trim()) {
-      alert('Please provide a reason for voiding')
+      toast.warning('Please provide a reason for voiding')
       return
     }
+    setVoiding(true)
     try {
       await api.post(`/admin/payroll/runs/${payrollRunId}/void`, {
         reason: voidReason,
       })
+      toast.success('Payroll run voided successfully!')
       setShowVoidModal(false)
       setVoidReason('')
       fetchPayrollRun()
     } catch (error: any) {
       logger.error('Failed to void payroll', error as Error, { endpoint: `/admin/payroll/runs/${params.id}/void` })
-      alert(error.response?.data?.detail || 'Failed to void payroll')
+      toast.error(error.response?.data?.detail || 'Failed to void payroll')
+    } finally {
+      setVoiding(false)
     }
   }
 
   const handleExport = async (format: 'pdf' | 'xlsx') => {
+    setExporting(true)
     try {
       const response = await api.post(
         `/admin/payroll/runs/${payrollRunId}/export?format=${format}`,
@@ -135,9 +147,31 @@ export default function PayrollDetailsPage() {
       link.click()
       document.body.removeChild(link)
       window.URL.revokeObjectURL(url)
+      toast.success(`Payroll exported as ${format.toUpperCase()} successfully!`)
     } catch (error: any) {
       logger.error('Failed to export payroll', error as Error, { endpoint: `/admin/payroll/runs/${params.id}/export` })
-      alert(error.response?.data?.detail || 'Failed to export payroll')
+      toast.error(error.response?.data?.detail || 'Failed to export payroll')
+    } finally {
+      setExporting(false)
+    }
+  }
+
+  const handleDelete = async () => {
+    if (!confirm('Are you sure you want to delete this payroll run? This action cannot be undone.')) {
+      return
+    }
+    setDeleting(true)
+    try {
+      await api.delete(`/admin/payroll/runs/${payrollRunId}`)
+      toast.success('Payroll run deleted successfully!')
+      // Success - redirect to payroll list
+      router.push('/admin/payroll')
+    } catch (error: any) {
+      logger.error('Failed to delete payroll', error as Error, { endpoint: `/admin/payroll/runs/${payrollRunId}` })
+      const errorMessage = error.response?.data?.detail || error.message || 'Failed to delete payroll'
+      toast.error(errorMessage)
+    } finally {
+      setDeleting(false)
     }
   }
 
@@ -194,29 +228,44 @@ export default function PayrollDetailsPage() {
             <div className="flex gap-2">
               <button
                 onClick={() => handleExport('pdf')}
-                className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 text-sm"
+                disabled={exporting}
+                className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 text-sm disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
               >
+                {exporting && <ButtonSpinner />}
                 Export PDF
               </button>
               <button
                 onClick={() => handleExport('xlsx')}
-                className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 text-sm"
+                disabled={exporting}
+                className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 text-sm disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
               >
+                {exporting && <ButtonSpinner />}
                 Export Excel
               </button>
               {payrollRun.status === 'DRAFT' && (
                 <>
                   <button
                     onClick={handleFinalize}
-                    className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 text-sm"
+                    disabled={finalizing}
+                    className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 text-sm disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
                   >
-                    Finalize
+                    {finalizing && <ButtonSpinner />}
+                    {finalizing ? 'Finalizing...' : 'Finalize'}
                   </button>
                   <button
                     onClick={() => setShowVoidModal(true)}
-                    className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 text-sm"
+                    disabled={voiding || finalizing || deleting}
+                    className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 text-sm disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     Void
+                  </button>
+                  <button
+                    onClick={handleDelete}
+                    disabled={deleting}
+                    className="px-4 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700 text-sm disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                  >
+                    {deleting && <ButtonSpinner />}
+                    {deleting ? 'Deleting...' : 'Delete'}
                   </button>
                 </>
               )}
