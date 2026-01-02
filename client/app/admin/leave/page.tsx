@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import Layout from '@/components/Layout'
 import api from '@/lib/api'
 import { useToast } from '@/components/Toast'
+import logger from '@/lib/logger'
 
 interface LeaveRequest {
   id: string
