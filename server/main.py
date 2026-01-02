@@ -21,9 +21,8 @@ access_logger = logging.getLogger("access")
 async def lifespan(app: FastAPI):
     # Startup
     logger.info("Starting ClockInn API server...")
-    async with engine.begin() as conn:
-        # Tables are created via Alembic migrations
-        pass
+    # Note: Tables are created via Alembic migrations, no need to test connection here
+    # Database connection will be established on first request
     logger.info("ClockInn API server started successfully")
     yield
     # Shutdown
