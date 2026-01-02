@@ -63,6 +63,7 @@ export default function AdminEmployeesPage() {
   const [searchQuery, setSearchQuery] = useState('')
   const [deletingEmployee, setDeletingEmployee] = useState<string | null>(null)
   const [editingEmployee, setEditingEmployee] = useState<Employee | null>(null)
+  const [submitting, setSubmitting] = useState(false)
   
   // Debounce search query
   const debouncedSearchQuery = useDebounce(searchQuery, 300)
