@@ -3,6 +3,7 @@
 ## ✅ What's Already Done
 
 I've converted all your Alembic migrations to SQL files in `supabase/migrations/`:
+
 - `001_initial_migration.sql` - Creates all base tables (companies, users, sessions, time_entries, leave_requests, audit_logs)
 - `002_add_job_role_pay_rate.sql` - Adds job_role and pay_rate to users
 - `003_add_payroll_tables.sql` - Creates payroll tables and fields
@@ -35,12 +36,14 @@ You need your **Project Reference ID** from Supabase:
 4. Copy your **Reference ID** (it's a long string like `abcdefghijklmnop`)
 
 Then run:
+
 ```bash
 cd server
 supabase link --project-ref YOUR_PROJECT_REF_ID
 ```
 
 You'll be prompted for:
+
 - **Database password**: Your Supabase database password
 
 ## Step 4: Push Migrations
@@ -52,17 +55,33 @@ supabase db push
 ```
 
 This will:
+
 - Apply all SQL migrations in `supabase/migrations/`
 - Show you which migrations are being applied
 - Report any errors if they occur
 
-## Alternative: Use Direct Connection
+## Alternative: Use Direct Connection (without linking)
 
 If linking doesn't work, you can use a direct connection:
 
 ```bash
 # Get your DATABASE_URL from Render Dashboard
-supabase db push --db-url "postgresql://postgres:[PASSWORD]@db.xxxxx.supabase.co:5432/postgres"
+# Note: URL must be percent-encoded (replace special characters)
+supabase db push --db-url "postgresql://postgres:[PASSWORD]@db.xxxxx.supabase.co:5432/postgres" --password YOUR_PASSWORD
+```
+
+Or if you prefer to link first but skip authentication prompts:
+```bash
+supabase link --project-ref YOUR_PROJECT_REF_ID --password YOUR_PASSWORD
+supabase db push
+```
+
+## Test First (Dry Run)
+
+Before applying migrations, you can preview what will be applied:
+
+```bash
+supabase db push --dry-run
 ```
 
 ## Verify Migrations
@@ -84,22 +103,26 @@ After running, check that tables were created:
 ## Troubleshooting
 
 ### Error: "relation already exists"
+
 - Some tables might already exist. You can either:
   - Drop existing tables and re-run migrations
   - Or skip already-applied migrations manually
 
 ### Error: "connection refused"
+
 - Check your database password is correct
 - Make sure your Supabase project is not paused
 - Try using the connection pooler URL (port 6543)
 
 ### Error: "migration already applied"
+
 - This is normal if migrations were partially run before
 - Supabase tracks applied migrations in a `schema_migrations` table
 
 ## After Migrations
 
 Once migrations complete successfully:
+
 1. Your Render backend should now work!
 2. Try registering a company again from your Vercel frontend
 3. The "relation 'users' does not exist" error should be gone
@@ -107,4 +130,3 @@ Once migrations complete successfully:
 ---
 
 **Note**: These SQL migrations are equivalent to your Alembic migrations. Both methods (Alembic or Supabase CLI) will work, but using Supabase CLI is easier for one-time setup.
-
