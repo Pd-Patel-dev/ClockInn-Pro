@@ -42,6 +42,7 @@ class UserResponse(BaseModel):
     created_at: datetime
     last_login_at: Optional[datetime] = None
     last_punch_at: Optional[datetime] = None
+    is_clocked_in: Optional[bool] = None
 
     class Config:
         from_attributes = True

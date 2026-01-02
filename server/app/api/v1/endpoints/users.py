@@ -104,13 +104,27 @@ async def list_employees_endpoint(
     
     employees, total = await list_employees(db, current_user.company_id, skip, limit)
     
-    # Get last punch time for each employee efficiently
+    # Get last punch time and clock status for each employee efficiently
     employee_ids = [emp.id for emp in employees]
     last_punches = {}
+    clock_status = {emp_id: False for emp_id in employee_ids}  # Initialize all as clocked out
     
     if employee_ids:
+        # First, check for open entries (clocked in) - these are the most important
+        open_entries_result = await db.execute(
+            select(TimeEntry)
+            .where(
+                TimeEntry.employee_id.in_(employee_ids),
+                TimeEntry.company_id == current_user.company_id,
+                TimeEntry.clock_out_at.is_(None)
+            )
+        )
+        open_entries = open_entries_result.scalars().all()
+        for entry in open_entries:
+            clock_status[entry.employee_id] = True  # Employee is clocked in
+        
         # Get all time entries for these employees, ordered by clock_in_at desc
-        # We'll process them to get the latest per employee
+        # We'll process them to get the latest punch per employee
         result = await db.execute(
             select(TimeEntry)
             .where(
@@ -143,6 +157,7 @@ async def list_employees_endpoint(
             created_at=emp.created_at,
             last_login_at=emp.last_login_at,
             last_punch_at=last_punches.get(emp.id),
+            is_clocked_in=clock_status.get(emp.id, False),
         )
         for emp in employees
     ]

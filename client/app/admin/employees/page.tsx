@@ -48,6 +48,7 @@ interface Employee {
   created_at: string
   last_login_at: string | null
   last_punch_at: string | null
+  is_clocked_in: boolean | null
 }
 
 export default function AdminEmployeesPage() {
@@ -335,6 +336,9 @@ export default function AdminEmployeesPage() {
                     Status
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Clock Status
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Has PIN
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -357,7 +361,7 @@ export default function AdminEmployeesPage() {
               <tbody className="bg-white divide-y divide-gray-200">
                 {filteredEmployees.length === 0 ? (
                   <tr>
-                    <td colSpan={9} className="px-6 py-4 text-center text-gray-500">
+                    <td colSpan={10} className="px-6 py-4 text-center text-gray-500">
                       No employees found
                     </td>
                   </tr>
@@ -380,6 +384,23 @@ export default function AdminEmployeesPage() {
                         >
                           {employee.status === 'active' ? 'Active' : 'Inactive'}
                         </span>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm">
+                        {employee.is_clocked_in !== null ? (
+                          <span
+                            className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
+                              employee.is_clocked_in
+                                ? 'bg-blue-100 text-blue-800'
+                                : 'bg-gray-100 text-gray-800'
+                            }`}
+                          >
+                            {employee.is_clocked_in ? 'In' : 'Out'}
+                          </span>
+                        ) : (
+                          <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-gray-100 text-gray-500">
+                            -
+                          </span>
+                        )}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                         {employee.has_pin ? 'Yes' : 'No'}

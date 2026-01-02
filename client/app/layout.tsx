@@ -7,9 +7,6 @@ const inter = Inter({ subsets: ['latin'] })
 export const metadata: Metadata = {
   title: 'ClockInn - Time & Attendance',
   description: 'Multi-tenant clock-in/clock-out system',
-  icons: {
-    icon: '/favicon.ico',
-  },
 }
 
 export default function RootLayout({

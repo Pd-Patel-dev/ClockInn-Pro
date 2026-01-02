@@ -37,22 +37,28 @@ export default function KioskPage() {
       })
       const entry = response.data
       
+      // Clear PIN immediately after successful punch
+      setPinDisplay('')
+      
+      // Show success message with employee name
+      const employeeName = entry.employee_name || 'Employee'
       if (entry.clock_out_at) {
-        setMessage(`✓ Clocked Out Successfully`)
+        setMessage(`✓ ${employeeName} Clocked Out Successfully`)
         setSuccess(true)
       } else {
-        setMessage(`✓ Clocked In Successfully`)
+        setMessage(`✓ ${employeeName} Clocked In Successfully`)
         setSuccess(true)
       }
       
-      // Auto-clear after 3 seconds
+      // Auto-clear message after 3 seconds
       setTimeout(() => {
-        clearPin()
+        setMessage(null)
+        setSuccess(false)
       }, 3000)
     } catch (err: any) {
       setMessage(err.response?.data?.detail || 'Punch failed. Please try again.')
       setSuccess(false)
-      clearPin()
+      setPinDisplay('') // Clear PIN on error too
     } finally {
       setLoading(false)
     }

@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
 import { getCurrentUser, logout, User } from '@/lib/auth'
+import { initializeAuth } from '@/lib/api'
 import Link from 'next/link'
 
 export default function Layout({ children }: { children: React.ReactNode }) {
@@ -14,6 +15,8 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const fetchUser = async () => {
       try {
+        // Initialize auth (restore tokens or refresh if needed)
+        await initializeAuth()
         const currentUser = await getCurrentUser()
         setUser(currentUser)
       } catch (error) {

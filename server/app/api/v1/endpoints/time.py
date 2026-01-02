@@ -124,6 +124,7 @@ async def punch_by_pin_endpoint(
         )
     
     # Now punch with the employee's company_id
+    # Skip PIN check since we already verified it above
     entry = await punch(
         db,
         matching_employee.company_id,
@@ -131,6 +132,7 @@ async def punch_by_pin_endpoint(
         None,  # No email needed
         data.pin,
         TimeEntrySource.KIOSK,
+        skip_pin_verification=True,  # PIN already verified
     )
     
     return TimeEntryResponse(

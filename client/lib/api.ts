@@ -10,15 +10,22 @@ const api = axios.create({
   },
 })
 
-// Token storage (in-memory for security)
+// Token storage (in-memory + localStorage for persistence)
 let accessToken: string | null = null
 let refreshToken: string | null = null
+
+// Initialize tokens from localStorage on module load
+if (typeof window !== 'undefined') {
+  accessToken = localStorage.getItem('access_token')
+  refreshToken = localStorage.getItem('refresh_token')
+}
 
 export const setTokens = (access: string, refresh: string) => {
   accessToken = access
   refreshToken = refresh
-  // Store refresh token in localStorage for persistence
+  // Store both tokens in localStorage for persistence
   if (typeof window !== 'undefined') {
+    localStorage.setItem('access_token', access)
     localStorage.setItem('refresh_token', refresh)
   }
 }
@@ -27,11 +34,19 @@ export const clearTokens = () => {
   accessToken = null
   refreshToken = null
   if (typeof window !== 'undefined') {
+    localStorage.removeItem('access_token')
     localStorage.removeItem('refresh_token')
   }
 }
 
-export const getAccessToken = () => accessToken
+export const getAccessToken = () => {
+  if (accessToken) return accessToken
+  if (typeof window !== 'undefined') {
+    return localStorage.getItem('access_token')
+  }
+  return null
+}
+
 export const getRefreshToken = () => {
   if (refreshToken) return refreshToken
   if (typeof window !== 'undefined') {
@@ -40,11 +55,52 @@ export const getRefreshToken = () => {
   return null
 }
 
+// Function to initialize and refresh token if needed
+export const initializeAuth = async (): Promise<boolean> => {
+  if (typeof window === 'undefined') return false
+  
+  const storedAccess = localStorage.getItem('access_token')
+  const storedRefresh = localStorage.getItem('refresh_token')
+  
+  if (storedAccess) {
+    // Restore tokens from localStorage
+    accessToken = storedAccess
+    refreshToken = storedRefresh
+    return true
+  }
+  
+  // If no access token but we have refresh token, try to refresh
+  if (storedRefresh) {
+    try {
+      const response = await axios.post(`${API_URL}/api/v1/auth/refresh`, {
+        refresh_token: storedRefresh,
+      }, {
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      })
+      
+      const { access_token, refresh_token } = response.data
+      accessToken = access_token
+      refreshToken = refresh_token
+      setTokens(access_token, refresh_token)
+      return true
+    } catch (error) {
+      // Refresh failed, clear tokens
+      clearTokens()
+      return false
+    }
+  }
+  
+  return false
+}
+
 // Request interceptor to add access token
 api.interceptors.request.use(
   (config: InternalAxiosRequestConfig) => {
-    if (accessToken) {
-      config.headers.Authorization = `Bearer ${accessToken}`
+    const token = getAccessToken()
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`
     }
     return config
   },
@@ -111,6 +167,8 @@ api.interceptors.response.use(
         })
 
         const { access_token, refresh_token } = response.data
+        accessToken = access_token
+        refreshToken = refresh_token
         setTokens(access_token, refresh_token)
 
         if (originalRequest.headers) {

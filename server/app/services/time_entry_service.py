@@ -19,6 +19,7 @@ async def punch(
     employee_email: Optional[str],
     pin: str,
     source: TimeEntrySource = TimeEntrySource.KIOSK,
+    skip_pin_verification: bool = False,
 ) -> TimeEntry:
     """Handle clock in/out punch."""
     # Find employee
@@ -58,17 +59,19 @@ async def punch(
             detail="Employee not found",
         )
     
-    if not employee.pin_hash:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="PIN not set for employee",
-        )
-    
-    if not verify_pin(pin, employee.pin_hash):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid PIN",
-        )
+    # Only verify PIN if not skipped (for cases where PIN was already verified)
+    if not skip_pin_verification:
+        if not employee.pin_hash:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="PIN not set for employee",
+            )
+        
+        if not verify_pin(pin, employee.pin_hash):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid PIN",
+            )
     
     # Check for open entry
     result = await db.execute(
