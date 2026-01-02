@@ -114,12 +114,14 @@ export default function EmployeeDetailPage() {
       }
     }
     checkAdmin()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [router, employeeId])
 
   useEffect(() => {
     if (employeeId) {
       fetchEntries()
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentPage, employeeId])
 
   const fetchEmployee = async () => {

@@ -10,6 +10,7 @@ import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import logger from '@/lib/logger'
+import { ButtonSpinner } from '@/components/LoadingSpinner'
 
 const payrollGenerateSchema = z.object({
   payroll_type: z.enum(['WEEKLY', 'BIWEEKLY']),

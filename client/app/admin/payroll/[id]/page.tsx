@@ -69,6 +69,7 @@ export default function PayrollDetailsPage() {
       }
     }
     checkAdminAndFetch()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [router, payrollRunId])
 
   const fetchPayrollRun = async () => {
