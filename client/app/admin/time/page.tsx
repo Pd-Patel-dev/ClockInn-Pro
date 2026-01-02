@@ -35,32 +35,9 @@ export default function AdminTimePage() {
   const [total, setTotal] = useState(0)
   const [pageSize, setPageSize] = useState(20)
 
-  useEffect(() => {
-    const checkAdmin = async () => {
-      try {
-        const user = await getCurrentUser()
-        if (user.role !== 'ADMIN') {
-          router.push('/dashboard')
-          return
-        }
-        fetchEntries()
-      } catch (err) {
-        router.push('/login')
-      }
-    }
-    checkAdmin()
-  }, [router])
-
-  useEffect(() => {
-    if (debouncedFromDate || debouncedToDate) {
-      setCurrentPage(1) // Reset to first page when filters change
-    }
-  }, [debouncedFromDate, debouncedToDate])
-  
-  useEffect(() => {
-    fetchEntries()
-  }, [debouncedFromDate, debouncedToDate, currentPage, pageSize])
-
+  // Debounce date inputs
+  const debouncedFromDate = useDebounce(fromDate, 500)
+  const debouncedToDate = useDebounce(toDate, 500)
 
   const fetchEntries = async () => {
     setLoading(true)
@@ -87,6 +64,35 @@ export default function AdminTimePage() {
       setLoading(false)
     }
   }
+
+  useEffect(() => {
+    const checkAdmin = async () => {
+      try {
+        const user = await getCurrentUser()
+        if (user.role !== 'ADMIN') {
+          router.push('/dashboard')
+          return
+        }
+        fetchEntries()
+      } catch (err) {
+        router.push('/login')
+      }
+    }
+    checkAdmin()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [router])
+
+  useEffect(() => {
+    if (debouncedFromDate || debouncedToDate) {
+      setCurrentPage(1) // Reset to first page when filters change
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [debouncedFromDate, debouncedToDate])
+  
+  useEffect(() => {
+    fetchEntries()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [debouncedFromDate, debouncedToDate, currentPage, pageSize])
 
   const calculateHours = (entry: TimeEntry) => {
     if (entry.rounded_hours !== null && entry.rounded_hours !== undefined) {

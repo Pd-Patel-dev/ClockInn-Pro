@@ -122,7 +122,7 @@ export default function RegisterPage() {
           <div className="bg-white rounded-2xl shadow-xl p-8 sm:p-10">
             <div className="mb-8">
               <h2 className="text-3xl font-bold text-gray-900 mb-2">Create your account</h2>
-              <p className="text-gray-600">Start managing your team's time and attendance</p>
+              <p className="text-gray-600">Start managing your team&apos;s time and attendance</p>
             </div>
 
             <form className="space-y-6" onSubmit={handleSubmit(onSubmit)}>

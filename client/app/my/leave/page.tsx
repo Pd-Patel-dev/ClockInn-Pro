@@ -8,6 +8,8 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import logger from '@/lib/logger'
 import { format } from 'date-fns'
+import { ButtonSpinner } from '@/components/LoadingSpinner'
+import Toast from '@/components/Toast'
 
 const leaveRequestSchema = z.object({
   type: z.enum(['vacation', 'sick', 'personal', 'other']),
@@ -33,6 +35,8 @@ export default function MyLeavePage() {
   const [requests, setRequests] = useState<LeaveRequest[]>([])
   const [loading, setLoading] = useState(false)
   const [showForm, setShowForm] = useState(false)
+  const [submitting, setSubmitting] = useState(false)
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null)
 
   const {
     register,
@@ -60,6 +64,7 @@ export default function MyLeavePage() {
   }
 
   const onSubmit = async (data: LeaveRequestForm) => {
+    setSubmitting(true)
     try {
       await api.post('/leave/request', {
         ...data,
@@ -69,8 +74,11 @@ export default function MyLeavePage() {
       reset()
       setShowForm(false)
       fetchRequests()
+      setToast({ message: 'Leave request submitted successfully', type: 'success' })
     } catch (error: any) {
-      toast.error(error.response?.data?.detail || 'Failed to create leave request')
+      setToast({ message: error.response?.data?.detail || 'Failed to create leave request', type: 'error' })
+    } finally {
+      setSubmitting(false)
     }
   }
 
@@ -184,7 +192,7 @@ export default function MyLeavePage() {
         ) : requests.length === 0 ? (
           <div className="bg-white rounded-lg border border-gray-200 p-12 text-center">
             <p className="text-gray-500 font-medium">No leave requests found</p>
-            <p className="text-gray-400 text-sm mt-1">Click "Request Leave" to create your first request</p>
+            <p className="text-gray-400 text-sm mt-1">Click &quot;Request Leave&quot; to create your first request</p>
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -213,6 +221,14 @@ export default function MyLeavePage() {
               </div>
             ))}
           </div>
+        )}
+        
+        {toast && (
+          <Toast
+            message={toast.message}
+            type={toast.type}
+            onClose={() => setToast(null)}
+          />
         )}
       </div>
     </Layout>
