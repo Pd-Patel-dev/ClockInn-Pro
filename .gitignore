@@ -52,3 +52,9 @@ htmlcov/
 
 # Docker
 docker-compose.override.yml
+
+# Markdown files (except README.md)
+APP_REVIEW_SUGGESTIONS.md
+DEPLOYMENT*.md
+DEPLOY_CHECKLIST.md
+README_DEPLOYMENT.md
