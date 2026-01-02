@@ -3,13 +3,16 @@
 
 set -e  # Exit on error
 
-# Run database migrations
+# Change to server directory
+cd /app/server || cd server
+
+# Run database migrations using Python script (better error handling)
 echo "Running database migrations..."
-if alembic upgrade head; then
+if python run_migrations.py; then
     echo "✅ Migrations completed successfully"
 else
-    echo "❌ Migration failed, but continuing..."
-    # Don't exit - let the server start anyway for debugging
+    echo "⚠️  Migration had issues, check logs above"
+    # Continue anyway - might already be migrated
 fi
 
 # Start the server

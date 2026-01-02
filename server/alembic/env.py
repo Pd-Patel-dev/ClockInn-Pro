@@ -57,12 +57,33 @@ def do_run_migrations(connection):
 def run_migrations_online() -> None:
     """Run migrations in 'online' mode."""
     # Use sync engine for Alembic migrations (Alembic works with sync engines)
-    connectable = engine_from_config(
-        config.get_section(config.config_ini_section, {}),
-        prefix="sqlalchemy.",
-        poolclass=pool.NullPool,
-        future=True,
-    )
+    # Add SSL configuration for Supabase connections
+    db_url = settings.DATABASE_URL
+    if db_url.startswith("postgresql+asyncpg://"):
+        db_url = db_url.replace("postgresql+asyncpg://", "postgresql://", 1)
+    
+    # Check if Supabase connection and add SSL
+    connect_args = {}
+    if "supabase.co" in db_url or "supabase" in db_url.lower() or "pooler.supabase.com" in db_url:
+        # Supabase requires SSL connections
+        # For psycopg2 (sync driver), use sslmode parameter
+        connect_args = {"sslmode": "require"}
+    
+    # Create engine with SSL if needed
+    if connect_args:
+        from sqlalchemy import create_engine
+        connectable = create_engine(
+            db_url,
+            poolclass=pool.NullPool,
+            connect_args=connect_args,
+        )
+    else:
+        connectable = engine_from_config(
+            config.get_section(config.config_ini_section, {}),
+            prefix="sqlalchemy.",
+            poolclass=pool.NullPool,
+            future=True,
+        )
 
     with connectable.connect() as connection:
         context.configure(connection=connection, target_metadata=target_metadata)
