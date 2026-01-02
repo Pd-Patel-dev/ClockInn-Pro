@@ -18,6 +18,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy application
 COPY . .
 
+# Make startup script executable
+RUN chmod +x render-start.sh
+
 # Create logs directory
 RUN mkdir -p /app/logs
 
