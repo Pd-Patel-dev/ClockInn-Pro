@@ -57,6 +57,7 @@ export default function PayrollDetailsPage() {
   const [finalizing, setFinalizing] = useState(false)
   const [exporting, setExporting] = useState(false)
   const [deleting, setDeleting] = useState(false)
+  const [voiding, setVoiding] = useState(false)
 
   useEffect(() => {
     const checkAdminAndFetch = async () => {
