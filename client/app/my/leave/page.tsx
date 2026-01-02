@@ -9,7 +9,7 @@ import { z } from 'zod'
 import logger from '@/lib/logger'
 import { format } from 'date-fns'
 import { ButtonSpinner } from '@/components/LoadingSpinner'
-import Toast from '@/components/Toast'
+import { useToast } from '@/components/Toast'
 
 const leaveRequestSchema = z.object({
   type: z.enum(['vacation', 'sick', 'personal', 'other']),
@@ -32,11 +32,11 @@ interface LeaveRequest {
 }
 
 export default function MyLeavePage() {
+  const toast = useToast()
   const [requests, setRequests] = useState<LeaveRequest[]>([])
   const [loading, setLoading] = useState(false)
   const [showForm, setShowForm] = useState(false)
   const [submitting, setSubmitting] = useState(false)
-  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null)
 
   const {
     register,
@@ -74,9 +74,9 @@ export default function MyLeavePage() {
       reset()
       setShowForm(false)
       fetchRequests()
-      setToast({ message: 'Leave request submitted successfully', type: 'success' })
+      toast.success('Leave request submitted successfully')
     } catch (error: any) {
-      setToast({ message: error.response?.data?.detail || 'Failed to create leave request', type: 'error' })
+      toast.error(error.response?.data?.detail || 'Failed to create leave request')
     } finally {
       setSubmitting(false)
     }
@@ -221,14 +221,6 @@ export default function MyLeavePage() {
               </div>
             ))}
           </div>
-        )}
-        
-        {toast && (
-          <Toast
-            message={toast.message}
-            type={toast.type}
-            onClose={() => setToast(null)}
-          />
         )}
       </div>
     </Layout>
