@@ -108,7 +108,7 @@ export default function AdminEmployeesPage() {
     setLoading(true)
     try {
       const response = await api.get('/users/admin/employees')
-      logger.debug('Employees data fetched', undefined, { count: response.data?.length })
+      logger.debug('Employees data fetched', { count: response.data?.length })
       setEmployees(response.data || [])
     } catch (error: any) {
       logger.error('Failed to fetch employees', error as Error, { endpoint: '/users/admin/employees' })
