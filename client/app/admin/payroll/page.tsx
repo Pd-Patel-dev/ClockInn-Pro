@@ -11,6 +11,7 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import logger from '@/lib/logger'
 import { ButtonSpinner } from '@/components/LoadingSpinner'
+import { useToast } from '@/components/Toast'
 
 const payrollGenerateSchema = z.object({
   payroll_type: z.enum(['WEEKLY', 'BIWEEKLY']),
@@ -36,6 +37,7 @@ interface PayrollRunSummary {
 
 export default function AdminPayrollPage() {
   const router = useRouter()
+  const toast = useToast()
   const [loading, setLoading] = useState(false)
   const [generating, setGenerating] = useState(false)
   const [payrollRuns, setPayrollRuns] = useState<PayrollRunSummary[]>([])
