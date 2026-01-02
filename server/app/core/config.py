@@ -1,7 +1,8 @@
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import field_validator
 from typing import List, Union
 import json
+from pathlib import Path
 
 
 class Settings(BaseSettings):
@@ -40,9 +41,11 @@ class Settings(BaseSettings):
     PIN_ATTEMPTS_LIMIT: int = 5
     LOCKOUT_DURATION_MINUTES: int = 10
     
-    class Config:
-        env_file = ".env"
-        case_sensitive = True
+    model_config = SettingsConfigDict(
+        env_file=Path(__file__).parent.parent.parent / ".env",
+        env_file_encoding='utf-8',
+        case_sensitive=True
+    )
 
 
 settings = Settings()
