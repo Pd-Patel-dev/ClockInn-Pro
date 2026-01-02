@@ -65,7 +65,7 @@ export default function AdminPayrollPage() {
         }
         fetchPayrollRuns()
       } catch (err: any) {
-        console.error('Authentication error:', err)
+        logger.error('Authentication error', err as Error, { action: 'fetchPayrollRuns' })
         router.push('/login')
       }
     }
@@ -78,7 +78,7 @@ export default function AdminPayrollPage() {
       const response = await api.get('/admin/payroll/runs')
       setPayrollRuns(response.data || [])
     } catch (error: any) {
-      console.error('Failed to fetch payroll runs:', error)
+      logger.error('Failed to fetch payroll runs', error as Error, { endpoint: '/admin/payroll/runs' })
       if (error.response?.status === 403) {
         router.push('/dashboard')
       }
@@ -105,7 +105,7 @@ export default function AdminPayrollPage() {
       // Navigate to the newly created payroll run
       router.push(`/admin/payroll/${response.data.id}`)
     } catch (error: any) {
-      console.error('Failed to generate payroll:', error)
+      logger.error('Failed to generate payroll', error as Error, { endpoint: '/admin/payroll/runs/generate' })
       alert(error.response?.data?.detail || 'Failed to generate payroll')
     } finally {
       setGenerating(false)

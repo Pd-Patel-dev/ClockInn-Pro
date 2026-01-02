@@ -28,7 +28,7 @@ export default function AdminLeavePage() {
       const response = await api.get('/leave/admin/leave')
       setRequests(response.data.requests || [])
     } catch (error) {
-      console.error('Failed to fetch requests:', error)
+      logger.error('Failed to fetch leave requests', error as Error, { endpoint: '/leave/admin/leave' })
     } finally {
       setLoading(false)
     }

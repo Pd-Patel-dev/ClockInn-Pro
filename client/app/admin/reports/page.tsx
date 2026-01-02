@@ -31,7 +31,7 @@ export default function AdminReportsPage() {
       const response = await api.get('/users/admin/employees')
       setEmployees(response.data || [])
     } catch (error) {
-      console.error('Failed to fetch employees:', error)
+      logger.error('Failed to fetch employees', error as Error, { endpoint: '/users/admin/employees' })
     } finally {
       setLoading(false)
     }

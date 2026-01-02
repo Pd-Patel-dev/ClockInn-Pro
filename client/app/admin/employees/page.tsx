@@ -8,6 +8,7 @@ import { getCurrentUser, User } from '@/lib/auth'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
+import logger from '@/lib/logger'
 
 const employeeSchema = z.object({
   name: z.string().min(1, 'Name is required'),
@@ -27,11 +28,7 @@ const editEmployeeSchema = z.object({
   status: z.enum(['active', 'inactive']),
   pin: z.string().length(4, 'PIN must be 4 digits').optional().or(z.literal('')),
   job_role: z.string().optional(),
-  pay_rate: z.string().optional().transform((val) => {
-    if (!val || val === '') return undefined
-    const num = parseFloat(val)
-    return isNaN(num) ? undefined : num
-  }).pipe(z.number().min(0).optional().or(z.undefined())),
+  pay_rate: z.string().optional(),
 })
 
 type EmployeeForm = z.infer<typeof employeeSchema>
@@ -103,7 +100,7 @@ export default function AdminEmployeesPage() {
       console.log('Employees data:', response.data)
       setEmployees(response.data || [])
     } catch (error: any) {
-      console.error('Failed to fetch employees:', error)
+      logger.error('Failed to fetch employees', error as Error, { endpoint: '/users/admin/employees' })
       // If 403 Forbidden, redirect to dashboard (user is not admin)
       if (error.response?.status === 403) {
         router.push('/dashboard')

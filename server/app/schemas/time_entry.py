@@ -46,6 +46,13 @@ class TimeEntryResponse(BaseModel):
     note: Optional[str] = None
     created_at: datetime
     updated_at: datetime
+    # Rounded hours and minutes (calculated based on company rounding policy)
+    rounded_hours: Optional[float] = None
+    rounded_minutes: Optional[int] = None
+    # Timezone-converted times for display
+    clock_in_at_local: Optional[str] = None
+    clock_out_at_local: Optional[str] = None
+    company_timezone: Optional[str] = None
 
     class Config:
         from_attributes = True

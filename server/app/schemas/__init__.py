@@ -4,4 +4,5 @@ from app.schemas.time_entry import *
 from app.schemas.leave_request import *
 from app.schemas.report import *
 from app.schemas.payroll import *
+from app.schemas.company import *
 

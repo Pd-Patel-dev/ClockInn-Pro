@@ -14,6 +14,11 @@ interface TimeEntry {
   clock_out_at: string | null
   break_minutes: number
   status: string
+  rounded_hours?: number | null
+  rounded_minutes?: number | null
+  clock_in_at_local?: string | null
+  clock_out_at_local?: string | null
+  company_timezone?: string | null
 }
 
 export default function AdminTimePage() {
@@ -57,7 +62,7 @@ export default function AdminTimePage() {
       const response = await api.get(`/time/admin/time?${params.toString()}`)
       setEntries(response.data.entries || [])
     } catch (error: any) {
-      console.error('Failed to fetch entries:', error)
+      logger.error('Failed to fetch time entries', error as Error, { endpoint: '/time/admin/time' })
       if (error.response?.status === 403) {
         setError('Access denied. Admin privileges required.')
         router.push('/dashboard')
@@ -70,7 +75,11 @@ export default function AdminTimePage() {
   }
 
   const calculateHours = (entry: TimeEntry) => {
-    if (!entry.clock_out_at) return 0
+    // Use rounded_hours from API if available, otherwise calculate
+    if (entry.rounded_hours !== null && entry.rounded_hours !== undefined) {
+      return entry.rounded_hours.toFixed(2)
+    }
+    if (!entry.clock_out_at) return '0.00'
     const inTime = new Date(entry.clock_in_at)
     const outTime = new Date(entry.clock_out_at)
     const diffMs = outTime.getTime() - inTime.getTime()
@@ -150,13 +159,19 @@ export default function AdminTimePage() {
                         {entry.employee_name}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                        {format(new Date(entry.clock_in_at), 'yyyy-MM-dd')}
+                        {entry.clock_in_at_local
+                          ? entry.clock_in_at_local.split(' ')[0]
+                          : format(new Date(entry.clock_in_at), 'yyyy-MM-dd')}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                        {format(new Date(entry.clock_in_at), 'HH:mm')}
+                        {entry.clock_in_at_local
+                          ? entry.clock_in_at_local.split(' ')[1]?.substring(0, 5)
+                          : format(new Date(entry.clock_in_at), 'HH:mm')}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                        {entry.clock_out_at
+                        {entry.clock_out_at_local
+                          ? entry.clock_out_at_local.split(' ')[1]?.substring(0, 5)
+                          : entry.clock_out_at
                           ? format(new Date(entry.clock_out_at), 'HH:mm')
                           : 'Open'}
                       </td>

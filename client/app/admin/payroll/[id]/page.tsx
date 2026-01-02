@@ -61,7 +61,7 @@ export default function PayrollDetailsPage() {
         }
         fetchPayrollRun()
       } catch (err: any) {
-        console.error('Authentication error:', err)
+        logger.error('Authentication error', err as Error, { action: 'fetchPayrollRun', payrollId: params.id })
         router.push('/login')
       }
     }
@@ -74,7 +74,7 @@ export default function PayrollDetailsPage() {
       const response = await api.get(`/admin/payroll/runs/${payrollRunId}`)
       setPayrollRun(response.data)
     } catch (error: any) {
-      console.error('Failed to fetch payroll run:', error)
+      logger.error('Failed to fetch payroll run', error as Error, { endpoint: `/admin/payroll/runs/${params.id}` })
       if (error.response?.status === 404) {
         alert('Payroll run not found')
         router.push('/admin/payroll')
@@ -96,7 +96,7 @@ export default function PayrollDetailsPage() {
       await api.post(`/admin/payroll/runs/${payrollRunId}/finalize`, {})
       fetchPayrollRun()
     } catch (error: any) {
-      console.error('Failed to finalize payroll:', error)
+      logger.error('Failed to finalize payroll', error as Error, { endpoint: `/admin/payroll/runs/${params.id}/finalize` })
       alert(error.response?.data?.detail || 'Failed to finalize payroll')
     }
   }
@@ -114,7 +114,7 @@ export default function PayrollDetailsPage() {
       setVoidReason('')
       fetchPayrollRun()
     } catch (error: any) {
-      console.error('Failed to void payroll:', error)
+      logger.error('Failed to void payroll', error as Error, { endpoint: `/admin/payroll/runs/${params.id}/void` })
       alert(error.response?.data?.detail || 'Failed to void payroll')
     }
   }
@@ -136,7 +136,7 @@ export default function PayrollDetailsPage() {
       document.body.removeChild(link)
       window.URL.revokeObjectURL(url)
     } catch (error: any) {
-      console.error('Failed to export payroll:', error)
+      logger.error('Failed to export payroll', error as Error, { endpoint: `/admin/payroll/runs/${params.id}/export` })
       alert(error.response?.data?.detail || 'Failed to export payroll')
     }
   }

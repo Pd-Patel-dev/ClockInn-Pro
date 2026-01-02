@@ -10,7 +10,7 @@ import pytz
 
 from app.models.payroll import PayrollRun, PayrollLineItem, PayrollType, PayrollStatus
 from app.models.time_entry import TimeEntry, TimeEntryStatus
-from app.models.user import User, UserStatus, PayRateType
+from app.models.user import User, UserRole, UserStatus, PayRateType
 from app.models.company import Company
 from app.models.audit_log import AuditLog
 import uuid
@@ -35,6 +35,7 @@ def get_company_settings(company: Company) -> Dict:
         "overtime_threshold_hours_per_week": settings.get("overtime_threshold_hours_per_week", DEFAULT_OVERTIME_THRESHOLD_HOURS),
         "overtime_multiplier_default": Decimal(str(settings.get("overtime_multiplier_default", DEFAULT_OVERTIME_MULTIPLIER))),
         "rounding_policy": settings.get("rounding_policy", DEFAULT_ROUNDING_POLICY),
+        "breaks_paid": settings.get("breaks_paid", False),
     }
 
 
@@ -107,6 +108,7 @@ def compute_minutes_with_rounding_and_breaks(
     clock_out: datetime,
     break_minutes: int,
     rounding_policy: str,
+    breaks_paid: bool = False,
 ) -> int:
     """Calculate worked minutes with breaks and rounding."""
     if clock_out is None:
@@ -115,8 +117,11 @@ def compute_minutes_with_rounding_and_breaks(
     total_seconds = (clock_out - clock_in).total_seconds()
     total_minutes = int(total_seconds / 60)
     
-    # Subtract break time
-    paid_minutes = max(0, total_minutes - break_minutes)
+    # Subtract break time only if breaks are NOT paid
+    if breaks_paid:
+        paid_minutes = total_minutes  # Breaks are paid, don't deduct
+    else:
+        paid_minutes = max(0, total_minutes - break_minutes)  # Deduct breaks
     
     # Apply rounding
     return apply_rounding(paid_minutes, rounding_policy)
@@ -209,6 +214,7 @@ def compute_weekly_overtime_blocks(
                 entry.clock_out_at,
                 entry.break_minutes,
                 rounding_policy,
+                company_settings["breaks_paid"],
             )
             
             week_minutes += minutes
@@ -369,7 +375,7 @@ async def generate_payroll_run(
     query = select(User).where(
         and_(
             User.company_id == company_id,
-            User.role == "EMPLOYEE",
+            User.role == UserRole.EMPLOYEE,
         )
     )
     

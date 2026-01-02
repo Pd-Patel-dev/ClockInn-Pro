@@ -1,4 +1,4 @@
-from typing import Optional, List
+from typing import Optional, List, Tuple
 from uuid import UUID
 from datetime import datetime, date
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -6,9 +6,13 @@ from sqlalchemy import select, and_, or_, func
 from fastapi import HTTPException, status
 
 from app.models.time_entry import TimeEntry, TimeEntryStatus, TimeEntrySource
-from app.models.user import User
+from app.models.user import User, UserRole, UserStatus
 from app.core.security import verify_pin, normalize_email
 from app.schemas.time_entry import TimeEntryEdit
+from app.services.rounding_service import (
+    compute_minutes_with_rounding_and_breaks,
+    get_company_rounding_policy,
+)
 import uuid
 
 
@@ -29,8 +33,8 @@ async def punch(
                 and_(
                     User.id == employee_id,
                     User.company_id == company_id,
-                    User.role == "EMPLOYEE",
-                    User.status == "active",
+                    User.role == UserRole.EMPLOYEE,
+                    User.status == UserStatus.ACTIVE,
                 )
             )
         )
@@ -41,8 +45,8 @@ async def punch(
                 and_(
                     User.email == normalized_email,
                     User.company_id == company_id,
-                    User.role == "EMPLOYEE",
-                    User.status == "active",
+                    User.role == UserRole.EMPLOYEE,
+                    User.status == UserStatus.ACTIVE,
                 )
             )
         )
@@ -170,6 +174,43 @@ async def get_admin_time_entries(
     entries = result.scalars().all()
     
     return list(entries), total
+
+
+async def calculate_rounded_hours(
+    db: AsyncSession,
+    entry: TimeEntry,
+    company_id: UUID,
+) -> Tuple[Optional[float], Optional[int]]:
+    """Calculate rounded hours and minutes for a time entry."""
+    if not entry.clock_out_at:
+        return None, None
+    
+    # Get company settings
+    from app.models.company import Company
+    from app.services.company_service import get_company_settings
+    
+    result = await db.execute(
+        select(Company).where(Company.id == company_id)
+    )
+    company = result.scalar_one_or_none()
+    if company:
+        company_settings = get_company_settings(company)
+        rounding_policy = company_settings["rounding_policy"]
+        breaks_paid = company_settings["breaks_paid"]
+    else:
+        rounding_policy = await get_company_rounding_policy(db, company_id)
+        breaks_paid = False
+    
+    rounded_minutes = compute_minutes_with_rounding_and_breaks(
+        entry.clock_in_at,
+        entry.clock_out_at,
+        entry.break_minutes,
+        rounding_policy,
+        breaks_paid,
+    )
+    rounded_hours = rounded_minutes / 60.0
+    
+    return rounded_hours, rounded_minutes
 
 
 async def edit_time_entry(

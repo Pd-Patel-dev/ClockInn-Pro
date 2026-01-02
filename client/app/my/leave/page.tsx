@@ -51,7 +51,7 @@ export default function MyLeavePage() {
       const response = await api.get('/leave/my')
       setRequests(response.data.requests || [])
     } catch (error) {
-      console.error('Failed to fetch requests:', error)
+      logger.error('Failed to fetch leave requests', error as Error, { endpoint: '/leave/my' })
     } finally {
       setLoading(false)
     }

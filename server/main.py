@@ -40,21 +40,37 @@ app = FastAPI(
 async def log_requests(request: Request, call_next):
     start_time = time.time()
     
-    # Process request
-    response = await call_next(request)
-    
-    # Calculate duration
-    process_time = time.time() - start_time
-    
-    # Log request
-    access_logger.info(
-        f"{request.method} {request.url.path} - "
-        f"Status: {response.status_code} - "
-        f"Duration: {process_time:.3f}s - "
-        f"Client: {request.client.host if request.client else 'unknown'}"
-    )
-    
-    return response
+    try:
+        # Process request
+        response = await call_next(request)
+        
+        # Calculate duration
+        process_time = time.time() - start_time
+        
+        # Log request
+        access_logger.info(
+            f"{request.method} {request.url.path} - "
+            f"Status: {response.status_code} - "
+            f"Duration: {process_time:.3f}s - "
+            f"Client: {request.client.host if request.client else 'unknown'}"
+        )
+        
+        return response
+    except Exception as e:
+        # Log unhandled exceptions to error log
+        process_time = time.time() - start_time
+        logger.error(
+            f"Unhandled exception in {request.method} {request.url.path}",
+            exc_info=True,
+            extra={
+                "method": request.method,
+                "path": str(request.url.path),
+                "client": request.client.host if request.client else 'unknown',
+                "duration": f"{process_time:.3f}s"
+            }
+        )
+        # Re-raise to let FastAPI handle it
+        raise
 
 # CORS
 app.add_middleware(

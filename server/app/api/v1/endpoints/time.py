@@ -3,10 +3,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_
 from datetime import date
 from typing import Optional
+from uuid import UUID
 
 from app.core.database import get_db
 from app.core.dependencies import get_current_user, get_current_admin
-from app.models.user import User, UserRole
+from app.models.user import User, UserRole, UserStatus, UserStatus
 from app.models.time_entry import TimeEntryStatus
 from app.schemas.time_entry import (
     TimeEntryCreate,
@@ -22,8 +23,37 @@ from app.services.time_entry_service import (
     get_admin_time_entries,
     edit_time_entry,
 )
+from app.models.time_entry import TimeEntry
 
 router = APIRouter()
+
+
+async def get_rounded_hours_for_entry(
+    db: AsyncSession,
+    entry: TimeEntry,
+    company_id: UUID,
+) -> tuple[Optional[float], Optional[int]]:
+    """Helper to calculate rounded hours for a time entry."""
+    from app.services.time_entry_service import calculate_rounded_hours
+    return await calculate_rounded_hours(db, entry, company_id)
+
+
+async def get_timezone_formatted_times(
+    db: AsyncSession,
+    entry: TimeEntry,
+    company_id: UUID,
+) -> tuple[Optional[str], Optional[str], str]:
+    """Helper to format times in company timezone."""
+    from app.services.timezone_service import (
+        get_company_timezone,
+        format_datetime_for_company,
+    )
+    timezone_str = await get_company_timezone(db, company_id)
+    
+    clock_in_local = format_datetime_for_company(entry.clock_in_at, timezone_str) if entry.clock_in_at else None
+    clock_out_local = format_datetime_for_company(entry.clock_out_at, timezone_str) if entry.clock_out_at else None
+    
+    return clock_in_local, clock_out_local, timezone_str
 
 
 @router.post("/punch", response_model=TimeEntryResponse, status_code=status.HTTP_201_CREATED)
@@ -48,7 +78,7 @@ async def punch_endpoint(
             and_(
                 User.email == normalized_email,
                 User.role == UserRole.EMPLOYEE,
-                User.status == "active",
+                User.status == UserStatus.ACTIVE,
             )
         )
     )
@@ -74,10 +104,23 @@ async def punch_endpoint(
     result = await db.execute(select(User).where(User.id == entry.employee_id))
     employee = result.scalar_one_or_none()
     
+    if not employee:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Employee not found")
+    
+    # Calculate rounded hours
+    rounded_hours, rounded_minutes = await get_rounded_hours_for_entry(
+        db, entry, employee.company_id
+    )
+    
+    # Get timezone-formatted times
+    clock_in_local, clock_out_local, timezone_str = await get_timezone_formatted_times(
+        db, entry, employee.company_id
+    )
+    
     return TimeEntryResponse(
         id=entry.id,
         employee_id=entry.employee_id,
-        employee_name=employee.name if employee else "Unknown",
+        employee_name=employee.name,
         clock_in_at=entry.clock_in_at,
         clock_out_at=entry.clock_out_at,
         break_minutes=entry.break_minutes,
@@ -86,6 +129,11 @@ async def punch_endpoint(
         note=entry.note,
         created_at=entry.created_at,
         updated_at=entry.updated_at,
+        rounded_hours=rounded_hours,
+        rounded_minutes=rounded_minutes,
+        clock_in_at_local=clock_in_local,
+        clock_out_at_local=clock_out_local,
+        company_timezone=timezone_str,
     )
 
 
@@ -103,7 +151,7 @@ async def punch_by_pin_endpoint(
         select(User).where(
             and_(
                 User.role == UserRole.EMPLOYEE,
-                User.status == "active",
+                User.status == UserStatus.ACTIVE,
                 User.pin_hash.isnot(None),
             )
         )
@@ -135,6 +183,11 @@ async def punch_by_pin_endpoint(
         skip_pin_verification=True,  # PIN already verified
     )
     
+    # Calculate rounded hours
+    rounded_hours, rounded_minutes = await get_rounded_hours_for_entry(
+        db, entry, matching_employee.company_id
+    )
+    
     return TimeEntryResponse(
         id=entry.id,
         employee_id=entry.employee_id,
@@ -147,6 +200,8 @@ async def punch_by_pin_endpoint(
         note=entry.note,
         created_at=entry.created_at,
         updated_at=entry.updated_at,
+        rounded_hours=rounded_hours,
+        rounded_minutes=rounded_minutes,
     )
 
 
@@ -176,6 +231,16 @@ async def punch_me_endpoint(
         TimeEntrySource.WEB,  # Source is WEB for authenticated users
     )
     
+    # Calculate rounded hours
+    rounded_hours, rounded_minutes = await get_rounded_hours_for_entry(
+        db, entry, current_user.company_id
+    )
+    
+    # Get timezone-formatted times
+    clock_in_local, clock_out_local, timezone_str = await get_timezone_formatted_times(
+        db, entry, current_user.company_id
+    )
+    
     return TimeEntryResponse(
         id=entry.id,
         employee_id=entry.employee_id,
@@ -188,6 +253,11 @@ async def punch_me_endpoint(
         note=entry.note,
         created_at=entry.created_at,
         updated_at=entry.updated_at,
+        rounded_hours=rounded_hours,
+        rounded_minutes=rounded_minutes,
+        clock_in_at_local=clock_in_local,
+        clock_out_at_local=clock_out_local,
+        company_timezone=timezone_str,
     )
 
 
@@ -217,8 +287,17 @@ async def get_my_time_entries_endpoint(
     result = await db.execute(select(User).where(User.id.in_(employee_ids)))
     employees = {emp.id: emp.name for emp in result.scalars().all()}
     
-    return TimeEntryListResponse(
-        entries=[
+    from app.services.time_entry_service import calculate_rounded_hours
+    
+    response_entries = []
+    for entry in entries:
+        rounded_hours, rounded_minutes = await calculate_rounded_hours(
+            db, entry, current_user.company_id
+        )
+        clock_in_local, clock_out_local, timezone_str = await get_timezone_formatted_times(
+            db, entry, current_user.company_id
+        )
+        response_entries.append(
             TimeEntryResponse(
                 id=entry.id,
                 employee_id=entry.employee_id,
@@ -231,9 +310,16 @@ async def get_my_time_entries_endpoint(
                 note=entry.note,
                 created_at=entry.created_at,
                 updated_at=entry.updated_at,
+                rounded_hours=rounded_hours,
+                rounded_minutes=rounded_minutes,
+                clock_in_at_local=clock_in_local,
+                clock_out_at_local=clock_out_local,
+                company_timezone=timezone_str,
             )
-            for entry in entries
-        ],
+        )
+    
+    return TimeEntryListResponse(
+        entries=response_entries,
         total=total,
     )
 
@@ -278,8 +364,17 @@ async def get_admin_time_entries_endpoint(
     result = await db.execute(select(User).where(User.id.in_(employee_ids)))
     employees = {emp.id: emp.name for emp in result.scalars().all()}
     
-    return TimeEntryListResponse(
-        entries=[
+    from app.services.time_entry_service import calculate_rounded_hours
+    
+    response_entries = []
+    for entry in entries:
+        rounded_hours, rounded_minutes = await calculate_rounded_hours(
+            db, entry, current_user.company_id
+        )
+        clock_in_local, clock_out_local, timezone_str = await get_timezone_formatted_times(
+            db, entry, current_user.company_id
+        )
+        response_entries.append(
             TimeEntryResponse(
                 id=entry.id,
                 employee_id=entry.employee_id,
@@ -292,9 +387,16 @@ async def get_admin_time_entries_endpoint(
                 note=entry.note,
                 created_at=entry.created_at,
                 updated_at=entry.updated_at,
+                rounded_hours=rounded_hours,
+                rounded_minutes=rounded_minutes,
+                clock_in_at_local=clock_in_local,
+                clock_out_at_local=clock_out_local,
+                company_timezone=timezone_str,
             )
-            for entry in entries
-        ],
+        )
+    
+    return TimeEntryListResponse(
+        entries=response_entries,
         total=total,
     )
 
