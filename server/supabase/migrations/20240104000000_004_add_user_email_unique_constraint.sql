@@ -2,18 +2,24 @@
 
 -- First, clean up any duplicate emails within the same company
 -- Keep the oldest user record for each (company_id, email) pair
-DELETE FROM users u1
-WHERE u1.id NOT IN (
-    SELECT MIN(u2.id)
-    FROM users u2
-    GROUP BY u2.company_id, LOWER(u2.email)
+-- Use created_at to determine which record is oldest
+WITH duplicates AS (
+    SELECT 
+        id,
+        company_id,
+        LOWER(email) as email_lower,
+        created_at,
+        ROW_NUMBER() OVER (
+            PARTITION BY company_id, LOWER(email) 
+            ORDER BY created_at ASC, id ASC
+        ) as rn
+    FROM users
 )
-AND EXISTS (
-    SELECT 1
-    FROM users u3
-    WHERE u3.company_id = u1.company_id
-    AND LOWER(u3.email) = LOWER(u1.email)
-    AND u3.id < u1.id
+DELETE FROM users
+WHERE id IN (
+    SELECT id 
+    FROM duplicates 
+    WHERE rn > 1
 );
 
 -- Create unique index on (company_id, LOWER(email))
