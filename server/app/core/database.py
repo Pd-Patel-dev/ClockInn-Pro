@@ -10,8 +10,10 @@ if database_url.startswith("postgresql://"):
 # Configure engine with SSL for Supabase (production)
 # For asyncpg, SSL is handled via connect_args
 connect_args = {}
-if "supabase.co" in database_url or "supabase" in database_url.lower():
-    # Supabase requires SSL connections - use asyncpg SSL context
+if "supabase.co" in database_url or "supabase" in database_url.lower() or "pooler.supabase.com" in database_url:
+    # Supabase requires SSL connections
+    # For asyncpg, we can use 'require' string or SSL context
+    # Using SSL context with no verification for Supabase
     import ssl
     ssl_context = ssl.create_default_context()
     ssl_context.check_hostname = False
