@@ -226,7 +226,7 @@ export default function EmployeeDetailPage() {
       clock_in_time: clockIn.toTimeString().slice(0, 5),
       clock_out_at: clockOut ? clockOut.toISOString().split('T')[0] : '',
       clock_out_time: clockOut ? clockOut.toTimeString().slice(0, 5) : '',
-      break_minutes: entry.break_minutes.toString(),
+      break_minutes: entry.break_minutes,
       edit_reason: '',
     })
     setEditingEntry(entry)
