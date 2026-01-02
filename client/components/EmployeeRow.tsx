@@ -12,6 +12,7 @@ interface Employee {
   job_role: string | null
   pay_rate: number | null
   created_at: string
+  last_login_at: string | null
   last_punch_at: string | null
   is_clocked_in: boolean | null
 }
