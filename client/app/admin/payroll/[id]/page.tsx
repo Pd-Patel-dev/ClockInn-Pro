@@ -48,6 +48,7 @@ export default function PayrollDetailsPage() {
   const router = useRouter()
   const params = useParams()
   const payrollRunId = params.id as string
+  const toast = useToast()
   
   const [loading, setLoading] = useState(true)
   const [payrollRun, setPayrollRun] = useState<PayrollRun | null>(null)
