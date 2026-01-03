@@ -32,6 +32,7 @@ from app.services.export_service import (
     generate_payroll_pdf,
     generate_payroll_excel,
 )
+from app.pdf_templates.payroll_report import generate_payroll_report_pdf
 import uuid
 
 router = APIRouter()
@@ -224,6 +225,99 @@ async def get_payroll_run_endpoint(
         created_at=payroll_run.created_at,
         updated_at=payroll_run.updated_at,
         line_items=line_items,
+    )
+
+
+@router.get("/payrolls/{payroll_run_id}/report.pdf")
+@handle_endpoint_errors(operation_name="get_payroll_report_pdf")
+async def get_payroll_report_pdf_endpoint(
+    payroll_run_id: str,
+    current_user: User = Depends(get_current_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Generate and download payroll report PDF (admin only).
+    
+    Returns a professional PDF report with header, summary cards, employee table,
+    notes, and footer.
+    """
+    from io import BytesIO
+    
+    run_id = parse_uuid(payroll_run_id, "Payroll run ID")
+    
+    # Load payroll run with all relationships
+    result = await db.execute(
+        select(PayrollRun)
+        .options(
+            selectinload(PayrollRun.company),
+            selectinload(PayrollRun.line_items).selectinload(PayrollLineItem.employee),
+            selectinload(PayrollRun.generator),
+        )
+        .where(
+            and_(
+                PayrollRun.id == run_id,
+                PayrollRun.company_id == current_user.company_id
+            )
+        )
+    )
+    payroll_run = result.scalar_one_or_none()
+    
+    if not payroll_run:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Payroll run not found",
+        )
+    
+    # Prepare data for PDF generator
+    company_name = payroll_run.company.name if payroll_run.company else "Company"
+    payroll_type = payroll_run.payroll_type.value
+    status_str = payroll_run.status.value.title()
+    generated_by_name = payroll_run.generator.name if payroll_run.generator else "System"
+    
+    # Prepare employee rows
+    rows = []
+    for item in payroll_run.line_items:
+        employee_name = item.employee.name if item.employee else "Unknown"
+        regular_hours = float(item.regular_minutes) / 60.0
+        ot_hours = float(item.overtime_minutes) / 60.0
+        rate = float(item.pay_rate_cents) / 100.0
+        regular_pay = float(item.regular_pay_cents) / 100.0
+        ot_pay = float(item.overtime_pay_cents) / 100.0
+        total_pay = float(item.total_pay_cents) / 100.0
+        exceptions = "-" if item.exceptions_count == 0 else f"{item.exceptions_count} exception(s)"
+        
+        rows.append({
+            'employee_name': employee_name,
+            'regular_hours': regular_hours,
+            'ot_hours': ot_hours,
+            'rate': rate,
+            'regular_pay': regular_pay,
+            'ot_pay': ot_pay,
+            'total_pay': total_pay,
+            'exceptions': exceptions,
+        })
+    
+    # Generate PDF
+    pdf_bytes = generate_payroll_report_pdf(
+        company_name=company_name,
+        payroll_type=payroll_type,
+        period_start=payroll_run.period_start_date,
+        period_end=payroll_run.period_end_date,
+        generated_at=payroll_run.generated_at,
+        generated_by=generated_by_name,
+        status=status_str,
+        rows=rows,
+    )
+    
+    # Create filename
+    filename = f"payroll-report-{payroll_run.period_start_date}-{payroll_run.period_end_date}.pdf"
+    
+    return StreamingResponse(
+        BytesIO(pdf_bytes),
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"'
+        }
     )
 
 
@@ -428,9 +522,52 @@ async def export_payroll_endpoint(
     await db.commit()
     
     if format == "pdf":
-        buffer = await generate_payroll_pdf(db, payroll_run)
+        # Use new professional PDF template
+        from io import BytesIO
+        
+        # Prepare data for new PDF generator
+        company_name = payroll_run.company.name if payroll_run.company else "Company"
+        payroll_type = payroll_run.payroll_type.value
+        status_str = payroll_run.status.value.title()
+        generated_by_name = payroll_run.generator.name if payroll_run.generator else "System"
+        
+        # Prepare employee rows
+        rows = []
+        for item in payroll_run.line_items:
+            employee_name = item.employee.name if item.employee else "Unknown"
+            regular_hours = float(item.regular_minutes) / 60.0
+            ot_hours = float(item.overtime_minutes) / 60.0
+            rate = float(item.pay_rate_cents) / 100.0
+            regular_pay = float(item.regular_pay_cents) / 100.0
+            ot_pay = float(item.overtime_pay_cents) / 100.0
+            total_pay = float(item.total_pay_cents) / 100.0
+            exceptions = "-" if item.exceptions_count == 0 else f"{item.exceptions_count} exception(s)"
+            
+            rows.append({
+                'employee_name': employee_name,
+                'regular_hours': regular_hours,
+                'ot_hours': ot_hours,
+                'rate': rate,
+                'regular_pay': regular_pay,
+                'ot_pay': ot_pay,
+                'total_pay': total_pay,
+                'exceptions': exceptions,
+            })
+        
+        # Generate PDF using new template
+        pdf_bytes = generate_payroll_report_pdf(
+            company_name=company_name,
+            payroll_type=payroll_type,
+            period_start=payroll_run.period_start_date,
+            period_end=payroll_run.period_end_date,
+            generated_at=payroll_run.generated_at,
+            generated_by=generated_by_name,
+            status=status_str,
+            rows=rows,
+        )
+        
         return StreamingResponse(
-            buffer,
+            BytesIO(pdf_bytes),
             media_type="application/pdf",
             headers={
                 "Content-Disposition": f'attachment; filename="payroll_{payroll_run.period_start_date}_{payroll_run.period_end_date}.pdf"'

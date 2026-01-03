@@ -356,7 +356,7 @@ export default function EmployeeDetailPage() {
                         ? 'bg-green-100 text-green-800'
                         : 'bg-gray-100 text-gray-800'
                     }`}>
-                      {employee.status}
+                      {employee.status ? employee.status.charAt(0).toUpperCase() + employee.status.slice(1).toLowerCase() : employee.status}
                     </span>
                     {employee.is_clocked_in && (
                       <span className="px-2 py-1 rounded-full text-xs font-semibold bg-yellow-100 text-yellow-800">
@@ -726,7 +726,7 @@ export default function EmployeeDetailPage() {
                               entry.status === 'open' ? 'bg-yellow-100 text-yellow-800' :
                               'bg-gray-100 text-gray-800'
                             }`}>
-                              {entry.status}
+                              {entry.status ? entry.status.charAt(0).toUpperCase() + entry.status.slice(1).toLowerCase() : entry.status}
                             </span>
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm">

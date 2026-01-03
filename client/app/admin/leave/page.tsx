@@ -132,7 +132,7 @@ export default function AdminLeavePage() {
                               : 'bg-yellow-100 text-yellow-800'
                           }`}
                         >
-                          {request.status}
+                          {request.status ? request.status.charAt(0).toUpperCase() + request.status.slice(1).toLowerCase() : request.status}
                         </span>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">

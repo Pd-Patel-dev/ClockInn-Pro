@@ -18,7 +18,7 @@ export default function AdminReportsPage() {
   const [loading, setLoading] = useState(false)
   const [exporting, setExporting] = useState(false)
   const [formData, setFormData] = useState({
-    range_type: 'weekly',
+    range_type: 'none',
     start_date: '',
     end_date: '',
     format: 'pdf',
@@ -28,6 +28,33 @@ export default function AdminReportsPage() {
   useEffect(() => {
     fetchEmployees()
   }, [])
+
+  // Calculate end date based on range type and start date
+  useEffect(() => {
+    if (formData.range_type !== 'none' && formData.start_date) {
+      const startDate = new Date(formData.start_date)
+      let endDate = new Date(startDate)
+
+      switch (formData.range_type) {
+        case 'weekly':
+          endDate.setDate(startDate.getDate() + 6) // 7 days including start date
+          break
+        case 'biweekly':
+          endDate.setDate(startDate.getDate() + 13) // 14 days including start date
+          break
+        case 'monthly':
+          endDate.setMonth(startDate.getMonth() + 1)
+          endDate.setDate(0) // Last day of the month
+          break
+        default:
+          return
+      }
+
+      // Format as YYYY-MM-DD
+      const formattedEndDate = endDate.toISOString().split('T')[0]
+      setFormData((prev) => ({ ...prev, end_date: formattedEndDate }))
+    }
+  }, [formData.range_type, formData.start_date])
 
   const fetchEmployees = async () => {
     setLoading(true)
@@ -93,11 +120,20 @@ export default function AdminReportsPage() {
               <label className="block text-sm font-medium text-gray-700">Range Type</label>
               <select
                 value={formData.range_type}
-                onChange={(e) => setFormData({ ...formData, range_type: e.target.value })}
+                onChange={(e) => {
+                  const newRangeType = e.target.value
+                  setFormData({ ...formData, range_type: newRangeType })
+                  // Clear end date when switching to 'none' to allow manual entry
+                  if (newRangeType === 'none') {
+                    setFormData((prev) => ({ ...prev, end_date: '' }))
+                  }
+                }}
                 className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm"
               >
+                <option value="none">None (Custom Range)</option>
                 <option value="weekly">Weekly</option>
                 <option value="biweekly">Biweekly</option>
+                <option value="monthly">Monthly</option>
               </select>
             </div>
             <div className="grid grid-cols-2 gap-4">
@@ -116,8 +152,14 @@ export default function AdminReportsPage() {
                   type="date"
                   value={formData.end_date}
                   onChange={(e) => setFormData({ ...formData, end_date: e.target.value })}
-                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm"
+                  disabled={formData.range_type !== 'none'}
+                  className={`mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm ${
+                    formData.range_type !== 'none' ? 'bg-gray-100 cursor-not-allowed' : ''
+                  }`}
                 />
+                {formData.range_type !== 'none' && (
+                  <p className="mt-1 text-xs text-gray-500">Automatically calculated based on range type</p>
+                )}
               </div>
             </div>
             <div>

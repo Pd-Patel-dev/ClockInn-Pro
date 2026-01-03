@@ -43,10 +43,10 @@ export default function KioskPage() {
       // Show success message with employee name
       const employeeName = entry.employee_name || 'Employee'
       if (entry.clock_out_at) {
-        setMessage(`✓ ${employeeName} Clocked Out Successfully`)
+        setMessage(`${employeeName} - Clocked Out`)
         setSuccess(true)
       } else {
-        setMessage(`✓ ${employeeName} Clocked In Successfully`)
+        setMessage(`${employeeName} - Clocked In`)
         setSuccess(true)
       }
       
@@ -56,7 +56,7 @@ export default function KioskPage() {
         setSuccess(false)
       }, 3000)
     } catch (err: any) {
-      setMessage(err.response?.data?.detail || 'Punch failed. Please try again.')
+      setMessage(err.response?.data?.detail || 'Invalid PIN. Please try again.')
       setSuccess(false)
       setPinDisplay('') // Clear PIN on error too
     } finally {
@@ -65,50 +65,83 @@ export default function KioskPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">
-      <div className="max-w-lg w-full bg-white rounded-2xl shadow-2xl p-8 md:p-12">
-        <div className="text-center mb-8">
-          <h1 className="text-4xl font-bold text-gray-900 mb-2">Clock In/Out</h1>
-          <p className="text-gray-600">Enter your PIN to punch</p>
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 flex items-center justify-center p-4">
+      <div className="w-full max-w-md">
+        {/* Header */}
+        <div className="text-center mb-10">
+          <div className="inline-flex items-center justify-center w-16 h-16 bg-blue-600 rounded-2xl mb-4 shadow-lg">
+            <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+          </div>
+          <h1 className="text-3xl font-bold text-gray-900 mb-2">Time Clock</h1>
+          <p className="text-gray-500 text-sm">Enter your PIN to clock in or out</p>
         </div>
 
-        <div className="space-y-6">
-          {/* Message Display */}
+        {/* Main Card */}
+        <div className="bg-white rounded-3xl shadow-xl p-8 border border-gray-100">
+          {/* Status Message */}
           {message && (
             <div
-              className={`rounded-lg p-4 text-center font-semibold ${
+              className={`mb-6 rounded-xl p-4 text-center font-medium transition-all ${
                 success
-                  ? 'bg-green-50 text-green-800 border-2 border-green-200'
-                  : 'bg-red-50 text-red-800 border-2 border-red-200'
+                  ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                  : 'bg-red-50 text-red-700 border border-red-200'
               }`}
             >
-              {message}
+              <div className="flex items-center justify-center gap-2">
+                {success ? (
+                  <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                  </svg>
+                ) : (
+                  <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                  </svg>
+                )}
+                <span>{message}</span>
+              </div>
             </div>
           )}
 
           {/* PIN Display */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2 text-center">
-              Enter Your PIN
-            </label>
-            <input
-              type="text"
-              value={pinDisplay}
-              readOnly
-              className="block w-full px-4 py-6 border-2 border-gray-300 rounded-lg shadow-sm text-center text-5xl font-mono tracking-widest focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-              placeholder="----"
-            />
+          <div className="mb-8">
+            <div className="flex justify-center gap-3 mb-4">
+              {[0, 1, 2, 3].map((index) => (
+                <div
+                  key={index}
+                  className={`w-14 h-14 rounded-xl border-2 flex items-center justify-center transition-all ${
+                    pinDisplay.length > index
+                      ? 'bg-blue-600 border-blue-600 text-white'
+                      : 'bg-gray-50 border-gray-200 text-gray-400'
+                  }`}
+                >
+                  {pinDisplay.length > index ? (
+                    <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" />
+                    </svg>
+                  ) : (
+                    <span className="text-2xl">•</span>
+                  )}
+                </div>
+              ))}
+            </div>
+            <p className="text-center text-xs text-gray-400">
+              {pinDisplay.length === 0 && 'Enter 4-digit PIN'}
+              {pinDisplay.length > 0 && pinDisplay.length < 4 && `${4 - pinDisplay.length} more digit${4 - pinDisplay.length > 1 ? 's' : ''}`}
+              {pinDisplay.length === 4 && 'Ready to punch'}
+            </p>
           </div>
 
           {/* Number Pad */}
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-3 gap-3 mb-4">
             {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((num) => (
               <button
                 key={num}
                 type="button"
                 onClick={() => appendPin(num.toString())}
-                disabled={loading}
-                className="py-5 px-4 border-2 border-gray-300 rounded-lg bg-white text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 text-3xl font-bold disabled:opacity-50 disabled:cursor-not-allowed transition-all hover:scale-105 active:scale-95"
+                disabled={loading || pinDisplay.length === 4}
+                className="aspect-square bg-gray-50 hover:bg-gray-100 active:bg-gray-200 border border-gray-200 rounded-xl text-2xl font-semibold text-gray-700 disabled:opacity-40 disabled:cursor-not-allowed transition-all duration-150 hover:scale-105 active:scale-95 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
               >
                 {num}
               </button>
@@ -117,15 +150,15 @@ export default function KioskPage() {
               type="button"
               onClick={clearPin}
               disabled={loading}
-              className="py-5 px-4 border-2 border-gray-300 rounded-lg bg-gray-100 text-gray-700 hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 font-bold text-lg disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+              className="aspect-square bg-gray-100 hover:bg-gray-200 active:bg-gray-300 border border-gray-300 rounded-xl text-sm font-semibold text-gray-700 disabled:opacity-40 disabled:cursor-not-allowed transition-all duration-150 hover:scale-105 active:scale-95 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
             >
               Clear
             </button>
             <button
               type="button"
               onClick={() => appendPin('0')}
-              disabled={loading}
-              className="py-5 px-4 border-2 border-gray-300 rounded-lg bg-white text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 text-3xl font-bold disabled:opacity-50 disabled:cursor-not-allowed transition-all hover:scale-105 active:scale-95"
+              disabled={loading || pinDisplay.length === 4}
+              className="aspect-square bg-gray-50 hover:bg-gray-100 active:bg-gray-200 border border-gray-200 rounded-xl text-2xl font-semibold text-gray-700 disabled:opacity-40 disabled:cursor-not-allowed transition-all duration-150 hover:scale-105 active:scale-95 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
             >
               0
             </button>
@@ -133,17 +166,27 @@ export default function KioskPage() {
               type="button"
               onClick={handlePunch}
               disabled={loading || pinDisplay.length !== 4}
-              className="py-5 px-4 border-2 border-transparent rounded-lg bg-primary-600 text-white hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 disabled:opacity-50 disabled:cursor-not-allowed col-span-3 font-bold text-xl transition-all hover:scale-105 active:scale-95"
+              className="col-span-3 h-14 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white rounded-xl font-semibold text-lg disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-150 hover:scale-[1.02] active:scale-[0.98] focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 shadow-lg"
             >
-              {loading ? 'Processing...' : 'Punch In/Out'}
+              {loading ? (
+                <span className="flex items-center justify-center gap-2">
+                  <svg className="animate-spin h-5 w-5" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                  Processing...
+                </span>
+              ) : (
+                'Punch'
+              )}
             </button>
           </div>
         </div>
 
-        {/* Instructions */}
-        <div className="mt-8 text-center text-sm text-gray-500">
-          <p>No login required. Enter your 4-digit PIN to automatically clock in or out.</p>
-        </div>
+        {/* Footer Note */}
+        <p className="mt-6 text-center text-xs text-gray-400">
+          No login required • Secure PIN entry
+        </p>
       </div>
     </div>
   )

@@ -49,6 +49,7 @@ async def export_report(
             employee_ids,
             request.start_date,
             request.end_date,
+            generated_by=current_user.name,
         )
         return StreamingResponse(
             buffer,

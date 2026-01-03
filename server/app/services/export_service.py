@@ -42,105 +42,31 @@ async def generate_pdf_report(
     employee_ids: List[UUID],
     start_date: date,
     end_date: date,
+    generated_by: str = "System",
 ) -> BytesIO:
-    """Generate professional PDF report for time entries."""
-    buffer = BytesIO()
-    doc = SimpleDocTemplate(buffer, pagesize=landscape(letter), 
-                           leftMargin=0.75*inch, rightMargin=0.75*inch,
-                           topMargin=1*inch, bottomMargin=0.75*inch)
-    story = []
-    styles = getSampleStyleSheet()
+    """Generate professional PDF report for time entries - one page per employee."""
+    from app.pdf_templates.time_attendance_report import generate_time_attendance_report_pdf
+    from app.models.company import Company
+    from app.models.time_entry import TimeEntry, TimeEntryStatus
+    from app.services.rounding_service import (
+        compute_minutes_with_rounding_and_breaks,
+        get_company_rounding_policy,
+    )
+    from app.services.company_service import get_company_settings
     
     # Get company information
-    from app.models.company import Company
     result = await db.execute(select(Company).where(Company.id == company_id))
     company = result.scalar_one_or_none()
     company_name = company.name if company else "Company"
     
-    # Professional color scheme
-    primary_color = colors.HexColor('#2563eb')  # Blue
-    secondary_color = colors.HexColor('#1e40af')  # Darker blue
-    accent_color = colors.HexColor('#10b981')  # Green
-    header_bg = colors.HexColor('#1e293b')  # Dark slate
-    light_bg = colors.HexColor('#f8fafc')  # Light gray
-    border_color = colors.HexColor('#e2e8f0')  # Light border
-    
-    # Title style with gradient effect
-    title_style = ParagraphStyle(
-        'ReportTitle',
-        parent=styles['Heading1'],
-        fontSize=28,
-        textColor=primary_color,
-        spaceAfter=10,
-        alignment=TA_CENTER,
-        fontName='Helvetica-Bold',
-        leading=32,
-    )
-    
-    # Subtitle style
-    subtitle_style = ParagraphStyle(
-        'ReportSubtitle',
-        parent=styles['Normal'],
-        fontSize=14,
-        textColor=colors.HexColor('#64748b'),
-        spaceAfter=20,
-        alignment=TA_CENTER,
-        fontName='Helvetica',
-    )
-    
-    # Company header
-    header_style = ParagraphStyle(
-        'CompanyHeader',
-        parent=styles['Normal'],
-        fontSize=18,
-        textColor=header_bg,
-        spaceAfter=5,
-        alignment=TA_CENTER,
-        fontName='Helvetica-Bold',
-    )
-    
-    # Period info style
-    period_style = ParagraphStyle(
-        'PeriodInfo',
-        parent=styles['Normal'],
-        fontSize=12,
-        textColor=colors.HexColor('#475569'),
-        spaceAfter=25,
-        alignment=TA_CENTER,
-        fontName='Helvetica',
-    )
-    
-    # Employee header style
-    employee_header_style = ParagraphStyle(
-        'EmployeeHeader',
-        parent=styles['Heading2'],
-        fontSize=16,
-        textColor=secondary_color,
-        spaceBefore=20,
-        spaceAfter=12,
-        fontName='Helvetica-Bold',
-        leftIndent=0,
-    )
-    
-    # Summary box style
-    summary_style = ParagraphStyle(
-        'Summary',
-        parent=styles['Normal'],
-        fontSize=11,
-        textColor=colors.HexColor('#334155'),
-        fontName='Helvetica',
-    )
-    
-    # Header section with company name
-    story.append(Spacer(1, 0.2 * inch))
-    story.append(Paragraph(f"<b>{company_name}</b>", header_style))
-    story.append(Paragraph("Time & Attendance Report", title_style))
-    
-    # Period information in a styled box
-    period_text = f"<b>Reporting Period:</b> {start_date.strftime('%B %d, %Y')} to {end_date.strftime('%B %d, %Y')}"
-    story.append(Paragraph(period_text, period_style))
-    story.append(Paragraph(f"<b>Generated:</b> {datetime.now().strftime('%B %d, %Y at %I:%M %p')}", period_style))
-    story.append(Spacer(1, 0.3 * inch))
+    # Get company settings for rounding
+    if company:
+        company_settings = get_company_settings(company)
+        rounding_policy = company_settings["rounding_policy"]
+        breaks_paid = company_settings["breaks_paid"]
+    else:
+        rounding_policy = await get_company_rounding_policy(db, company_id)
+        breaks_paid = False
     
     # Get employees
     result = await db.execute(
@@ -153,10 +79,8 @@ async def generate_pdf_report(
     )
     employees = result.scalars().all()
     
-    # Overall summary statistics
-    total_employees = len(employees)
-    total_all_hours = 0
-    total_all_breaks = 0
+    # Prepare employee data for template
+    employees_data = []
     
     for employee in employees:
         # Get time entries
@@ -172,50 +96,19 @@ async def generate_pdf_report(
         )
         entries = result.scalars().all()
         
-        if not entries:
-            continue
-        
-        # Employee section with styled header
-        employee_info = f"<b>{employee.name}</b>"
-        if employee.job_role:
-            employee_info += f" <i>• {employee.job_role}</i>"
-        story.append(Paragraph(employee_info, employee_header_style))
-        
         # Calculate totals
-        total_hours = 0
+        total_hours = 0.0
         total_break_minutes = 0
         entry_count = 0
-        
-        # Table data with improved formatting
-        data = [['Date', 'Clock In', 'Clock Out', 'Hours', 'Break', 'Status']]
+        entry_list = []
         
         for entry in entries:
             entry_count += 1
             date_str = entry.clock_in_at.strftime("%m/%d/%Y")
             clock_in = entry.clock_in_at.strftime("%I:%M %p")
-            clock_out = entry.clock_out_at.strftime("%I:%M %p") if entry.clock_out_at else "<i>Open</i>"
+            clock_out = entry.clock_out_at.strftime("%I:%M %p") if entry.clock_out_at else "Open"
             
             if entry.clock_out_at:
-                # Use rounding service for consistent calculation
-                from app.services.rounding_service import (
-                    compute_minutes_with_rounding_and_breaks,
-                    get_company_rounding_policy,
-                )
-                from app.services.company_service import get_company_settings
-                
-                # Get company settings
-                result = await db.execute(
-                    select(Company).where(Company.id == company_id)
-                )
-                company = result.scalar_one_or_none()
-                if company:
-                    company_settings = get_company_settings(company)
-                    rounding_policy = company_settings["rounding_policy"]
-                    breaks_paid = company_settings["breaks_paid"]
-                else:
-                    rounding_policy = await get_company_rounding_policy(db, company_id)
-                    breaks_paid = False
-                
                 rounded_minutes = compute_minutes_with_rounding_and_breaks(
                     entry.clock_in_at,
                     entry.clock_out_at,
@@ -226,171 +119,44 @@ async def generate_pdf_report(
                 hours = rounded_minutes / 60.0
                 total_hours += hours
             else:
-                hours = 0
+                hours = 0.0
             
             total_break_minutes += entry.break_minutes
             
-            # Status badge color
-            status_text = entry.status.value.title()
-            if entry.status == TimeEntryStatus.CLOSED:
-                status_color = accent_color
-            elif entry.status == TimeEntryStatus.OPEN:
-                status_color = colors.HexColor('#f59e0b')  # Amber
-            else:
-                status_color = colors.HexColor('#6366f1')  # Indigo
-            
-            data.append([
-                date_str,
-                clock_in,
-                clock_out,
-                f"{hours:.2f}",
-                f"{entry.break_minutes} min",
-                status_text,
-            ])
+            entry_list.append({
+                'date': date_str,
+                'clock_in': clock_in,
+                'clock_out': clock_out,
+                'hours': hours,
+                'break_minutes': entry.break_minutes,
+                'status': entry.status.value.title(),
+            })
         
-        total_all_hours += total_hours
-        total_all_breaks += total_break_minutes
+        # Calculate average hours per day
+        avg_hours_per_day = (total_hours / entry_count) if entry_count > 0 else 0.0
         
-        # Employee summary box
-        summary_data = [
-            ['<b>Summary</b>', '', '', '', '', ''],
-            ['Total Entries:', f'<b>{entry_count}</b>', '', 'Total Hours:', f'<b>{total_hours:.2f}</b>', ''],
-            ['Total Breaks:', f'<b>{total_break_minutes} min</b>', '', 'Avg Hours/Day:', f'<b>{(total_hours / entry_count) if entry_count > 0 else 0:.2f}</b>', ''],
-        ]
-        
-        summary_table = Table(summary_data, colWidths=[1.2*inch, 1*inch, 0.5*inch, 1.2*inch, 1*inch, 0.5*inch])
-        summary_table.setStyle(TableStyle([
-            ('BACKGROUND', (0, 0), (-1, 0), light_bg),
-            ('TEXTCOLOR', (0, 0), (-1, 0), secondary_color),
-            ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
-            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-            ('FONTSIZE', (0, 0), (-1, 0), 11),
-            ('FONTSIZE', (0, 1), (-1, -1), 10),
-            ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
-            ('TOPPADDING', (0, 0), (-1, -1), 8),
-            ('LEFTPADDING', (0, 0), (-1, -1), 8),
-            ('RIGHTPADDING', (0, 0), (-1, -1), 8),
-            ('GRID', (0, 0), (-1, -1), 0.5, border_color),
-            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-        ]))
-        story.append(summary_table)
-        story.append(Spacer(1, 0.15 * inch))
-        
-        # Add totals row to main table
-        data.append([
-            '<b>TOTAL</b>',
-            '',
-            '',
-            f"<b>{total_hours:.2f} hrs</b>",
-            f"<b>{total_break_minutes} min</b>",
-            '',
-        ])
-        
-        # Create main table with professional styling
-        table = Table(data, colWidths=[1.1*inch, 1.2*inch, 1.2*inch, 0.9*inch, 0.9*inch, 0.9*inch])
-        table.setStyle(TableStyle([
-            # Header row
-            ('BACKGROUND', (0, 0), (-1, 0), header_bg),
-            ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
-            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-            ('FONTSIZE', (0, 0), (-1, 0), 11),
-            ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
-            ('TOPPADDING', (0, 0), (-1, 0), 12),
-            
-            # Data rows - alternating colors
-            ('BACKGROUND', (0, 1), (-1, -2), colors.white),
-            ('TEXTCOLOR', (0, 1), (-1, -2), colors.HexColor('#1e293b')),
-            ('FONTSIZE', (0, 1), (-1, -2), 9),
-            ('ROWBACKGROUNDS', (0, 1), (-1, -2), [colors.white, light_bg]),
-            
-            # Totals row
-            ('BACKGROUND', (0, -1), (-1, -1), secondary_color),
-            ('TEXTCOLOR', (0, -1), (-1, -1), colors.white),
-            ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'),
-            ('FONTSIZE', (0, -1), (-1, -1), 10),
-            ('TOPPADDING', (0, -1), (-1, -1), 10),
-            ('BOTTOMPADDING', (0, -1), (-1, -1), 10),
-            
-            # Grid and borders
-            ('GRID', (0, 0), (-1, -1), 0.5, border_color),
-            ('LINEBELOW', (0, 0), (-1, 0), 2, header_bg),
-            ('LINEABOVE', (0, -1), (-1, -1), 2, secondary_color),
-            
-            # Padding
-            ('LEFTPADDING', (0, 0), (-1, -1), 8),
-            ('RIGHTPADDING', (0, 0), (-1, -1), 8),
-            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-        ]))
-        
-        story.append(table)
-        story.append(Spacer(1, 0.4 * inch))
+        employees_data.append({
+            'employee_name': employee.name,
+            'job_role': employee.job_role or '',
+            'total_entries': entry_count,
+            'total_hours': total_hours,
+            'total_break_minutes': total_break_minutes,
+            'avg_hours_per_day': avg_hours_per_day,
+            'entries': entry_list,
+        })
     
-    # Overall summary at the end
-    if total_employees > 0:
-        story.append(PageBreak())
-        overall_summary_style = ParagraphStyle(
-            'OverallSummary',
-            parent=styles['Heading1'],
-            fontSize=20,
-            textColor=primary_color,
-            spaceAfter=15,
-            alignment=TA_CENTER,
-            fontName='Helvetica-Bold',
-        )
-        
-        story.append(Paragraph("Overall Summary", overall_summary_style))
-        
-        summary_data = [
-            ['<b>Metric</b>', '<b>Value</b>'],
-            ['Total Employees', f'{total_employees}'],
-            ['Total Hours Worked', f'{total_all_hours:.2f} hours'],
-            ['Total Break Time', f'{total_all_breaks} minutes'],
-            ['Average Hours per Employee', f'{(total_all_hours / total_employees):.2f} hours'],
-        ]
-        
-        summary_table = Table(summary_data, colWidths=[3*inch, 2*inch])
-        summary_table.setStyle(TableStyle([
-            ('BACKGROUND', (0, 0), (-1, 0), primary_color),
-            ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
-            ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
-            ('ALIGN', (1, 0), (-1, -1), 'RIGHT'),
-            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-            ('FONTSIZE', (0, 0), (-1, 0), 12),
-            ('FONTSIZE', (0, 1), (-1, -1), 11),
-            ('BOTTOMPADDING', (0, 0), (-1, -1), 10),
-            ('TOPPADDING', (0, 0), (-1, -1), 10),
-            ('LEFTPADDING', (0, 0), (-1, -1), 12),
-            ('RIGHTPADDING', (0, 0), (-1, -1), 12),
-            ('GRID', (0, 0), (-1, -1), 0.5, border_color),
-            ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, light_bg]),
-            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-        ]))
-        story.append(summary_table)
+    # Generate PDF using new template
+    pdf_bytes = generate_time_attendance_report_pdf(
+        company_name=company_name,
+        period_start=start_date,
+        period_end=end_date,
+        generated_at=datetime.now(),
+        generated_by=generated_by,
+        employees_data=employees_data,
+    )
     
-    # Build PDF with custom page numbering
-    def on_first_page(canvas, doc):
-        canvas.saveState()
-        canvas.setFont("Helvetica", 9)
-        canvas.setFillColor(colors.HexColor('#94a3b8'))
-        page_text = f"Page 1"
-        text_width = canvas.stringWidth(page_text, "Helvetica", 9)
-        page_width = doc.pagesize[0]
-        canvas.drawString((page_width - text_width) / 2, 0.5 * inch, page_text)
-        canvas.restoreState()
-    
-    def on_later_pages(canvas, doc):
-        canvas.saveState()
-        canvas.setFont("Helvetica", 9)
-        canvas.setFillColor(colors.HexColor('#94a3b8'))
-        page_num = canvas.getPageNumber()
-        page_text = f"Page {page_num}"
-        text_width = canvas.stringWidth(page_text, "Helvetica", 9)
-        page_width = doc.pagesize[0]
-        canvas.drawString((page_width - text_width) / 2, 0.5 * inch, page_text)
-        canvas.restoreState()
-    
-    doc.build(story, onFirstPage=on_first_page, onLaterPages=on_later_pages)
+    # Convert bytes to BytesIO
+    buffer = BytesIO(pdf_bytes)
     buffer.seek(0)
     return buffer
 
@@ -549,8 +315,8 @@ async def generate_payroll_pdf(
     
     buffer = BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=letter,
-                           leftMargin=0.75*inch, rightMargin=0.75*inch,
-                           topMargin=1*inch, bottomMargin=0.75*inch)
+                           leftMargin=0.5*inch, rightMargin=0.5*inch,
+                           topMargin=0.5*inch, bottomMargin=0.5*inch)
     story = []
     styles = getSampleStyleSheet()
     
@@ -561,47 +327,33 @@ async def generate_payroll_pdf(
     light_bg = colors.HexColor('#f8fafc')
     border_color = colors.HexColor('#e2e8f0')
     
-    # Title style
-    title_style = ParagraphStyle(
-        'PayrollTitle',
-        parent=styles['Heading1'],
-        fontSize=26,
-        textColor=primary_color,
-        spaceAfter=10,
-        alignment=TA_CENTER,
-        fontName='Helvetica-Bold',
-    )
-    
-    # Company and period info
+    # Simplified header - smaller and cleaner
     company_name = payroll_run.company.name if payroll_run.company else "Company"
-    story.append(Spacer(1, 0.2 * inch))
-    story.append(Paragraph(f"<b>{company_name}</b>", ParagraphStyle(
-        'CompanyName',
+    story.append(Spacer(1, 0.1 * inch))
+    
+    # Company name and title on same line, smaller
+    header_style = ParagraphStyle(
+        'Header',
         parent=styles['Normal'],
-        fontSize=18,
+        fontSize=14,
         textColor=header_bg,
+        spaceAfter=8,
         alignment=TA_CENTER,
         fontName='Helvetica-Bold',
-    )))
-    story.append(Paragraph("Payroll Report", title_style))
-    
-    # Info section
-    info_style = ParagraphStyle(
-        'Info',
-        parent=styles['Normal'],
-        fontSize=11,
-        textColor=colors.HexColor('#475569'),
-        spaceAfter=5,
-        alignment=TA_CENTER,
     )
     
-    story.append(Paragraph(f"<b>Payroll Type:</b> {payroll_run.payroll_type.value}", info_style))
-    story.append(Paragraph(f"<b>Period:</b> {payroll_run.period_start_date.strftime('%B %d, %Y')} to {payroll_run.period_end_date.strftime('%B %d, %Y')}", info_style))
-    story.append(Paragraph(f"<b>Generated:</b> {payroll_run.generated_at.strftime('%B %d, %Y at %I:%M %p')}", info_style))
-    if payroll_run.generator:
-        story.append(Paragraph(f"<b>Generated By:</b> {payroll_run.generator.name}", info_style))
-    story.append(Paragraph(f"<b>Status:</b> {payroll_run.status.value.title()}", info_style))
-    story.append(Spacer(1, 0.3 * inch))
+    story.append(Paragraph(f"<b>{company_name}</b> - Payroll Report", header_style))
+    
+    # Period info only - one line, smaller
+    period_text = f"{payroll_run.period_start_date.strftime('%b %d, %Y')} to {payroll_run.period_end_date.strftime('%b %d, %Y')}"
+    story.append(Paragraph(period_text, ParagraphStyle(
+        'Period',
+        parent=styles['Normal'],
+        fontSize=10,
+        textColor=colors.HexColor('#64748b'),
+        spaceAfter=15,
+        alignment=TA_CENTER,
+    )))
     
     # Table data
     data = [["Employee", "Regular Hours", "OT Hours", "Rate", "Regular Pay", "OT Pay", "Total Pay", "Exceptions"]]
@@ -625,84 +377,99 @@ async def generate_payroll_pdf(
             str(item.exceptions_count) if item.exceptions_count > 0 else "-",
         ])
     
-    # Totals row
+    # Totals row - use Paragraph objects with white text for proper bold formatting
     total_regular_hours = float(payroll_run.total_regular_hours)
     total_ot_hours = float(payroll_run.total_overtime_hours)
     total_gross_dollars = payroll_run.total_gross_pay_cents / 100.0
     
-    data.append([
-        "<b>TOTALS</b>",
-        f"<b>{total_regular_hours:.2f}</b>",
-        f"<b>{total_ot_hours:.2f}</b>",
-        "",
-        "",
-        "",
-        f"<b>${total_gross_dollars:,.2f}</b>",
-        "",
-    ])
+    totals_style = ParagraphStyle(
+        'Totals',
+        parent=styles['Normal'],
+        fontSize=9,
+        fontName='Helvetica-Bold',
+        textColor=colors.white,
+        alignment=TA_CENTER,
+    )
     
-    # Create table with professional styling
+    # Convert totals row to use Paragraph for proper rendering with white text
+    totals_row = [
+        Paragraph("TOTALS", totals_style),
+        Paragraph(f"{total_regular_hours:.2f}", totals_style),
+        Paragraph(f"{total_ot_hours:.2f}", totals_style),
+        "",
+        "",
+        "",
+        Paragraph(f"${total_gross_dollars:,.2f}", totals_style),
+        "",
+    ]
+    
+    # Convert all previous rows to Paragraphs for consistency
+    table_data = []
+    for i, row in enumerate(data):
+        if i == 0:  # Header row - white text
+            header_style = ParagraphStyle(
+                'Header',
+                parent=styles['Normal'],
+                fontSize=9,
+                fontName='Helvetica-Bold',
+                textColor=colors.white,
+                alignment=TA_CENTER,
+            )
+            table_data.append([Paragraph(str(cell), header_style) for cell in row])
+        else:
+            cell_style = ParagraphStyle(
+                'Cell',
+                parent=styles['Normal'],
+                fontSize=8,
+                alignment=TA_CENTER,
+            )
+            table_data.append([Paragraph(str(cell), cell_style) if cell else "" for cell in row])
+    
+    # Add totals row
+    table_data.append(totals_row)
+    data = table_data
+    
+    # Create table with compact styling - smaller fonts and padding
     table = Table(data, colWidths=[2*inch, 0.9*inch, 0.9*inch, 0.9*inch, 1.1*inch, 1.1*inch, 1.1*inch, 0.8*inch])
     table.setStyle(TableStyle([
-        # Header
+        # Header - smaller
         ('BACKGROUND', (0, 0), (-1, 0), header_bg),
         ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
         ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
         ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-        ('FONTSIZE', (0, 0), (-1, 0), 11),
-        ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
-        ('TOPPADDING', (0, 0), (-1, 0), 12),
+        ('FONTSIZE', (0, 0), (-1, 0), 9),
+        ('BOTTOMPADDING', (0, 0), (-1, 0), 8),
+        ('TOPPADDING', (0, 0), (-1, 0), 8),
         
-        # Data rows
+        # Data rows - smaller
         ('BACKGROUND', (0, 1), (-1, -2), colors.white),
         ('TEXTCOLOR', (0, 1), (-1, -2), colors.HexColor('#1e293b')),
-        ('FONTSIZE', (0, 1), (-1, -2), 9),
+        ('FONTSIZE', (0, 1), (-1, -2), 8),
         ('ROWBACKGROUNDS', (0, 1), (-1, -2), [colors.white, light_bg]),
         
-        # Totals row
+        # Totals row - smaller
         ('BACKGROUND', (0, -1), (-1, -1), secondary_color),
         ('TEXTCOLOR', (0, -1), (-1, -1), colors.white),
         ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'),
-        ('FONTSIZE', (0, -1), (-1, -1), 10),
-        ('TOPPADDING', (0, -1), (-1, -1), 10),
-        ('BOTTOMPADDING', (0, -1), (-1, -1), 10),
+        ('FONTSIZE', (0, -1), (-1, -1), 9),
+        ('TOPPADDING', (0, -1), (-1, -1), 8),
+        ('BOTTOMPADDING', (0, -1), (-1, -1), 8),
         
-        # Grid
+        # Grid - lighter
         ('GRID', (0, 0), (-1, -1), 0.5, border_color),
-        ('LINEBELOW', (0, 0), (-1, 0), 2, header_bg),
-        ('LINEABOVE', (0, -1), (-1, -1), 2, secondary_color),
+        ('LINEBELOW', (0, 0), (-1, 0), 1, header_bg),
+        ('LINEABOVE', (0, -1), (-1, -1), 1, secondary_color),
         
-        # Padding
-        ('LEFTPADDING', (0, 0), (-1, -1), 8),
-        ('RIGHTPADDING', (0, 0), (-1, -1), 8),
+        # Padding - reduced
+        ('LEFTPADDING', (0, 0), (-1, -1), 6),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 6),
         ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
     ]))
     
     story.append(table)
     
-    # Page numbering
-    def on_first_page(canvas, doc):
-        canvas.saveState()
-        canvas.setFont("Helvetica", 9)
-        canvas.setFillColor(colors.HexColor('#94a3b8'))
-        page_text = f"Page 1"
-        text_width = canvas.stringWidth(page_text, "Helvetica", 9)
-        page_width = doc.pagesize[0]
-        canvas.drawString((page_width - text_width) / 2, 0.5 * inch, page_text)
-        canvas.restoreState()
-    
-    def on_later_pages(canvas, doc):
-        canvas.saveState()
-        canvas.setFont("Helvetica", 9)
-        canvas.setFillColor(colors.HexColor('#94a3b8'))
-        page_num = canvas.getPageNumber()
-        page_text = f"Page {page_num}"
-        text_width = canvas.stringWidth(page_text, "Helvetica", 9)
-        page_width = doc.pagesize[0]
-        canvas.drawString((page_width - text_width) / 2, 0.5 * inch, page_text)
-        canvas.restoreState()
-    
-    doc.build(story, onFirstPage=on_first_page, onLaterPages=on_later_pages)
+    # No page numbering to keep it simple
+    doc.build(story)
     buffer.seek(0)
     return buffer
 

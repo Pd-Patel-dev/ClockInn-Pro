@@ -111,11 +111,13 @@ export default function AdminTimePage() {
       'closed': { color: 'text-green-800', bg: 'bg-green-100' },
       'open': { color: 'text-yellow-800', bg: 'bg-yellow-100' },
       'approved': { color: 'text-blue-800', bg: 'bg-blue-100' },
+      'edited': { color: 'text-purple-800', bg: 'bg-purple-100' },
     }
     const style = statusMap[status.toLowerCase()] || { color: 'text-gray-800', bg: 'bg-gray-100' }
+    const capitalizedStatus = status ? status.charAt(0).toUpperCase() + status.slice(1).toLowerCase() : status
     return (
       <span className={`px-3 py-1 rounded-full text-xs font-semibold ${style.bg} ${style.color}`}>
-        {status}
+        {capitalizedStatus}
       </span>
     )
   }
