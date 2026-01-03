@@ -95,6 +95,27 @@ async def create_employee(
             detail="Email already exists in company",
         )
     
+    # Check if PIN is unique within the company (if PIN is provided)
+    if data.pin:
+        pin_hash = get_pin_hash(data.pin)
+        result = await db.execute(
+            select(User).where(
+                and_(
+                    User.company_id == company_id,
+                    User.pin_hash == pin_hash,
+                    User.role == UserRole.EMPLOYEE,
+                )
+            )
+        )
+        existing_pin_user = result.scalar_one_or_none()
+        if existing_pin_user:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="This PIN is already in use by another employee in your company. Please choose a different PIN.",
+            )
+    else:
+        pin_hash = None
+    
     # Create user
     user = User(
         id=uuid.uuid4(),
@@ -103,7 +124,7 @@ async def create_employee(
         name=data.name,
         email=normalized_email,
         password_hash=get_password_hash(data.password),
-        pin_hash=get_pin_hash(data.pin) if data.pin else None,
+        pin_hash=pin_hash,
         status=UserStatus.ACTIVE,
         job_role=data.job_role,
         pay_rate=data.pay_rate,
@@ -116,6 +137,13 @@ async def create_employee(
         return user
     except Exception as e:
         await db.rollback()
+        # Check if it's a unique constraint violation for PIN
+        error_str = str(e).lower()
+        if 'pin_hash' in error_str or 'ix_users_company_pin_hash_unique' in error_str:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="This PIN is already in use by another employee in your company. Please choose a different PIN.",
+            )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to create employee: {str(e)}",
@@ -156,7 +184,25 @@ async def update_employee(
         if data.pin == "":
             user.pin_hash = None
         else:
-            user.pin_hash = get_pin_hash(data.pin)
+            # Check if PIN is unique within the company (excluding current employee)
+            new_pin_hash = get_pin_hash(data.pin)
+            result = await db.execute(
+                select(User).where(
+                    and_(
+                        User.company_id == company_id,
+                        User.pin_hash == new_pin_hash,
+                        User.id != employee_id,  # Exclude current employee
+                        User.role == UserRole.EMPLOYEE,
+                    )
+                )
+            )
+            existing_pin_user = result.scalar_one_or_none()
+            if existing_pin_user:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="This PIN is already in use by another employee in your company. Please choose a different PIN.",
+                )
+            user.pin_hash = new_pin_hash
     if data.job_role is not None:
         user.job_role = data.job_role
     if data.pay_rate is not None:
@@ -217,6 +263,13 @@ async def update_employee(
         return user
     except Exception as e:
         await db.rollback()
+        # Check if it's a unique constraint violation for PIN
+        error_str = str(e).lower()
+        if 'pin_hash' in error_str or 'ix_users_company_pin_hash_unique' in error_str or 'unique constraint' in error_str:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="This PIN is already in use by another employee in your company. Please choose a different PIN.",
+            )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to update employee: {str(e)}",
