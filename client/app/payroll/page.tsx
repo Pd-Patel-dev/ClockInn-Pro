@@ -107,7 +107,7 @@ export default function AdminPayrollPage() {
   }, [router, filters])
 
   const handleViewPayrollRun = (runId: string) => {
-    router.push(`/admin/payroll/${runId}`)
+    router.push(`/payroll/${runId}`)
   }
 
   const onSubmit = async (data: PayrollGenerateForm) => {
@@ -122,7 +122,7 @@ export default function AdminPayrollPage() {
       reset()
       fetchPayrollRuns()
       // Navigate to the newly created payroll run
-      router.push(`/admin/payroll/${response.data.id}`)
+      router.push(`/payroll/${response.data.id}`)
     } catch (error: any) {
       logger.error('Failed to generate payroll', error as Error, { endpoint: '/admin/payroll/runs/generate' })
       toast.error(error.response?.data?.detail || 'Failed to generate payroll')
@@ -310,7 +310,7 @@ export default function AdminPayrollPage() {
                 payrollRuns.map((run) => (
                   <Link
                     key={run.id}
-                    href={`/admin/payroll/${run.id}`}
+                    href={`/payroll/${run.id}`}
                     className="block px-6 py-4 hover:bg-gray-50 transition-colors"
                   >
                     <div className="flex justify-between items-start">

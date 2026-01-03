@@ -96,19 +96,19 @@ export default function DashboardPage() {
     {
       title: 'Punch In/Out',
       description: 'Clock in or out for your shift',
-      href: '/my/punch',
+      href: '/punch',
       color: 'from-blue-500 to-blue-600',
     },
     {
       title: 'Time Logs',
       description: 'View your time entries',
-      href: '/my/logs',
+      href: '/logs',
       color: 'from-green-500 to-green-600',
     },
     {
       title: 'Leave Requests',
       description: 'Request time off',
-      href: '/my/leave',
+      href: '/leave',
       color: 'from-purple-500 to-purple-600',
     },
   ]
@@ -117,37 +117,37 @@ export default function DashboardPage() {
     {
       title: 'Employees',
       description: 'Manage your team',
-      href: '/admin/employees',
+      href: '/employees',
       color: 'from-indigo-500 to-indigo-600',
     },
     {
       title: 'Time Entries',
       description: 'View all time entries',
-      href: '/admin/time',
+      href: '/time-entries',
       color: 'from-blue-500 to-blue-600',
     },
     {
       title: 'Payroll',
       description: 'Generate payroll',
-      href: '/admin/payroll',
+      href: '/payroll',
       color: 'from-green-500 to-green-600',
     },
     {
       title: 'Leave Requests',
       description: 'Review leave requests',
-      href: '/admin/leave',
+      href: '/leave-requests',
       color: 'from-yellow-500 to-yellow-600',
     },
     {
       title: 'Reports',
       description: 'Generate reports',
-      href: '/admin/reports',
+      href: '/reports',
       color: 'from-purple-500 to-purple-600',
     },
     {
       title: 'Settings',
       description: 'Company settings',
-      href: '/admin/settings',
+      href: '/settings',
       color: 'from-gray-500 to-gray-600',
     },
   ]
@@ -246,7 +246,7 @@ export default function DashboardPage() {
                 <div className="flex justify-between items-center">
                   <h2 className="text-xl font-semibold text-gray-900">Recent Employees</h2>
                   <Link
-                    href="/admin/employees"
+                    href="/employees"
                     className="text-sm text-blue-600 hover:text-blue-700 font-medium"
                   >
                     View All
@@ -285,7 +285,7 @@ export default function DashboardPage() {
                       {employees.map((employee) => (
                         <tr
                           key={employee.id}
-                          onClick={() => router.push(`/admin/employees/${employee.id}`)}
+                          onClick={() => router.push(`/employees/${employee.id}`)}
                           className="hover:bg-gray-50 transition-colors cursor-pointer"
                         >
                           <td className="px-6 py-4 whitespace-nowrap">

@@ -86,7 +86,7 @@ export default function PayrollDetailsPage() {
       logger.error('Failed to fetch payroll run', error as Error, { endpoint: `/admin/payroll/runs/${params.id}` })
       if (error.response?.status === 404) {
         toast.error('Payroll run not found')
-        router.push('/admin/payroll')
+        router.push('/payroll')
       } else if (error.response?.status === 403) {
         router.push('/dashboard')
       } else {
@@ -171,7 +171,7 @@ export default function PayrollDetailsPage() {
       await api.delete(`/admin/payroll/runs/${payrollRunId}`)
       toast.success('Payroll run deleted successfully!')
       // Success - redirect to payroll list
-      router.push('/admin/payroll')
+      router.push('/payroll')
     } catch (error: any) {
       logger.error('Failed to delete payroll', error as Error, { endpoint: `/admin/payroll/runs/${payrollRunId}` })
       const errorMessage = error.response?.data?.detail || error.message || 'Failed to delete payroll'
@@ -218,7 +218,7 @@ export default function PayrollDetailsPage() {
       <div className="px-4 py-6 sm:px-0">
         <div className="mb-6">
           <button
-            onClick={() => router.push('/admin/payroll')}
+            onClick={() => router.push('/payroll')}
             className="mb-4 text-primary-600 hover:text-primary-700 flex items-center"
           >
             ← Back to Payroll Runs

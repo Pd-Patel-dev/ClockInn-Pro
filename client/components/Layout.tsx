@@ -53,19 +53,19 @@ export default function Layout({ children }: { children: React.ReactNode }) {
 
   const employeeLinks = [
     { href: '/dashboard', label: 'Dashboard' },
-    { href: '/my/punch', label: 'Punch In/Out' },
-    { href: '/my/logs', label: 'My Logs' },
-    { href: '/my/leave', label: 'Leave' },
+    { href: '/punch', label: 'Punch In/Out' },
+    { href: '/logs', label: 'My Logs' },
+    { href: '/leave', label: 'Leave' },
   ]
 
   const adminLinks = [
     { href: '/dashboard', label: 'Dashboard' },
-    { href: '/admin/employees', label: 'Employees' },
-    { href: '/admin/payroll', label: 'Payroll' },
-    { href: '/admin/time', label: 'Time Entries' },
-    { href: '/admin/leave', label: 'Leave Requests' },
-    { href: '/admin/reports', label: 'Reports' },
-    { href: '/admin/settings', label: 'Settings' },
+    { href: '/employees', label: 'Employees' },
+    { href: '/payroll', label: 'Payroll' },
+    { href: '/time-entries', label: 'Time Entries' },
+    { href: '/leave-requests', label: 'Leave Requests' },
+    { href: '/reports', label: 'Reports' },
+    { href: '/settings', label: 'Settings' },
   ]
 
   const links = isAdmin ? adminLinks : employeeLinks

@@ -32,7 +32,7 @@ export const EmployeeRow = React.memo<EmployeeRowProps>(({ employee, onEdit, onD
     if ((e.target as HTMLElement).closest('button')) {
       return
     }
-    router.push(`/admin/employees/${employee.id}`)
+    router.push(`/employees/${employee.id}`)
   }
 
   return (
