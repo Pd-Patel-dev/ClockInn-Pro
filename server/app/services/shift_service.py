@@ -280,7 +280,13 @@ async def list_shifts(
     
     # Exclude CANCELLED shifts by default (unless explicitly requested)
     if status:
-        query = query.where(Shift.status == ShiftStatus(status))
+        try:
+            # Convert string status to enum (case-insensitive)
+            status_enum = ShiftStatus(status.upper())
+            query = query.where(Shift.status == status_enum)
+        except (ValueError, AttributeError):
+            # Invalid status provided, return empty results
+            return [], 0
     else:
         # If no status filter provided, exclude CANCELLED shifts
         query = query.where(Shift.status != ShiftStatus.CANCELLED)
@@ -304,12 +310,34 @@ async def list_shifts(
         if extended_end:
             query = query.where(Shift.shift_date <= extended_end)
     
-    # Get total count
-    count_query = select(func.count()).select_from(query.subquery())
+    # Get total count - use a separate simpler query for better reliability
+    count_query = select(func.count(Shift.id)).where(Shift.company_id == company_id)
+    
+    # Exclude CANCELLED shifts by default (unless explicitly requested)
+    if status:
+        try:
+            status_enum = ShiftStatus(status.upper())
+            count_query = count_query.where(Shift.status == status_enum)
+        except (ValueError, AttributeError):
+            return [], 0
+    else:
+        count_query = count_query.where(Shift.status != ShiftStatus.CANCELLED)
+    
+    if employee_id:
+        count_query = count_query.where(Shift.employee_id == employee_id)
+    
+    if start_date or end_date:
+        extended_start = start_date - timedelta(days=1) if start_date else None
+        extended_end = end_date + timedelta(days=1) if end_date else None
+        if extended_start:
+            count_query = count_query.where(Shift.shift_date >= extended_start)
+        if extended_end:
+            count_query = count_query.where(Shift.shift_date <= extended_end)
+    
     count_result = await db.execute(count_query)
     total = count_result.scalar() or 0
     
-    # Get paginated results
+    # Get paginated results with eager loading
     query = query.options(
         selectinload(Shift.employee),
         selectinload(Shift.approver),

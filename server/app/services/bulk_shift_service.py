@@ -294,6 +294,16 @@ async def create_bulk_week_shifts(
                 pass
         
         # Create the shift
+        # Determine status: use preview status if no conflict, otherwise DRAFT if draft policy
+        if preview.has_conflict and data.conflict_policy == "draft":
+            shift_status = ShiftStatus.DRAFT
+        else:
+            # Convert string status to enum, with fallback to DRAFT
+            try:
+                shift_status = ShiftStatus(preview.status.upper()) if preview.status else ShiftStatus.DRAFT
+            except (ValueError, AttributeError):
+                shift_status = ShiftStatus.DRAFT
+        
         shift = Shift(
             id=uuid4(),
             company_id=company_id,
@@ -302,7 +312,7 @@ async def create_bulk_week_shifts(
             start_time=preview.start_time,
             end_time=preview.end_time,
             break_minutes=preview.break_minutes,
-            status=ShiftStatus(preview.status) if not preview.has_conflict or data.conflict_policy != "draft" else ShiftStatus.DRAFT,
+            status=shift_status,
             notes=(
                 f"{preview.notes or ''}\n[Conflict detected on creation]".strip()
                 if preview.has_conflict and data.conflict_policy == "draft"
