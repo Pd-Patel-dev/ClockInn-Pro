@@ -70,15 +70,38 @@ def handle_endpoint_errors(
                 )
             except Exception as e:
                 # Catch all other unexpected exceptions
+                error_detail = str(e)
+                error_type = type(e).__name__
+                
+                # Check for common database errors and provide more helpful messages
+                if "does not exist" in error_detail.lower() or "relation" in error_detail.lower():
+                    error_detail = f"Database schema issue detected. Please ensure all migrations have been run. Original error: {error_detail}"
+                elif "column" in error_detail.lower() and ("does not exist" in error_detail.lower() or "not found" in error_detail.lower()):
+                    error_detail = f"Database column missing. Please ensure all migrations have been run. Original error: {error_detail}"
+                
                 if log_error:
                     logger.error(
                         f"Unexpected error in {op_name}",
                         exc_info=True,
-                        extra={"operation": op_name, "error": str(e)}
+                        extra={
+                            "operation": op_name,
+                            "error": error_detail,
+                            "error_type": error_type
+                        }
                     )
+                
+                # In development, return more detailed error messages
+                import os
+                is_dev = os.getenv("ENVIRONMENT", "").lower() not in ["prod", "production"]
+                
+                if is_dev:
+                    detail_msg = f"Error in {op_name}: {error_type}: {error_detail}"
+                else:
+                    detail_msg = f"An unexpected error occurred while processing your request. Please try again later."
+                
                 raise HTTPException(
                     status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                    detail=f"An unexpected error occurred while processing your request. Please try again later.",
+                    detail=detail_msg,
                 )
         return wrapper
     return decorator
