@@ -122,7 +122,9 @@ api.interceptors.request.use(
       console.log('Full URL:', `${config.baseURL}${config.url}`)
       console.log('Method:', config.method?.toUpperCase())
       console.log('Has Authorization Header:', !!config.headers.Authorization)
-      console.log('Authorization Header Value:', config.headers.Authorization ? `${config.headers.Authorization.substring(0, 20)}...` : 'MISSING')
+      const authHeader = config.headers.Authorization
+      const authHeaderStr = typeof authHeader === 'string' ? authHeader : (Array.isArray(authHeader) ? authHeader[0] : String(authHeader || ''))
+      console.log('Authorization Header Value:', authHeaderStr ? `${authHeaderStr.substring(0, 20)}...` : 'MISSING')
       console.log('Token Available:', !!token)
       console.log('Request Headers:', JSON.stringify(config.headers, null, 2))
     }
