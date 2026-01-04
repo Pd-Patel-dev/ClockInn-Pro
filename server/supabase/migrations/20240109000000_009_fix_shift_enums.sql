@@ -23,9 +23,11 @@ BEGIN
         AND column_name = 'status'
         AND data_type = 'character varying'
     ) THEN
-        -- Alter column to use enum type
+        -- Drop default, change type, then restore default
+        ALTER TABLE shifts ALTER COLUMN status DROP DEFAULT;
         ALTER TABLE shifts 
         ALTER COLUMN status TYPE shiftstatus USING status::shiftstatus;
+        ALTER TABLE shifts ALTER COLUMN status SET DEFAULT 'DRAFT'::shiftstatus;
     END IF;
 END $$;
 
@@ -39,9 +41,11 @@ BEGIN
         AND column_name = 'template_type'
         AND data_type = 'character varying'
     ) THEN
-        -- Alter column to use enum type
+        -- Drop default, change type, then restore default
+        ALTER TABLE shift_templates ALTER COLUMN template_type DROP DEFAULT;
         ALTER TABLE shift_templates 
         ALTER COLUMN template_type TYPE shifttemplatetype USING template_type::shifttemplatetype;
+        ALTER TABLE shift_templates ALTER COLUMN template_type SET DEFAULT 'NONE'::shifttemplatetype;
     END IF;
 END $$;
 
