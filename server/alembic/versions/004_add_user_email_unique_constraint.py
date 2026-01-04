@@ -19,19 +19,18 @@ depends_on = None
 def upgrade() -> None:
     # First, clean up any duplicate emails within the same company
     # Keep the oldest user record for each (company_id, email) pair
+    # Clean up duplicate emails using ROW_NUMBER (compatible with UUID)
     op.execute(text("""
-        DELETE FROM users u1
-        WHERE u1.id NOT IN (
-            SELECT MIN(u2.id)
-            FROM users u2
-            GROUP BY u2.company_id, LOWER(u2.email)
-        )
-        AND EXISTS (
-            SELECT 1
-            FROM users u3
-            WHERE u3.company_id = u1.company_id
-            AND LOWER(u3.email) = LOWER(u1.email)
-            AND u3.id < u1.id
+        DELETE FROM users
+        WHERE id IN (
+            SELECT id
+            FROM (
+                SELECT
+                    id,
+                    ROW_NUMBER() OVER (PARTITION BY company_id, LOWER(email) ORDER BY created_at, id) as rn
+                FROM users
+            ) AS sub
+            WHERE rn > 1
         )
     """))
     

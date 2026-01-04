@@ -121,6 +121,12 @@ export default function DashboardPage() {
       color: 'from-indigo-500 to-indigo-600',
     },
     {
+      title: 'Schedules',
+      description: 'Manage shift schedules',
+      href: '/schedules',
+      color: 'from-pink-500 to-pink-600',
+    },
+    {
       title: 'Time Entries',
       description: 'View all time entries',
       href: '/time-entries',

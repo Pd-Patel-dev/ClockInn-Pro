@@ -48,8 +48,8 @@ export const logout = async () => {
   clearTokens()
 }
 
-export const getCurrentUser = async (): Promise<User> => {
-  const response = await api.get('/users/me')
+export const getCurrentUser = async (signal?: AbortSignal): Promise<User> => {
+  const response = await api.get('/users/me', { signal })
   return response.data
 }
 

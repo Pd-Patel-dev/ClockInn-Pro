@@ -35,7 +35,13 @@ class Logger {
     if (typeof window === 'undefined') {
       // Server-side rendering - use console
       const logEntry = this.formatMessage(level, message, error, context)
-      console[level === 'error' ? 'error' : level === 'warn' ? 'warn' : 'log'](logEntry)
+      if (level === 'error') {
+        console.error(logEntry)
+      } else if (level === 'warn') {
+        console.warn(logEntry)
+      } else {
+        console.log(logEntry)
+      }
       return
     }
 
@@ -43,18 +49,24 @@ class Logger {
 
     // In development, use console with colors
     if (this.isDevelopment) {
-      const styles = {
+      const styles: Record<LogLevel, string> = {
         debug: 'color: #888',
         info: 'color: #2196F3',
         warn: 'color: #FF9800',
         error: 'color: #F44336; font-weight: bold',
       }
       
-      console[level === 'error' ? 'error' : level === 'warn' ? 'warn' : 'log'](
-        `%c[${level.toUpperCase()}] ${message}`,
-        styles[level],
-        context || error || ''
-      )
+      const formattedMessage = `%c[${level.toUpperCase()}] ${message}`
+      const style = styles[level]
+      const additionalData = context || error || ''
+      
+      if (level === 'error') {
+        console.error(formattedMessage, style, additionalData)
+      } else if (level === 'warn') {
+        console.warn(formattedMessage, style, additionalData)
+      } else {
+        console.log(formattedMessage, style, additionalData)
+      }
       
       if (error) {
         console.error('Error details:', error)

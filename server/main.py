@@ -119,13 +119,28 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
 app.include_router(api_router, prefix="/api/v1")
 
 
-@app.get("/health")
-async def health_check():
-    logger.debug("Health check requested")
-    return {"status": "healthy"}
-
-
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    import os
+    from pathlib import Path
+    
+    # Enable reload in development mode (default to True if not in production)
+    reload = os.getenv("ENVIRONMENT", "").lower() not in ["prod", "production"] or os.getenv("RELOAD", "").lower() == "true"
+    
+    if reload:
+        script_dir = Path(__file__).parent.absolute()
+        reload_dirs = [str(script_dir / "app"), str(script_dir)]
+        print("🔄 Auto-reload enabled - server will restart on file changes")
+    else:
+        reload_dirs = None
+    
+    uvicorn.run(
+        app,
+        host="0.0.0.0",
+        port=8000,
+        reload=reload,
+        reload_dirs=reload_dirs,
+        reload_includes=["*.py"] if reload else None,
+        reload_delay=0.25 if reload else None,
+    )
 

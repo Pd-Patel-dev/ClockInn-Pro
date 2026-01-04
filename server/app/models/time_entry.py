@@ -33,12 +33,19 @@ class TimeEntry(Base):
     status = Column(Enum(TimeEntryStatus, values_callable=lambda x: [e.value for e in x]), nullable=False, default=TimeEntryStatus.OPEN)
     edited_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
     edit_reason = Column(String(500), nullable=True)
+    
+    # Shift reference (optional - links time entry to a scheduled shift)
+    # Note: This column is added by migration 008. If migration not run, this will cause errors.
+    shift_id = Column(UUID(as_uuid=True), ForeignKey("shifts.id", ondelete="SET NULL"), nullable=True, index=True)
+    
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
 
     # Relationships
     employee = relationship("User", foreign_keys=[employee_id], back_populates="time_entries")
     editor = relationship("User", foreign_keys=[edited_by])
+    # Lazy loading to avoid issues if column doesn't exist yet
+    shift = relationship("Shift", foreign_keys=[shift_id], lazy="select", viewonly=False)
 
     __table_args__ = (
         Index("idx_time_entries_employee_company", "employee_id", "company_id"),

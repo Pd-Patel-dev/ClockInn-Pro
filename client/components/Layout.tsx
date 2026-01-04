@@ -14,19 +14,66 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
 
   useEffect(() => {
+    // Prevent redirect loop - if already on login page, don't fetch user
+    if (pathname === '/login') {
+      setLoading(false)
+      return
+    }
+    
+    let abortController = new AbortController()
+    let isMounted = true
+
     const fetchUser = async () => {
       try {
-        await initializeAuth()
-        const currentUser = await getCurrentUser()
-        setUser(currentUser)
-      } catch (error) {
-        router.push('/login')
-      } finally {
-        setLoading(false)
+        const authInitialized = await initializeAuth()
+        if (!authInitialized || !isMounted) {
+          if (isMounted && pathname !== '/login') {
+            setLoading(false)
+            window.location.href = '/login'
+          }
+          return
+        }
+
+        const currentUser = await getCurrentUser(abortController.signal)
+        if (isMounted) {
+          setUser(currentUser)
+          setLoading(false)
+        }
+      } catch (error: any) {
+        if (abortController.signal.aborted || !isMounted) return
+        
+        // Don't redirect if it's a cancelled request
+        if (error.name === 'CanceledError' || error.code === 'ERR_CANCELED') {
+          if (isMounted) {
+            setLoading(false)
+          }
+          return
+        }
+        
+        // Only redirect if not already on login page and it's an auth error
+        if (error.response?.status === 401 || error.response?.status === 403) {
+          if (isMounted && typeof window !== 'undefined' && window.location.pathname !== '/login') {
+            setLoading(false)
+            // Use window.location.href for hard redirect to stop all execution
+            window.location.href = '/login'
+          }
+          return
+        }
+        
+        if (isMounted) {
+          setLoading(false)
+        }
       }
     }
+    
     fetchUser()
-  }, [router])
+
+    // Cleanup function
+    return () => {
+      isMounted = false
+      abortController.abort()
+    }
+  }, [router, pathname])
 
   const handleLogout = async () => {
     await logout()
@@ -54,6 +101,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   const employeeLinks = [
     { href: '/dashboard', label: 'Dashboard' },
     { href: '/punch', label: 'Punch In/Out' },
+    { href: '/my-schedule', label: 'My Schedule' },
     { href: '/logs', label: 'My Logs' },
     { href: '/leave', label: 'Leave' },
   ]
@@ -61,6 +109,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   const adminLinks = [
     { href: '/dashboard', label: 'Dashboard' },
     { href: '/employees', label: 'Employees' },
+    { href: '/schedules', label: 'Schedules' },
     { href: '/payroll', label: 'Payroll' },
     { href: '/time-entries', label: 'Time Entries' },
     { href: '/leave-requests', label: 'Leave Requests' },

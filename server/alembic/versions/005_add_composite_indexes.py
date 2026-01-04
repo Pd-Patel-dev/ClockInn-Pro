@@ -18,27 +18,39 @@ depends_on = None
 def upgrade() -> None:
     # Add composite index on (company_id, status) for users table
     # This optimizes queries filtering users by company and status
-    op.create_index(
-        'idx_users_company_status',
-        'users',
-        ['company_id', 'status'],
-    )
+    # Check if index exists first
+    from sqlalchemy import inspect
+    conn = op.get_bind()
+    inspector = inspect(conn)
+    existing_indexes = [idx['name'] for idx in inspector.get_indexes('users')]
+    
+    if 'idx_users_company_status' not in existing_indexes:
+        op.create_index(
+            'idx_users_company_status',
+            'users',
+            ['company_id', 'status'],
+        )
     
     # Add composite index on (company_id, employee_id, clock_in_at) for time_entries table
     # This optimizes queries filtering time entries by company, employee, and date range
-    op.create_index(
-        'idx_time_entries_company_employee_clock_in',
-        'time_entries',
-        ['company_id', 'employee_id', 'clock_in_at'],
-    )
+    # Check if index exists first (it may have been created in migration 003)
+    existing_time_indexes = [idx['name'] for idx in inspector.get_indexes('time_entries')]
+    if 'idx_time_entries_company_employee_clock_in' not in existing_time_indexes:
+        op.create_index(
+            'idx_time_entries_company_employee_clock_in',
+            'time_entries',
+            ['company_id', 'employee_id', 'clock_in_at'],
+        )
     
     # Add composite index on (company_id, status, created_at) for leave_requests table
     # This optimizes queries filtering leave requests by company, status, and date
-    op.create_index(
-        'idx_leave_requests_company_status_created',
-        'leave_requests',
-        ['company_id', 'status', 'created_at'],
-    )
+    existing_leave_indexes = [idx['name'] for idx in inspector.get_indexes('leave_requests')]
+    if 'idx_leave_requests_company_status_created' not in existing_leave_indexes:
+        op.create_index(
+            'idx_leave_requests_company_status_created',
+            'leave_requests',
+            ['company_id', 'status', 'created_at'],
+        )
 
 
 def downgrade() -> None:

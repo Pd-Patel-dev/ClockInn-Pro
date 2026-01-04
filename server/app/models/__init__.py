@@ -5,6 +5,7 @@ from app.models.time_entry import TimeEntry
 from app.models.leave_request import LeaveRequest
 from app.models.audit_log import AuditLog
 from app.models.payroll import PayrollRun, PayrollLineItem, PayrollAdjustment
+from app.models.shift import Shift, ShiftTemplate, ScheduleSwap
 
 __all__ = [
     "Company",
@@ -16,5 +17,8 @@ __all__ = [
     "PayrollRun",
     "PayrollLineItem",
     "PayrollAdjustment",
+    "Shift",
+    "ShiftTemplate",
+    "ScheduleSwap",
 ]
 
