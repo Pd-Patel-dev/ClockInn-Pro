@@ -1,6 +1,10 @@
 -- Add shift scheduling tables
 -- This migration creates tables for shift scheduling, templates, and swap requests
 
+-- Create enum types for shifts
+CREATE TYPE shiftstatus AS ENUM ('DRAFT', 'PUBLISHED', 'APPROVED', 'CANCELLED');
+CREATE TYPE shifttemplatetype AS ENUM ('WEEKLY', 'BIWEEKLY', 'MONTHLY', 'NONE');
+
 -- Create shift_templates table
 CREATE TABLE shift_templates (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -11,7 +15,7 @@ CREATE TABLE shift_templates (
     start_time TIME NOT NULL,
     end_time TIME NOT NULL,
     break_minutes INTEGER NOT NULL DEFAULT 0,
-    template_type VARCHAR(50) NOT NULL DEFAULT 'NONE' CHECK (template_type IN ('WEEKLY', 'BIWEEKLY', 'MONTHLY', 'NONE')),
+    template_type shifttemplatetype NOT NULL DEFAULT 'NONE',
     day_of_week INTEGER CHECK (day_of_week >= 0 AND day_of_week <= 6),
     day_of_month INTEGER CHECK (day_of_month >= 1 AND day_of_month <= 31),
     week_of_month INTEGER CHECK (week_of_month >= 1 AND week_of_month <= 4),
@@ -38,7 +42,7 @@ CREATE TABLE shifts (
     start_time TIME NOT NULL,
     end_time TIME NOT NULL,
     break_minutes INTEGER NOT NULL DEFAULT 0,
-    status VARCHAR(50) NOT NULL DEFAULT 'DRAFT' CHECK (status IN ('DRAFT', 'PUBLISHED', 'APPROVED', 'CANCELLED')),
+    status shiftstatus NOT NULL DEFAULT 'DRAFT',
     notes TEXT,
     job_role VARCHAR(255),
     template_id UUID REFERENCES shift_templates(id) ON DELETE SET NULL,
