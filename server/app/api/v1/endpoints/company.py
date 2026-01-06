@@ -63,6 +63,8 @@ async def get_company_info_endpoint(
     return CompanyInfoResponse(
         id=str(company.id),
         name=company.name,
+        slug=company.slug,
+        kiosk_enabled=company.kiosk_enabled,
         created_at=company.created_at.isoformat(),
         settings=CompanySettingsResponse(
             timezone=settings["timezone"],
@@ -124,6 +126,8 @@ async def update_company_name_endpoint(
     return CompanyInfoResponse(
         id=str(company.id),
         name=company.name,
+        slug=company.slug,
+        kiosk_enabled=company.kiosk_enabled,
         created_at=company.created_at.isoformat(),
         settings=CompanySettingsResponse(
             timezone=settings["timezone"],
@@ -190,6 +194,8 @@ async def update_company_settings_endpoint(
     return CompanyInfoResponse(
         id=str(company.id),
         name=company.name,
+        slug=company.slug,
+        kiosk_enabled=company.kiosk_enabled,
         created_at=company.created_at.isoformat(),
         settings=CompanySettingsResponse(
             timezone=settings["timezone"],

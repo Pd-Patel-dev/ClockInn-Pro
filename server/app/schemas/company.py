@@ -32,6 +32,8 @@ class CompanyInfoResponse(BaseModel):
     """Company basic information."""
     id: str
     name: str
+    slug: str
+    kiosk_enabled: bool
     created_at: str
     settings: CompanySettingsResponse
     admin: Optional[AdminInfo] = None

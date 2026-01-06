@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useCallback } from 'react'
 import Layout from '@/components/Layout'
 import api from '@/lib/api'
 import { useToast } from '@/components/Toast'
@@ -52,13 +52,7 @@ export default function MySchedulePage() {
     fetchUser()
   }, [])
 
-  useEffect(() => {
-    if (!userLoading) {
-      fetchShifts()
-    }
-  }, [currentWeek, userLoading])
-
-  const fetchShifts = async () => {
+  const fetchShifts = useCallback(async () => {
     setLoading(true)
     try {
       const params = new URLSearchParams()
@@ -73,7 +67,13 @@ export default function MySchedulePage() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [fetchStartDate, fetchEndDate, toast])
+
+  useEffect(() => {
+    if (!userLoading) {
+      fetchShifts()
+    }
+  }, [currentWeek, userLoading, fetchShifts])
 
   const getStatusColor = (status: string) => {
     switch (status.toUpperCase()) {

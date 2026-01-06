@@ -17,6 +17,7 @@ from app.core.security import (
     validate_password_strength,
     get_pin_hash,
 )
+from app.core.slug import generate_unique_slug
 from app.core.config import settings
 from app.schemas.auth import RegisterCompanyRequest, LoginRequest
 import uuid
@@ -49,11 +50,16 @@ async def register_company(
             detail="Email already registered",
         )
     
+    # Generate unique slug for company
+    slug = await generate_unique_slug(db, request.company_name)
+    
     # Create company
     company = Company(
         id=uuid.uuid4(),
         name=request.company_name,
+        slug=slug,
         settings_json={},
+        kiosk_enabled=True,  # Default to enabled
     )
     db.add(company)
     await db.flush()

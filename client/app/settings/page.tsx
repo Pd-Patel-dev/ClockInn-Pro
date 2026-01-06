@@ -56,6 +56,8 @@ interface AdminInfo {
 interface CompanyInfo {
   id: string
   name: string
+  slug: string
+  kiosk_enabled: boolean
   created_at: string
   settings: CompanySettings
   admin: AdminInfo | null
@@ -278,9 +280,43 @@ export default function AdminSettingsPage() {
 
         {/* Company Information Tab */}
         {activeTab === 'info' && (
-          <div className="bg-white shadow rounded-lg p-6">
-            <h2 className="text-xl font-semibold mb-4">Company Information</h2>
-            <form onSubmit={handleSubmitName(onSubmitName)} className="space-y-6">
+          <div className="space-y-6">
+            {/* Kiosk URL Section */}
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+              <h3 className="text-lg font-medium text-blue-900 mb-2">Kiosk URL</h3>
+              <p className="text-sm text-blue-700 mb-3">
+                Share this URL with your employees for clock-in/clock-out. This URL is unique to your company.
+              </p>
+              <div className="flex items-center gap-3">
+                <input
+                  type="text"
+                  readOnly
+                  value={typeof window !== 'undefined' ? `${window.location.origin}/kiosk/${companyInfo.slug}` : ''}
+                  className="flex-1 px-3 py-2 bg-white border border-blue-300 rounded-md text-sm font-mono text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  onClick={(e) => (e.target as HTMLInputElement).select()}
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    const url = `${window.location.origin}/kiosk/${companyInfo.slug}`
+                    navigator.clipboard.writeText(url)
+                    toast.success('Kiosk URL copied to clipboard!')
+                  }}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm font-medium"
+                >
+                  Copy URL
+                </button>
+              </div>
+              {!companyInfo.kiosk_enabled && (
+                <p className="text-sm text-red-600 mt-2">
+                  ⚠️ Kiosk is currently disabled for your company.
+                </p>
+              )}
+            </div>
+
+            <div className="bg-white shadow rounded-lg p-6">
+              <h2 className="text-xl font-semibold mb-4">Company Information</h2>
+              <form onSubmit={handleSubmitName(onSubmitName)} className="space-y-6">
               <div>
                 <label className="block text-sm font-medium text-gray-700">Company Name</label>
                 <input
@@ -383,6 +419,7 @@ export default function AdminSettingsPage() {
                 </button>
               </div>
             </form>
+          </div>
           </div>
         )}
 

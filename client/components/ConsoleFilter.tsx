@@ -26,23 +26,30 @@ export function ConsoleFilter() {
       /Extension context invalidated/i,
     ]
 
-    // Store original console methods - capture them as early as possible
-    const originalErrorUnbound = console.error
-    const originalWarnUnbound = console.warn
-    const originalLogUnbound = console.log
+    // Store original NATIVE console methods BEFORE replacing them
+    // This is critical to avoid recursion
+    const nativeError = console.error
+    const nativeWarn = console.warn
+    const nativeLog = console.log
     
     // Verify they are functions
-    if (typeof originalErrorUnbound !== 'function' || 
-        typeof originalWarnUnbound !== 'function' || 
-        typeof originalLogUnbound !== 'function') {
+    if (typeof nativeError !== 'function' || 
+        typeof nativeWarn !== 'function' || 
+        typeof nativeLog !== 'function') {
       // Console methods are not available or invalid, skip filtering
       return
     }
     
+    // Create bound versions of native methods for safe calling
+    const originalError = nativeError.bind(console)
+    const originalWarn = nativeWarn.bind(console)
+    const originalLog = nativeLog.bind(console)
+    
     // Create safe wrapper functions that handle errors gracefully
     const safeCallError = (...args: any[]) => {
       try {
-        originalErrorUnbound.apply(console, args)
+        // Call the original native method directly
+        originalError(...args)
       } catch (e) {
         // Silently fail - don't log errors from the error logger itself
       }
@@ -50,7 +57,7 @@ export function ConsoleFilter() {
     
     const safeCallWarn = (...args: any[]) => {
       try {
-        originalWarnUnbound.apply(console, args)
+        originalWarn(...args)
       } catch (e) {
         // Silently fail
       }
@@ -58,7 +65,7 @@ export function ConsoleFilter() {
     
     const safeCallLog = (...args: any[]) => {
       try {
-        originalLogUnbound.apply(console, args)
+        originalLog(...args)
       } catch (e) {
         // Silently fail
       }
@@ -68,18 +75,22 @@ export function ConsoleFilter() {
      * Check if a message should be filtered
      */
     function shouldFilter(args: any[]): boolean {
-      return args.some((arg) => {
-        if (typeof arg === 'string') {
-          return FILTER_PATTERNS.some((pattern) => pattern.test(arg))
-        }
-        if (arg?.stack && typeof arg.stack === 'string') {
-          return FILTER_PATTERNS.some((pattern) => pattern.test(arg.stack))
-        }
-        if (arg?.message && typeof arg.message === 'string') {
-          return FILTER_PATTERNS.some((pattern) => pattern.test(arg.message))
-        }
+      try {
+        return args.some((arg) => {
+          if (typeof arg === 'string') {
+            return FILTER_PATTERNS.some((pattern) => pattern.test(arg))
+          }
+          if (arg?.stack && typeof arg.stack === 'string') {
+            return FILTER_PATTERNS.some((pattern) => pattern.test(arg.stack))
+          }
+          if (arg?.message && typeof arg.message === 'string') {
+            return FILTER_PATTERNS.some((pattern) => pattern.test(arg.message))
+          }
+          return false
+        })
+      } catch {
         return false
-      })
+      }
     }
 
     /**
@@ -144,13 +155,13 @@ export function ConsoleFilter() {
       // Ignore if logging fails
     }
 
-    // Cleanup on unmount (restore original methods)
+    // Cleanup on unmount (restore original native methods)
     return () => {
       try {
-        // Restore to original unbound methods
-        console.error = originalErrorUnbound
-        console.warn = originalWarnUnbound
-        console.log = originalLogUnbound
+        // Restore to original native methods
+        console.error = nativeError
+        console.warn = nativeWarn
+        console.log = nativeLog
       } catch {
         // Ignore cleanup errors
       }

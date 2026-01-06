@@ -3,11 +3,11 @@
 
 set -e  # Exit on error
 
-# Change to server directory
-cd /app/server || cd server
+# Change to server directory (handle both Render and local paths)
+cd server 2>/dev/null || cd /app/server 2>/dev/null || pwd
 
 # Run database migrations using Python script (better error handling)
-echo "Running database migrations..."
+echo "🚀 Running database migrations..."
 if python run_migrations.py; then
     echo "✅ Migrations completed successfully"
 else
@@ -16,7 +16,7 @@ else
 fi
 
 # Start the server
-echo "Starting FastAPI server..."
+echo "🌐 Starting FastAPI server on port ${PORT:-8000}..."
 exec uvicorn main:app --host 0.0.0.0 --port ${PORT:-8000}
 
 
