@@ -20,6 +20,8 @@ export interface User {
   role: 'ADMIN' | 'EMPLOYEE'
   status: 'active' | 'inactive'
   company_name: string
+  email_verified: boolean
+  verification_required: boolean
 }
 
 export const login = async (credentials: LoginCredentials) => {

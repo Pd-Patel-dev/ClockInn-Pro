@@ -40,6 +40,15 @@ class User(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
     last_login_at = Column(DateTime(timezone=True), nullable=True)
+    
+    # Email verification fields
+    email_verified = Column(Boolean, nullable=False, default=False)
+    last_verified_at = Column(DateTime(timezone=True), nullable=True)
+    verification_pin_hash = Column(String(255), nullable=True)
+    verification_expires_at = Column(DateTime(timezone=True), nullable=True)
+    verification_attempts = Column(Integer, nullable=False, default=0)
+    last_verification_sent_at = Column(DateTime(timezone=True), nullable=True)
+    verification_required = Column(Boolean, nullable=False, default=True)
 
     # Relationships
     company = relationship("Company", backref="users")

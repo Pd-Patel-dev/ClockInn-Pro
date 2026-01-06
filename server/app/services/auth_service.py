@@ -3,6 +3,9 @@ from typing import Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 from fastapi import HTTPException, status
+import logging
+
+logger = logging.getLogger(__name__)
 
 from app.models.user import User, UserRole, UserStatus
 from app.models.company import Company
@@ -95,6 +98,15 @@ async def register_company(
     await db.commit()
     await db.refresh(user)
     
+    # Send verification PIN after registration
+    try:
+        from app.services.verification_service import send_verification_pin
+        await send_verification_pin(db, user)
+        logger.info(f"Verification PIN sent to {user.email} after registration")
+    except Exception as e:
+        logger.error(f"Failed to send verification PIN after registration: {e}")
+        # Don't fail registration if email sending fails
+    
     access_token = create_access_token({"sub": str(user.id), "company_id": str(company.id), "role": user.role.value})
     
     return user, access_token, refresh_token
@@ -137,6 +149,24 @@ async def login(
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Your account has been deactivated. Please contact your administrator.",
+        )
+    
+    # Check verification status and update if needed
+    from app.services.verification_service import check_verification_required
+    if check_verification_required(user):
+        # Update database
+        user.verification_required = True
+        db.add(user)
+        await db.flush()
+        
+        # Block login if verification is required
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={
+                "error": "EMAIL_VERIFICATION_REQUIRED",
+                "message": "Please verify your email to continue.",
+                "email": user.email,
+            }
         )
     
     # Update last login
@@ -240,6 +270,24 @@ async def refresh_access_token(
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="User not found or inactive",
+        )
+    
+    # Check verification status - block token refresh if verification required
+    from app.services.verification_service import check_verification_required
+    if check_verification_required(user):
+        # Update database
+        user.verification_required = True
+        db.add(user)
+        await db.flush()
+        
+        # Block token refresh if verification is required
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={
+                "error": "EMAIL_VERIFICATION_REQUIRED",
+                "message": "Please verify your email to continue.",
+                "email": user.email,
+            }
         )
     
     # Create new session with new refresh token

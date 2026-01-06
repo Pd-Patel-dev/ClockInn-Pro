@@ -1,11 +1,12 @@
 'use client'
 
-import { useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { useState, useEffect } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { login } from '@/lib/auth'
+import { startTokenRefreshInterval } from '@/lib/api'
 import Link from 'next/link'
 
 const loginSchema = z.object({
@@ -17,8 +18,17 @@ type LoginForm = z.infer<typeof loginSchema>
 
 export default function LoginPage() {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
+  const [sessionExpired, setSessionExpired] = useState(false)
+
+  useEffect(() => {
+    // Check if session expired
+    if (searchParams.get('expired') === 'true') {
+      setSessionExpired(true)
+    }
+  }, [searchParams])
 
   const {
     register,
@@ -30,12 +40,44 @@ export default function LoginPage() {
 
   const onSubmit = async (data: LoginForm) => {
     setError(null)
+    setSessionExpired(false)
     setLoading(true)
     try {
       await login(data)
+      // Start proactive token refresh after login
+      startTokenRefreshInterval()
       router.push('/dashboard')
     } catch (err: any) {
-      setError(err.response?.data?.detail || 'Login failed. Please try again.')
+      // Handle email verification required - redirect to verify-email page
+      if (err.isVerificationRequired || err.response?.status === 403) {
+        const detail = err.response?.data?.detail
+        const isVerificationRequired = 
+          (typeof detail === 'object' && detail?.error === 'EMAIL_VERIFICATION_REQUIRED') ||
+          detail === 'EMAIL_VERIFICATION_REQUIRED' ||
+          err.response?.data?.error === 'EMAIL_VERIFICATION_REQUIRED'
+        
+        if (isVerificationRequired) {
+          const email = (typeof detail === 'object' && detail?.email) 
+            ? detail.email 
+            : err.verificationEmail || data.email
+          router.push(`/verify-email?email=${encodeURIComponent(email)}`)
+          return
+        }
+      }
+      
+      // Extract error message from detail (handle both string and object)
+      let errorMessage = 'Login failed. Please try again.'
+      const detail = err.response?.data?.detail
+      if (detail) {
+        if (typeof detail === 'string') {
+          errorMessage = detail
+        } else if (typeof detail === 'object' && detail?.message) {
+          errorMessage = detail.message
+        } else if (typeof detail === 'object' && detail?.error) {
+          errorMessage = detail.error
+        }
+      }
+      setError(errorMessage)
     } finally {
       setLoading(false)
     }
@@ -87,6 +129,16 @@ export default function LoginPage() {
             </div>
 
             <form className="space-y-6" onSubmit={handleSubmit(onSubmit)}>
+              {sessionExpired && (
+                <div className="rounded-lg bg-yellow-50 border border-yellow-200 p-4 animate-in fade-in duration-200">
+                  <div className="flex items-center">
+                    <svg className="w-5 h-5 text-yellow-600 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    <div className="text-sm text-yellow-800">Your session has expired. Please sign in again.</div>
+                  </div>
+                </div>
+              )}
               {error && (
                 <div className="rounded-lg bg-red-50 border border-red-200 p-4 animate-in fade-in duration-200">
                   <div className="flex items-center">

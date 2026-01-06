@@ -12,7 +12,9 @@ from app.schemas.auth import (
     LogoutRequest,
 )
 from app.services.auth_service import register_company, login, refresh_access_token, logout
+from app.services.verification_service import send_verification_pin, verify_email_pin
 from app.models.user import User
+from app.schemas.auth import SendVerificationPinRequest, VerifyEmailRequest
 
 router = APIRouter()
 
@@ -75,4 +77,79 @@ async def logout_endpoint(
     """Logout and revoke refresh token."""
     await logout(db, request.refresh_token)
     return {"message": "Logged out successfully"}
+
+
+@router.post("/send-verification-pin")
+@handle_endpoint_errors(operation_name="send_verification_pin")
+async def send_verification_pin_endpoint(
+    request: SendVerificationPinRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """Send verification PIN to user's email."""
+    from sqlalchemy import select
+    from app.core.security import normalize_email
+    
+    normalized_email = normalize_email(request.email)
+    
+    # Find user by email
+    result = await db.execute(
+        select(User).where(User.email == normalized_email)
+    )
+    user = result.scalar_one_or_none()
+    
+    # Always return success to prevent email enumeration
+    if not user:
+        return {"message": "If the email exists, a verification code has been sent."}
+    
+    # Check if user is already verified and doesn't need re-verification
+    from app.services.verification_service import check_verification_required
+    if not check_verification_required(user):
+        # User is already verified and within 30-day window
+        return {"message": "Email is already verified."}
+    
+    # Send verification PIN
+    success, error_msg = await send_verification_pin(db, user)
+    
+    if not success:
+        # Don't reveal if email exists - return generic message
+        return {"message": "If the email exists, a verification code has been sent."}
+    
+    return {"message": "Verification code sent to your email."}
+
+
+@router.post("/verify-email")
+@handle_endpoint_errors(operation_name="verify_email")
+async def verify_email_endpoint(
+    request: VerifyEmailRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """Verify email with 6-digit PIN."""
+    from sqlalchemy import select
+    from app.core.security import normalize_email
+    
+    normalized_email = normalize_email(request.email)
+    
+    # Find user by email
+    result = await db.execute(
+        select(User).where(User.email == normalized_email)
+    )
+    user = result.scalar_one_or_none()
+    
+    # Always return generic error to prevent email enumeration
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid email or verification code."
+        )
+    
+    # Verify PIN
+    success, error_msg = await verify_email_pin(db, user, request.pin)
+    
+    if not success:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=error_msg or "Invalid email or verification code."
+        )
+    
+    return {"message": "Email verified successfully."}
 

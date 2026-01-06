@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
 import { getCurrentUser, logout, User } from '@/lib/auth'
-import { initializeAuth } from '@/lib/api'
+import { initializeAuth, startTokenRefreshInterval, stopTokenRefreshInterval } from '@/lib/api'
 import Link from 'next/link'
 
 export default function Layout({ children }: { children: React.ReactNode }) {
@@ -14,8 +14,8 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
 
   useEffect(() => {
-    // Prevent redirect loop - if already on login page, don't fetch user
-    if (pathname === '/login') {
+    // Don't fetch user on login or verify-email pages
+    if (pathname === '/login' || pathname === '/verify-email' || pathname === '/register') {
       setLoading(false)
       return
     }
@@ -34,10 +34,19 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           return
         }
 
+        // Start proactive token refresh interval after successful auth initialization
+        startTokenRefreshInterval()
+
         const currentUser = await getCurrentUser(abortController.signal)
         if (isMounted) {
           setUser(currentUser)
           setLoading(false)
+          
+          // Check if verification is required - redirect to verify-email page
+          if (currentUser.verification_required === true || currentUser.email_verified === false) {
+            router.push(`/verify-email?email=${encodeURIComponent(currentUser.email)}`)
+            return
+          }
         }
       } catch (error: any) {
         if (abortController.signal.aborted || !isMounted) return
@@ -50,8 +59,26 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           return
         }
         
+        // Handle email verification required - redirect to verify-email page
+        if (error.isVerificationRequired || (error.response?.status === 403 && (
+          error.response?.data?.detail?.error === 'EMAIL_VERIFICATION_REQUIRED' ||
+          error.response?.data?.detail === 'EMAIL_VERIFICATION_REQUIRED' ||
+          error.response?.data?.error === 'EMAIL_VERIFICATION_REQUIRED'
+        ))) {
+          if (isMounted) {
+            const verificationEmail = error.verificationEmail || error.response?.data?.detail?.email || user?.email || null
+            if (verificationEmail) {
+              router.push(`/verify-email?email=${encodeURIComponent(verificationEmail)}`)
+            } else {
+              router.push('/verify-email')
+            }
+            setLoading(false)
+          }
+          return
+        }
+        
         // Only redirect if not already on login page and it's an auth error
-        if (error.response?.status === 401 || error.response?.status === 403) {
+        if (error.response?.status === 401 || (error.response?.status === 403 && !error.isVerificationRequired)) {
           if (isMounted && typeof window !== 'undefined' && window.location.pathname !== '/login') {
             setLoading(false)
             // Use window.location.href for hard redirect to stop all execution
@@ -72,13 +99,23 @@ export default function Layout({ children }: { children: React.ReactNode }) {
     return () => {
       isMounted = false
       abortController.abort()
+      // Don't stop token refresh interval here - it should run as long as user is logged in
     }
   }, [router, pathname])
 
+  // Stop token refresh interval when component unmounts (e.g., on logout)
+  useEffect(() => {
+    return () => {
+      // Only stop if user is not logged in (handled in handleLogout)
+    }
+  }, [])
+
   const handleLogout = async () => {
+    stopTokenRefreshInterval() // Stop proactive refresh
     await logout()
     router.push('/login')
   }
+
 
   if (loading) {
     return (

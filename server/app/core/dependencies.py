@@ -43,6 +43,13 @@ async def get_current_user(
             detail="User not found or inactive",
         )
     
+    # Check and update verification status
+    from app.services.verification_service import check_verification_required
+    check_verification_required(user)
+    if user.verification_required:
+        db.add(user)
+        await db.flush()
+    
     return user
 
 
@@ -55,6 +62,32 @@ async def get_current_active_user(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="User is inactive",
         )
+    return current_user
+
+
+async def get_current_verified_user(
+    current_user: User = Depends(get_current_active_user),
+    db: AsyncSession = Depends(get_db),
+) -> User:
+    """Ensure user's email is verified."""
+    from app.services.verification_service import check_verification_required
+    
+    # Check if verification is required
+    if check_verification_required(current_user):
+        # Update database
+        current_user.verification_required = True
+        db.add(current_user)
+        await db.flush()
+        
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={
+                "error": "EMAIL_VERIFICATION_REQUIRED",
+                "message": "Please verify your email to continue.",
+                "email": current_user.email,
+            }
+        )
+    
     return current_user
 
 
@@ -73,9 +106,9 @@ def require_role(allowed_roles: list[UserRole]):
 
 
 async def get_current_admin(
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(get_current_verified_user),
 ) -> User:
-    """Require ADMIN role."""
+    """Require ADMIN role and verified email."""
     if current_user.role != UserRole.ADMIN:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,

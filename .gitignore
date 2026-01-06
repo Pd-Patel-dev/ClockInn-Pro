@@ -53,8 +53,15 @@ htmlcov/
 # Docker
 docker-compose.override.yml
 
-# Markdown files (except README.md)
+# Gmail API credentials
+server/gmail_credentials.json
+server/gmail_token.json
+
+# Markdown files (except README.md and deployment docs)
 APP_REVIEW_SUGGESTIONS.md
-DEPLOYMENT*.md
-DEPLOY_CHECKLIST.md
-README_DEPLOYMENT.md
+# Keep deployment guides - they're useful
+# DEPLOYMENT_GUIDE.md - KEEP
+# DEPLOYMENT_CHECKLIST.md - KEEP
+# ENVIRONMENT_VARIABLES.md - KEEP
+# MIGRATE_TO_SUPABASE.md - KEEP
+# MIGRATE_QUICK_START.md - KEEP

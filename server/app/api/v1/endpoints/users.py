@@ -4,7 +4,7 @@ from sqlalchemy import select, and_
 from typing import List
 
 from app.core.database import get_db
-from app.core.dependencies import get_current_user, get_current_admin
+from app.core.dependencies import get_current_user, get_current_admin, get_current_verified_user
 from app.core.error_handling import handle_endpoint_errors, parse_uuid
 from app.models.user import User, UserRole
 from app.schemas.user import (
@@ -55,6 +55,8 @@ async def get_me(
         role=user.role,
         status=user.status,
         company_name=company_name,
+        email_verified=user.email_verified,
+        verification_required=user.verification_required,
     )
 
 

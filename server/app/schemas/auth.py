@@ -28,3 +28,12 @@ class RefreshTokenRequest(BaseModel):
 class LogoutRequest(BaseModel):
     refresh_token: str
 
+
+class SendVerificationPinRequest(BaseModel):
+    email: EmailStr
+
+
+class VerifyEmailRequest(BaseModel):
+    email: EmailStr
+    pin: str = Field(..., min_length=6, max_length=6, pattern="^[0-9]{6}$")
+

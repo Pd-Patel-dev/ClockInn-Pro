@@ -69,7 +69,9 @@ export default function AdminSettingsPage() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [companyInfo, setCompanyInfo] = useState<CompanyInfo | null>(null)
-  const [activeTab, setActiveTab] = useState<'info' | 'payroll'>('info')
+  const [activeTab, setActiveTab] = useState<'info' | 'payroll' | 'email'>('info')
+  const [gmailHealth, setGmailHealth] = useState<any>(null)
+  const [checkingGmail, setCheckingGmail] = useState(false)
 
   const {
     register: registerName,
@@ -107,6 +109,44 @@ export default function AdminSettingsPage() {
     checkAdminAndFetch()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [router])
+
+  const checkGmailHealth = async () => {
+    setCheckingGmail(true)
+    try {
+      const response = await api.get('/admin/gmail/health')
+      setGmailHealth(response.data)
+    } catch (error: any) {
+      logger.error('Failed to check Gmail health', error as Error)
+      toast.error('Failed to check Gmail service status')
+      setGmailHealth({ status: 'error', message: 'Failed to check status' })
+    } finally {
+      setCheckingGmail(false)
+    }
+  }
+
+  const handleUpdateGmailToken = async (tokenJson: string) => {
+    try {
+      await api.post('/admin/gmail/update-token', { token_json: tokenJson })
+      toast.success('Gmail token updated successfully!')
+      checkGmailHealth()
+    } catch (error: any) {
+      logger.error('Failed to update Gmail token', error as Error)
+      toast.error(error.response?.data?.detail || 'Failed to update Gmail token')
+    }
+  }
+
+  const handleTestGmail = async () => {
+    const testEmail = prompt('Enter email address to send test email to:')
+    if (!testEmail) return
+    
+    try {
+      await api.post(`/admin/gmail/test-send?test_email=${encodeURIComponent(testEmail)}`)
+      toast.success(`Test email sent to ${testEmail}`)
+    } catch (error: any) {
+      logger.error('Failed to send test email', error as Error)
+      toast.error(error.response?.data?.detail || 'Failed to send test email')
+    }
+  }
 
   const fetchCompanyInfo = async () => {
     setLoading(true)
@@ -275,6 +315,19 @@ export default function AdminSettingsPage() {
             >
               Payroll Settings
             </button>
+            <button
+              onClick={() => {
+                setActiveTab('email')
+                checkGmailHealth()
+              }}
+              className={`py-4 px-1 border-b-2 font-medium text-sm ${
+                activeTab === 'email'
+                  ? 'border-primary-500 text-primary-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+            >
+              Email Service
+            </button>
           </nav>
         </div>
 
@@ -420,6 +473,136 @@ export default function AdminSettingsPage() {
               </div>
             </form>
           </div>
+          </div>
+        )}
+
+        {/* Email Service Tab */}
+        {activeTab === 'email' && (
+          <div className="space-y-6">
+            <div className="bg-white shadow rounded-lg p-6">
+              <h2 className="text-xl font-semibold mb-4">Gmail API Configuration</h2>
+              <p className="text-sm text-gray-600 mb-6">
+                Manage Gmail API authentication for sending verification emails. The refresh token expires after 6 months of non-use.
+              </p>
+
+              {/* Health Status */}
+              <div className="mb-6">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-lg font-medium">Service Status</h3>
+                  <button
+                    onClick={checkGmailHealth}
+                    disabled={checkingGmail}
+                    className="px-3 py-1.5 text-sm bg-gray-100 text-gray-700 rounded hover:bg-gray-200 disabled:opacity-50"
+                  >
+                    {checkingGmail ? 'Checking...' : 'Refresh Status'}
+                  </button>
+                </div>
+                
+                {gmailHealth && (
+                  <div className={`p-4 rounded-lg border ${
+                    gmailHealth.status === 'healthy' 
+                      ? 'bg-green-50 border-green-200' 
+                      : 'bg-red-50 border-red-200'
+                  }`}>
+                    <div className="flex items-center">
+                      <div className={`w-3 h-3 rounded-full mr-3 ${
+                        gmailHealth.status === 'healthy' ? 'bg-green-500' : 'bg-red-500'
+                      }`}></div>
+                      <div>
+                        <p className={`font-medium ${
+                          gmailHealth.status === 'healthy' ? 'text-green-800' : 'text-red-800'
+                        }`}>
+                          {gmailHealth.status === 'healthy' ? 'Operational' : 'Error'}
+                        </p>
+                        <p className={`text-sm ${
+                          gmailHealth.status === 'healthy' ? 'text-green-700' : 'text-red-700'
+                        }`}>
+                          {gmailHealth.message}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {gmailHealth?.needs_reauthorization && (
+                  <div className="mt-4 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+                    <h4 className="font-medium text-yellow-900 mb-2">Re-authorization Required</h4>
+                    <p className="text-sm text-yellow-800 mb-4">
+                      The Gmail refresh token has expired. Follow these steps to re-authorize:
+                    </p>
+                    <ol className="list-decimal list-inside text-sm text-yellow-800 space-y-2 mb-4">
+                      <li>Visit <a href="https://developers.google.com/oauthplayground/" target="_blank" rel="noopener noreferrer" className="underline">Google OAuth 2.0 Playground</a></li>
+                      <li><strong>⚠️ CRITICAL:</strong> Click the Settings icon (⚙️) and check &quot;Use your own OAuth credentials&quot;</li>
+                      <li>Enter your Client ID and Client Secret from Google Cloud Console</li>
+                      <li>Select &quot;Gmail API v1&quot; → &quot;https://www.googleapis.com/auth/gmail.send&quot;</li>
+                      <li>Click &quot;Authorize APIs&quot; and complete OAuth flow</li>
+                      <li>Click &quot;Exchange authorization code for tokens&quot;</li>
+                      <li>Copy the &quot;Refresh token&quot; from the response</li>
+                      <li>Use the token update form below to update your token</li>
+                    </ol>
+                    <div className="mt-3 p-3 bg-red-50 border border-red-200 rounded">
+                      <p className="text-xs text-red-800 font-medium">
+                        ⚠️ <strong>Important:</strong> If you use default Playground credentials (don&apos;t configure your own), the refresh token will expire in 24 hours. Always use your own OAuth credentials for long-lived tokens.
+                      </p>
+                    </div>
+                    <p className="text-xs text-yellow-700">
+                      See <code className="bg-yellow-100 px-1 rounded">server/GMAIL_SETUP_PLAYGROUND.md</code> for detailed instructions.
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              {/* Token Update Form */}
+              <div className="border-t pt-6">
+                <h3 className="text-lg font-medium mb-4">Update Gmail Token</h3>
+                <p className="text-sm text-gray-600 mb-4">
+                  Paste the complete token JSON from Google OAuth 2.0 Playground or use the refresh token:
+                </p>
+                <form onSubmit={(e) => {
+                  e.preventDefault()
+                  const formData = new FormData(e.target as HTMLFormElement)
+                  const tokenJson = formData.get('tokenJson') as string
+                  if (tokenJson) {
+                    handleUpdateGmailToken(tokenJson)
+                  }
+                }} className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Token JSON
+                    </label>
+                    <textarea
+                      name="tokenJson"
+                      rows={6}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 font-mono text-sm"
+                      placeholder='{"refresh_token": "...", "client_id": "...", "client_secret": "...", "token_uri": "https://oauth2.googleapis.com/token", "scopes": ["https://www.googleapis.com/auth/gmail.send"]}'
+                    />
+                    <p className="mt-1 text-xs text-gray-500">
+                      Paste the complete token JSON object from Google OAuth 2.0 Playground
+                    </p>
+                  </div>
+                  <button
+                    type="submit"
+                    className="px-4 py-2 bg-primary-600 text-white rounded-md hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-primary-500"
+                  >
+                    Update Token
+                  </button>
+                </form>
+              </div>
+
+              {/* Test Email */}
+              <div className="border-t pt-6 mt-6">
+                <h3 className="text-lg font-medium mb-4">Test Email Sending</h3>
+                <p className="text-sm text-gray-600 mb-4">
+                  Send a test email to verify Gmail API is working correctly.
+                </p>
+                <button
+                  onClick={handleTestGmail}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  Send Test Email
+                </button>
+              </div>
+            </div>
           </div>
         )}
 

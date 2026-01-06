@@ -6,7 +6,7 @@ from typing import Optional
 from uuid import UUID
 
 from app.core.database import get_db
-from app.core.dependencies import get_current_user, get_current_admin
+from app.core.dependencies import get_current_user, get_current_admin, get_current_verified_user
 from app.core.error_handling import handle_endpoint_errors, parse_uuid
 from app.models.user import User, UserRole, UserStatus
 from app.models.time_entry import TimeEntryStatus
@@ -213,7 +213,7 @@ async def punch_by_pin_endpoint(
 @handle_endpoint_errors(operation_name="punch_me")
 async def punch_me_endpoint(
     data: TimeEntryPunchMe,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_verified_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Punch in/out for authenticated user (web mode). Requires authentication."""
@@ -273,7 +273,7 @@ async def get_my_time_entries_endpoint(
     to_date: Optional[date] = Query(None),
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=1000),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_verified_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Get current user's time entries."""

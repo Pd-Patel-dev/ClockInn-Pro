@@ -1,6 +1,6 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import field_validator
-from typing import List, Union
+from typing import List, Union, Optional
 import json
 from pathlib import Path
 
@@ -13,7 +13,7 @@ class Settings(BaseSettings):
     SECRET_KEY: str
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 15
-    REFRESH_TOKEN_EXPIRE_DAYS: int = 7
+    REFRESH_TOKEN_EXPIRE_DAYS: int = 30  # Extended to 30 days for production (was 7)
     
     # CORS
     FRONTEND_URL: str = "http://localhost:3000"
@@ -40,6 +40,11 @@ class Settings(BaseSettings):
     LOGIN_ATTEMPTS_LIMIT: int = 5
     PIN_ATTEMPTS_LIMIT: int = 5
     LOCKOUT_DURATION_MINUTES: int = 10
+    
+    # Gmail API (for email verification)
+    GMAIL_CREDENTIALS_JSON: Optional[str] = None  # JSON string of OAuth credentials
+    GMAIL_TOKEN_JSON: Optional[str] = None  # JSON string of OAuth token
+    GMAIL_SENDER_EMAIL: str = "no-reply.clockinpro@gmail.com"
     
     model_config = SettingsConfigDict(
         env_file=Path(__file__).parent.parent.parent / ".env",

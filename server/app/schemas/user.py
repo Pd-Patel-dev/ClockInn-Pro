@@ -66,6 +66,8 @@ class UserMeResponse(BaseModel):
     role: UserRole
     status: UserStatus
     company_name: str
+    email_verified: bool
+    verification_required: bool
 
     class Config:
         from_attributes = True
