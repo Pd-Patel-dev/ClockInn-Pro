@@ -73,7 +73,7 @@ export default function MySchedulePage() {
     if (!userLoading) {
       fetchShifts()
     }
-  }, [currentWeek, userLoading, fetchShifts])
+  }, [userLoading, fetchShifts])
 
   const getStatusColor = (status: string) => {
     switch (status.toUpperCase()) {
