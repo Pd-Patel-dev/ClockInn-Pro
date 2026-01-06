@@ -57,6 +57,9 @@ docker-compose.override.yml
 server/gmail_credentials.json
 server/gmail_token.json
 
+# Supabase temp files
+supabase/.temp/
+
 # Markdown files (except README.md and deployment docs)
 APP_REVIEW_SUGGESTIONS.md
 # Keep deployment guides - they're useful
