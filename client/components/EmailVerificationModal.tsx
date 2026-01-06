@@ -24,23 +24,6 @@ export default function EmailVerificationModal({
   const [sending, setSending] = useState(false)
   const inputRefs = useRef<(HTMLInputElement | null)[]>([])
 
-  // Auto-send verification PIN on open
-  useEffect(() => {
-    if (isOpen && email) {
-      handleSendPin()
-    }
-  }, [isOpen, email])
-
-  // Countdown timer for resend
-  useEffect(() => {
-    if (resendCooldown > 0) {
-      const timer = setTimeout(() => {
-        setResendCooldown(resendCooldown - 1)
-      }, 1000)
-      return () => clearTimeout(timer)
-    }
-  }, [resendCooldown])
-
   const handleSendPin = useCallback(async () => {
     if (resendCooldown > 0) return
     
@@ -57,6 +40,23 @@ export default function EmailVerificationModal({
       setSending(false)
     }
   }, [email, resendCooldown])
+
+  // Auto-send verification PIN on open
+  useEffect(() => {
+    if (isOpen && email) {
+      handleSendPin()
+    }
+  }, [isOpen, email, handleSendPin])
+
+  // Countdown timer for resend
+  useEffect(() => {
+    if (resendCooldown > 0) {
+      const timer = setTimeout(() => {
+        setResendCooldown(resendCooldown - 1)
+      }, 1000)
+      return () => clearTimeout(timer)
+    }
+  }, [resendCooldown])
 
   const handlePinChange = (index: number, value: string) => {
     if (loading) return
@@ -158,7 +158,9 @@ export default function EmailVerificationModal({
             {pin.map((digit, index) => (
               <input
                 key={index}
-                ref={(el) => (inputRefs.current[index] = el)}
+                ref={(el: HTMLInputElement | null) => {
+                  inputRefs.current[index] = el
+                }}
                 type="text"
                 inputMode="numeric"
                 maxLength={1}

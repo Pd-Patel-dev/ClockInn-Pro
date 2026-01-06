@@ -342,14 +342,15 @@ api.interceptors.response.use(
     // Handle email verification required (403 with specific error)
     // FastAPI returns detail as an object with error, message, and email fields
     if (error.response?.status === 403) {
-      const detail = error.response?.data?.detail
+      const responseData = error.response?.data as any
+      const detail = responseData?.detail
       const detailError = (typeof detail === 'object' && detail !== null && 'error' in detail) 
-        ? (detail as any).error 
+        ? detail.error 
         : null
       const isVerificationRequired = 
         detailError === 'EMAIL_VERIFICATION_REQUIRED' ||
         detail === 'EMAIL_VERIFICATION_REQUIRED' ||
-        error.response?.data?.error === 'EMAIL_VERIFICATION_REQUIRED'
+        responseData?.error === 'EMAIL_VERIFICATION_REQUIRED'
       
       if (isVerificationRequired) {
         // Store verification info in a custom property
@@ -357,11 +358,11 @@ api.interceptors.response.use(
         customError.isVerificationRequired = true
         // Extract email from detail object or fallback to response data
         customError.verificationEmail = (typeof detail === 'object' && detail !== null && 'email' in detail)
-          ? (detail as any).email
-          : error.response?.data?.email || null
+          ? detail.email
+          : responseData?.email || null
         // Also store the message for better UX
         customError.verificationMessage = (typeof detail === 'object' && detail !== null && 'message' in detail)
-          ? (detail as any).message
+          ? detail.message
           : 'Please verify your email to continue.'
         return Promise.reject(error)
       }

@@ -1,12 +1,12 @@
 'use client'
 
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import api from '@/lib/api'
 import logger from '@/lib/logger'
 import { getCurrentUser } from '@/lib/auth'
 
-export default function VerifyEmailPage() {
+function VerifyEmailContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const [email, setEmail] = useState<string>('')
@@ -19,6 +19,62 @@ export default function VerifyEmailPage() {
   const inputRefs = useRef<(HTMLInputElement | null)[]>([])
   const initializationRef = useRef<string | null>(null) // Track what we've already initialized
   const resendCooldownRef = useRef(0) // Ref to track latest cooldown value (avoids stale closures)
+
+  const handleSendPin = useCallback(async (emailToUse?: string) => {
+    const emailAddress = emailToUse || email
+    if (!emailAddress) return
+    
+    // Check cooldown using ref (always current, avoids stale closure)
+    // Server-side validation is the source of truth, but this prevents unnecessary API calls
+    const currentCooldown = resendCooldownRef.current
+    if (currentCooldown > 0) {
+      setError(`Please wait ${currentCooldown} seconds before requesting a new code.`)
+      return
+    }
+    
+    setSending(true)
+    setError(null)
+    try {
+      const response = await api.post('/auth/send-verification-pin', { email: emailAddress })
+      // Update cooldown from server response (source of truth)
+      setResendCooldown(60)
+      resendCooldownRef.current = 60
+      logger.info('Verification PIN sent')
+      
+      // Check if already verified
+      if (response.data?.message?.includes('already verified')) {
+        setError('Email is already verified. Redirecting...')
+        setTimeout(() => router.push('/dashboard'), 2000)
+      }
+    } catch (err: any) {
+      logger.error('Failed to send verification PIN', err as Error)
+      
+      // Handle network errors
+      if (!err.response) {
+        setError('Network error. Please check your connection and try again.')
+      } else {
+        // Don't show error if it's the generic "email sent" message (security)
+        const errorMsg = err.response?.data?.detail || err.response?.data?.message
+        if (errorMsg && !errorMsg.includes('already verified')) {
+          // Check for specific error types
+          if (errorMsg.includes('cooldown') || errorMsg.includes('wait')) {
+            // Extract remaining seconds from error message and update cooldown
+            const waitMatch = errorMsg.match(/wait (\d+) seconds/)
+            if (waitMatch) {
+              const remainingSeconds = parseInt(waitMatch[1], 10)
+              setResendCooldown(remainingSeconds)
+              resendCooldownRef.current = remainingSeconds
+            }
+            setError(errorMsg) // Show cooldown message directly
+          } else {
+            setError('Failed to send verification code. Please try again.')
+          }
+        }
+      }
+    } finally {
+      setSending(false)
+    }
+  }, [email, router])
 
   // Get email from query params or fetch user
   useEffect(() => {
@@ -98,62 +154,6 @@ export default function VerifyEmailPage() {
       return () => clearTimeout(timer)
     }
   }, [resendCooldown])
-
-  const handleSendPin = useCallback(async (emailToUse?: string) => {
-    const emailAddress = emailToUse || email
-    if (!emailAddress) return
-    
-    // Check cooldown using ref (always current, avoids stale closure)
-    // Server-side validation is the source of truth, but this prevents unnecessary API calls
-    const currentCooldown = resendCooldownRef.current
-    if (currentCooldown > 0) {
-      setError(`Please wait ${currentCooldown} seconds before requesting a new code.`)
-      return
-    }
-    
-    setSending(true)
-    setError(null)
-    try {
-      const response = await api.post('/auth/send-verification-pin', { email: emailAddress })
-      // Update cooldown from server response (source of truth)
-      setResendCooldown(60)
-      resendCooldownRef.current = 60
-      logger.info('Verification PIN sent')
-      
-      // Check if already verified
-      if (response.data?.message?.includes('already verified')) {
-        setError('Email is already verified. Redirecting...')
-        setTimeout(() => router.push('/dashboard'), 2000)
-      }
-    } catch (err: any) {
-      logger.error('Failed to send verification PIN', err as Error)
-      
-      // Handle network errors
-      if (!err.response) {
-        setError('Network error. Please check your connection and try again.')
-      } else {
-        // Don't show error if it's the generic "email sent" message (security)
-        const errorMsg = err.response?.data?.detail || err.response?.data?.message
-        if (errorMsg && !errorMsg.includes('already verified')) {
-          // Check for specific error types
-          if (errorMsg.includes('cooldown') || errorMsg.includes('wait')) {
-            // Extract remaining seconds from error message and update cooldown
-            const waitMatch = errorMsg.match(/wait (\d+) seconds/)
-            if (waitMatch) {
-              const remainingSeconds = parseInt(waitMatch[1], 10)
-              setResendCooldown(remainingSeconds)
-              resendCooldownRef.current = remainingSeconds
-            }
-            setError(errorMsg) // Show cooldown message directly
-          } else {
-            setError('Failed to send verification code. Please try again.')
-          }
-        }
-      }
-    } finally {
-      setSending(false)
-    }
-  }, [email, router])
 
   const handlePinChange = (index: number, value: string) => {
     if (loading) return
@@ -291,7 +291,9 @@ export default function VerifyEmailPage() {
               {pin.map((digit, index) => (
                 <input
                   key={index}
-                  ref={(el) => (inputRefs.current[index] = el)}
+                  ref={(el: HTMLInputElement | null) => {
+                    inputRefs.current[index] = el
+                  }}
                   type="text"
                   inputMode="numeric"
                   maxLength={1}
@@ -337,12 +339,24 @@ export default function VerifyEmailPage() {
 
           <div className="mt-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
             <p className="text-xs text-blue-800">
-              <strong>Tip:</strong> Check your spam folder if you don't see the email. The code expires in 15 minutes.
+              <strong>Tip:</strong> Check your spam folder if you don&apos;t see the email. The code expires in 15 minutes.
             </p>
           </div>
         </div>
       </div>
     </div>
+  )
+}
+
+export default function VerifyEmailPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+      </div>
+    }>
+      <VerifyEmailContent />
+    </Suspense>
   )
 }
 
