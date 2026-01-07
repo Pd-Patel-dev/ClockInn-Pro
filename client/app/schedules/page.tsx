@@ -61,7 +61,10 @@ export default function SchedulesPage() {
 
   // Refetch function that can be called from anywhere
   const refetchShifts = async () => {
-    if (authErrorOccurred) return // Don't refetch if auth error occurred
+    if (authErrorOccurred) {
+      setLoading(false)
+      return // Don't refetch if auth error occurred
+    }
     
     try {
       setLoading(true)
@@ -78,6 +81,7 @@ export default function SchedulesPage() {
     } catch (error: any) {
       if (error.response?.status === 401 || error.response?.status === 403) {
         setAuthErrorOccurred(true)
+        setLoading(false)
         // Let the interceptor handle redirect
         return
       }
@@ -88,13 +92,18 @@ export default function SchedulesPage() {
     } finally {
       if (!authErrorOccurred) {
         setLoading(false)
+      } else {
+        setLoading(false)
       }
     }
   }
 
   useEffect(() => {
     // Don't fetch if auth error occurred - let interceptor handle redirect
-    if (authErrorOccurred) return
+    if (authErrorOccurred) {
+      setLoading(false)
+      return
+    }
     
     let abortController = new AbortController()
     let isMounted = true
@@ -115,6 +124,7 @@ export default function SchedulesPage() {
         
         if (error.response?.status === 401 || error.response?.status === 403) {
           setAuthErrorOccurred(true)
+          setLoading(false)
           // Don't log or show error - let the interceptor handle redirect
           return
         }
@@ -128,7 +138,7 @@ export default function SchedulesPage() {
     const fetchShifts = async () => {
       if (!isMounted || authErrorOccurred) return
       
-      if (isMounted) setLoading(true)
+      setLoading(true)
       try {
         const params = new URLSearchParams()
         params.append('start_date', weekStartStr)
@@ -143,11 +153,15 @@ export default function SchedulesPage() {
           setShifts(response.data || [])
         }
       } catch (error: any) {
-        if (abortController.signal.aborted) return // Request was cancelled
+        if (abortController.signal.aborted) {
+          // Request was cancelled, don't update loading state
+          return
+        }
         if (!isMounted) return
         
         if (error.response?.status === 401 || error.response?.status === 403) {
           setAuthErrorOccurred(true)
+          setLoading(false)
           // Don't log or show error - let the interceptor handle redirect
           return
         }
@@ -173,7 +187,7 @@ export default function SchedulesPage() {
       abortController.abort()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentWeek, selectedEmployee, weekStartStr, weekEndStr, authErrorOccurred])
+  }, [currentWeek, selectedEmployee, weekStartStr, weekEndStr])
 
   const handleCreateShift = async () => {
     // Client-side validation

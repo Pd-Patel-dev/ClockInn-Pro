@@ -30,8 +30,9 @@ export default function MySchedulePage() {
   const [currentUser, setCurrentUser] = useState<User | null>(null)
   const [userLoading, setUserLoading] = useState(true)
 
-  const weekStart = startOfWeek(currentWeek, { weekStartsOn: 1 }) // Monday
-  const weekEnd = endOfWeek(currentWeek, { weekStartsOn: 1 }) // Sunday
+  // Memoize week calculations to prevent unnecessary recalculations
+  const weekStart = useMemo(() => startOfWeek(currentWeek, { weekStartsOn: 1 }), [currentWeek]) // Monday
+  const weekEnd = useMemo(() => endOfWeek(currentWeek, { weekStartsOn: 1 }), [currentWeek]) // Sunday
   const weekDays = useMemo(() => Array.from({ length: 7 }, (_, i) => addDays(weekStart, i)), [weekStart])
   
   // Extend fetch window by 1 day on each side to catch overnight shifts
