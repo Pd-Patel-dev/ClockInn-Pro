@@ -23,14 +23,28 @@ interface SystemStats {
     initialized: boolean
     has_credentials: boolean
     sender_email: string
+    token_valid?: boolean
+    token_expired?: boolean
+    has_refresh_token?: boolean
+    token_expires_at?: string
+    token_expires_in_seconds?: number
+    token_expires_in_hours?: number
   }
   configuration: {
     database_configured: boolean
+    database_info?: any
     secret_key_configured: boolean
     gmail_credentials_configured: boolean
     gmail_token_configured: boolean
+    gmail_credentials_source?: string
+    gmail_token_source?: string
     cors_origins_configured: boolean
+    cors_origins?: string[]
+    frontend_url?: string
     refresh_token_expire_days: number
+    access_token_expire_minutes?: number
+    rate_limit_enabled?: boolean
+    rate_limit_per_minute?: number
   }
 }
 

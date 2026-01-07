@@ -387,7 +387,7 @@ export default function AdminSettingsPage() {
                   Copy URL
                 </button>
               </div>
-              {!companyInfo.kiosk_enabled && (
+              {companyInfo && !companyInfo.kiosk_enabled && (
                 <p className="text-sm text-red-600 mt-2">
                   ⚠️ Kiosk is currently disabled for your company.
                 </p>
@@ -396,6 +396,7 @@ export default function AdminSettingsPage() {
 
             <div className="bg-white shadow rounded-lg p-6">
               <h2 className="text-xl font-semibold mb-4">Company Information</h2>
+              {companyInfo ? (
               <form onSubmit={handleSubmitName(onSubmitName)} className="space-y-6">
               <div>
                 <label className="block text-sm font-medium text-gray-700">Company Name</label>
@@ -499,6 +500,9 @@ export default function AdminSettingsPage() {
                 </button>
               </div>
             </form>
+            ) : (
+              <p className="text-gray-500">Loading company information...</p>
+            )}
           </div>
           </div>
         )}
