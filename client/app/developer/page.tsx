@@ -357,21 +357,96 @@ export default function DeveloperPortalPage() {
               </dl>
             </div>
 
+            {/* Database Information */}
+            {stats && (
+              <div className="bg-white rounded-lg shadow p-6">
+                <h3 className="text-lg font-semibold mb-4">Database Information</h3>
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-gray-600">Connection Status</span>
+                    <span className={`px-2 py-1 rounded text-xs font-medium ${
+                      stats.database_status === 'connected' 
+                        ? 'bg-green-100 text-green-800' 
+                        : 'bg-red-100 text-red-800'
+                    }`}>
+                      {stats.database_status?.toUpperCase() || 'UNKNOWN'}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-gray-600">Configured</span>
+                    <span className={`px-2 py-1 rounded text-xs font-medium ${
+                      stats.configuration?.database_configured 
+                        ? 'bg-green-100 text-green-800' 
+                        : 'bg-red-100 text-red-800'
+                    }`}>
+                      {stats.configuration?.database_configured ? 'Yes' : 'No'}
+                    </span>
+                  </div>
+                  {stats.configuration?.database_info && (
+                    <>
+                      {stats.configuration.database_info.provider && (
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm text-gray-600">Provider</span>
+                          <span className="text-sm font-medium capitalize">
+                            {stats.configuration.database_info.provider}
+                          </span>
+                        </div>
+                      )}
+                      {stats.configuration.database_info.host && (
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm text-gray-600">Host</span>
+                          <span className="text-sm font-medium">
+                            {stats.configuration.database_info.host}
+                          </span>
+                        </div>
+                      )}
+                      {stats.configuration.database_info.port && (
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm text-gray-600">Port</span>
+                          <span className="text-sm font-medium">
+                            {stats.configuration.database_info.port}
+                          </span>
+                        </div>
+                      )}
+                      {stats.configuration.database_info.database && (
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm text-gray-600">Database Name</span>
+                          <span className="text-sm font-medium">
+                            {stats.configuration.database_info.database}
+                          </span>
+                        </div>
+                      )}
+                    </>
+                  )}
+                  {stats.database_error && (
+                    <div className="mt-3 pt-3 border-t">
+                      <span className="text-xs text-red-600">Error: {stats.database_error}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
             <div className="bg-white rounded-lg shadow p-6">
               <h3 className="text-lg font-semibold mb-4">Configuration Status</h3>
               <div className="space-y-3">
-                {Object.entries(stats?.configuration || {}).map(([key, value]) => (
-                  <div key={key} className="flex items-center justify-between">
-                    <span className="text-sm text-gray-600 capitalize">
-                      {key.replace(/_/g, ' ')}
-                    </span>
-                    <span className={`px-2 py-1 rounded text-xs font-medium ${
-                      value ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
-                    }`}>
-                      {value ? 'Configured' : 'Not Configured'}
-                    </span>
-                  </div>
-                ))}
+                {Object.entries(stats?.configuration || {}).map(([key, value]) => {
+                  // Skip database_info as it's displayed in the Database Information section above
+                  if (key === 'database_info') return null
+                  
+                  return (
+                    <div key={key} className="flex items-center justify-between">
+                      <span className="text-sm text-gray-600 capitalize">
+                        {key.replace(/_/g, ' ')}
+                      </span>
+                      <span className={`px-2 py-1 rounded text-xs font-medium ${
+                        value ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+                      }`}>
+                        {typeof value === 'boolean' ? (value ? 'Configured' : 'Not Configured') : String(value)}
+                      </span>
+                    </div>
+                  )
+                })}
               </div>
             </div>
           </div>
