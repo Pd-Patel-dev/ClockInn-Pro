@@ -226,6 +226,7 @@ async def approve_leave_request_endpoint(
                     leave_type=leave_req.type.value,
                     start_date=str(leave_req.start_date),
                     end_date=str(leave_req.end_date),
+                    reason=leave_req.reason,
                     reviewer_name=current_user.name,
                     review_comment=review_comment,
                 )
@@ -290,6 +291,7 @@ async def reject_leave_request_endpoint(
                     leave_type=leave_req.type.value,
                     start_date=str(leave_req.start_date),
                     end_date=str(leave_req.end_date),
+                    reason=leave_req.reason,
                     reviewer_name=current_user.name,
                     review_comment=review_comment,
                 )

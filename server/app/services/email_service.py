@@ -431,6 +431,7 @@ ClockIn Pro"""
         leave_type: str,
         start_date: str,
         end_date: str,
+        reason: Optional[str] = None,
         reviewer_name: Optional[str] = None,
         review_comment: Optional[str] = None,
     ) -> bool:
@@ -444,6 +445,7 @@ ClockIn Pro"""
             leave_type: Type of leave (vacation, sick, personal, other)
             start_date: Start date of leave
             end_date: End date of leave
+            reason: Optional original reason submitted by employee
             reviewer_name: Optional name of reviewer
             review_comment: Optional comment from reviewer
             
@@ -463,7 +465,8 @@ ClockIn Pro"""
             status_text = "Approved" if status.lower() == "approved" else "Rejected"
             subject = f"Leave Request {status_text} — ClockIn Pro"
             
-            reviewer_text = f"\nReviewed by: {reviewer_name}" if reviewer_name else ""
+            reason_text = f"\n- Reason: {reason}" if reason else ""
+            reviewer_text = f"\n- Reviewed by: {reviewer_name}" if reviewer_name else ""
             comment_text = f"\n\nReview Comment:\n{review_comment}" if review_comment else ""
             
             body = f"""Your leave request has been {status_text.lower()}.
@@ -471,7 +474,7 @@ ClockIn Pro"""
 Leave Details:
 - Type: {leave_type.title()}
 - Start Date: {start_date}
-- End Date: {end_date}{reviewer_text}{comment_text}
+- End Date: {end_date}{reason_text}{reviewer_text}{comment_text}
 
 You can view all your leave requests in your dashboard.
 
