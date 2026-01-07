@@ -19,6 +19,7 @@ interface SystemStats {
   total_time_entries: number
   today_time_entries: number
   database_status: string
+  database_error?: string
   email_service: {
     initialized: boolean
     has_credentials: boolean
