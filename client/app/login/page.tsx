@@ -22,12 +22,15 @@ function LoginContent() {
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [sessionExpired, setSessionExpired] = useState(false)
+  const [currentYear, setCurrentYear] = useState<number | null>(null)
 
   useEffect(() => {
     // Check if session expired
     if (searchParams?.get('expired') === 'true') {
       setSessionExpired(true)
     }
+    // Set current year on client side to avoid hydration mismatch
+    setCurrentYear(new Date().getFullYear())
   }, [searchParams])
 
   const {
@@ -240,7 +243,7 @@ function LoginContent() {
           </div>
 
           <p className="mt-6 text-center text-xs text-gray-500">
-            © {new Date().getFullYear()} ClockInn. All rights reserved.
+            © {currentYear || new Date().getFullYear()} ClockInn. All rights reserved.
           </p>
         </div>
       </div>

@@ -72,6 +72,7 @@ export default function AdminSettingsPage() {
   const [activeTab, setActiveTab] = useState<'info' | 'payroll' | 'email'>('info')
   const [gmailHealth, setGmailHealth] = useState<any>(null)
   const [checkingGmail, setCheckingGmail] = useState(false)
+  const [kioskUrl, setKioskUrl] = useState<string>('')
 
   const {
     register: registerName,
@@ -109,6 +110,13 @@ export default function AdminSettingsPage() {
     checkAdminAndFetch()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [router])
+
+  // Set kiosk URL on client side to avoid hydration mismatch
+  useEffect(() => {
+    if (companyInfo?.slug && typeof window !== 'undefined') {
+      setKioskUrl(`${window.location.origin}/kiosk/${companyInfo.slug}`)
+    }
+  }, [companyInfo?.slug])
 
   const checkGmailHealth = async () => {
     setCheckingGmail(true)
@@ -344,16 +352,17 @@ export default function AdminSettingsPage() {
                 <input
                   type="text"
                   readOnly
-                  value={typeof window !== 'undefined' ? `${window.location.origin}/kiosk/${companyInfo.slug}` : ''}
+                  value={kioskUrl}
                   className="flex-1 px-3 py-2 bg-white border border-blue-300 rounded-md text-sm font-mono text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
                   onClick={(e) => (e.target as HTMLInputElement).select()}
                 />
                 <button
                   type="button"
                   onClick={() => {
-                    const url = `${window.location.origin}/kiosk/${companyInfo.slug}`
-                    navigator.clipboard.writeText(url)
-                    toast.success('Kiosk URL copied to clipboard!')
+                    if (kioskUrl) {
+                      navigator.clipboard.writeText(kioskUrl)
+                      toast.success('Kiosk URL copied to clipboard!')
+                    }
                   }}
                   className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm font-medium"
                 >
