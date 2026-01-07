@@ -338,6 +338,180 @@ If you have any questions, please contact support.
         except Exception as e:
             logger.error(f"Unexpected error sending reminder: {e}")
             return False
+    
+    async def send_leave_request_notification(
+        self,
+        admin_email: str,
+        employee_name: str,
+        leave_type: str,
+        start_date: str,
+        end_date: str,
+        reason: Optional[str] = None,
+    ) -> bool:
+        """
+        Send notification to admin when a new leave request is submitted.
+        
+        Args:
+            admin_email: Admin email address
+            employee_name: Name of employee who submitted the request
+            leave_type: Type of leave (vacation, sick, personal, other)
+            start_date: Start date of leave
+            end_date: End date of leave
+            reason: Optional reason for leave
+            
+        Returns:
+            True if email sent successfully, False otherwise
+        """
+        # Refresh token before sending
+        if not self._refresh_token_if_needed():
+            logger.error("Gmail service not initialized or token refresh failed. Cannot send email.")
+            return False
+        
+        if not self.service:
+            logger.error("Gmail service not initialized. Cannot send email.")
+            return False
+        
+        try:
+            subject = f"New Leave Request from {employee_name} — ClockIn Pro"
+            
+            reason_text = f"\nReason: {reason}" if reason else ""
+            
+            body = f"""A new leave request has been submitted and requires your review.
+
+Employee: {employee_name}
+Leave Type: {leave_type.title()}
+Start Date: {start_date}
+End Date: {end_date}{reason_text}
+
+Please review and respond to this leave request in your admin dashboard.
+
+ClockIn Pro"""
+            
+            message = self._create_message(admin_email, subject, body)
+            
+            result = self.service.users().messages().send(
+                userId='me',
+                body=message
+            ).execute()
+            
+            logger.info(f"Leave request notification sent to {admin_email}. Message ID: {result.get('id')}")
+            return True
+            
+        except HttpError as error:
+            error_details = error.error_details if hasattr(error, 'error_details') else str(error)
+            
+            if error.resp.status == 401:
+                logger.error("Gmail API authentication failed. Token may have expired.")
+                if self._refresh_token_if_needed():
+                    try:
+                        result = self.service.users().messages().send(
+                            userId='me',
+                            body=message
+                        ).execute()
+                        logger.info(f"Leave request notification sent to {admin_email} after token refresh. Message ID: {result.get('id')}")
+                        return True
+                    except Exception as retry_error:
+                        logger.error(f"Failed to send leave notification after token refresh: {retry_error}")
+                        return False
+                else:
+                    logger.error("Gmail refresh token has expired. Re-authorization required.")
+                    return False
+            
+            logger.error(f"Gmail API error while sending leave notification: {error_details}")
+            return False
+        except Exception as e:
+            logger.error(f"Unexpected error sending leave notification: {e}")
+            return False
+    
+    async def send_leave_request_response(
+        self,
+        employee_email: str,
+        employee_name: str,
+        status: str,
+        leave_type: str,
+        start_date: str,
+        end_date: str,
+        reviewer_name: Optional[str] = None,
+        review_comment: Optional[str] = None,
+    ) -> bool:
+        """
+        Send notification to employee when their leave request is approved/rejected.
+        
+        Args:
+            employee_email: Employee email address
+            employee_name: Name of employee
+            status: Status of request (approved/rejected)
+            leave_type: Type of leave (vacation, sick, personal, other)
+            start_date: Start date of leave
+            end_date: End date of leave
+            reviewer_name: Optional name of reviewer
+            review_comment: Optional comment from reviewer
+            
+        Returns:
+            True if email sent successfully, False otherwise
+        """
+        # Refresh token before sending
+        if not self._refresh_token_if_needed():
+            logger.error("Gmail service not initialized or token refresh failed. Cannot send email.")
+            return False
+        
+        if not self.service:
+            logger.error("Gmail service not initialized. Cannot send email.")
+            return False
+        
+        try:
+            status_text = "Approved" if status.lower() == "approved" else "Rejected"
+            subject = f"Leave Request {status_text} — ClockIn Pro"
+            
+            reviewer_text = f"\nReviewed by: {reviewer_name}" if reviewer_name else ""
+            comment_text = f"\n\nReview Comment:\n{review_comment}" if review_comment else ""
+            
+            body = f"""Your leave request has been {status_text.lower()}.
+
+Leave Details:
+- Type: {leave_type.title()}
+- Start Date: {start_date}
+- End Date: {end_date}{reviewer_text}{comment_text}
+
+You can view all your leave requests in your dashboard.
+
+ClockIn Pro"""
+            
+            message = self._create_message(employee_email, subject, body)
+            
+            result = self.service.users().messages().send(
+                userId='me',
+                body=message
+            ).execute()
+            
+            logger.info(f"Leave request response sent to {employee_email}. Message ID: {result.get('id')}")
+            return True
+            
+        except HttpError as error:
+            error_details = error.error_details if hasattr(error, 'error_details') else str(error)
+            
+            if error.resp.status == 401:
+                logger.error("Gmail API authentication failed. Token may have expired.")
+                if self._refresh_token_if_needed():
+                    try:
+                        result = self.service.users().messages().send(
+                            userId='me',
+                            body=message
+                        ).execute()
+                        logger.info(f"Leave request response sent to {employee_email} after token refresh. Message ID: {result.get('id')}")
+                        return True
+                    except Exception as retry_error:
+                        logger.error(f"Failed to send leave response after token refresh: {retry_error}")
+                        return False
+                else:
+                    logger.error("Gmail refresh token has expired. Re-authorization required.")
+                    return False
+            
+            logger.error(f"Gmail API error while sending leave response: {error_details}")
+            return False
+        except Exception as e:
+            logger.error(f"Unexpected error sending leave response: {e}")
+            return False
 
 
 # Global email service instance

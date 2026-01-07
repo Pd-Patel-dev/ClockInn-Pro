@@ -43,6 +43,39 @@ async def create_leave_request_endpoint(
     result = await db.execute(select(User).where(User.id == leave_req.employee_id))
     employee = result.scalar_one_or_none()
     
+    # Send email notifications to all admins in the company
+    from app.models.user import UserRole
+    from app.services.email_service import email_service
+    import asyncio
+    
+    try:
+        admin_result = await db.execute(
+            select(User).where(
+                User.company_id == current_user.company_id,
+                User.role == UserRole.ADMIN,
+                User.email_verified == True,  # Only send to verified admins
+            )
+        )
+        admins = admin_result.scalars().all()
+        
+        # Send email to each admin asynchronously (don't wait for completion)
+        for admin in admins:
+            asyncio.create_task(
+                email_service.send_leave_request_notification(
+                    admin_email=admin.email,
+                    employee_name=employee.name if employee else "Unknown",
+                    leave_type=leave_req.type.value,
+                    start_date=str(leave_req.start_date),
+                    end_date=str(leave_req.end_date),
+                    reason=leave_req.reason,
+                )
+            )
+    except Exception as e:
+        # Log error but don't fail the request
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"Failed to send leave request notifications to admins: {e}")
+    
     return LeaveRequestResponse(
         id=leave_req.id,
         employee_id=leave_req.employee_id,
@@ -177,6 +210,29 @@ async def approve_leave_request_endpoint(
     result = await db.execute(select(User).where(User.id == leave_req.employee_id))
     employee = result.scalar_one_or_none()
     
+    # Send email notification to employee
+    from app.services.email_service import email_service
+    import asyncio
+    import logging
+    logger = logging.getLogger(__name__)
+    
+    if employee and employee.email_verified:
+        try:
+            asyncio.create_task(
+                email_service.send_leave_request_response(
+                    employee_email=employee.email,
+                    employee_name=employee.name,
+                    status="approved",
+                    leave_type=leave_req.type.value,
+                    start_date=str(leave_req.start_date),
+                    end_date=str(leave_req.end_date),
+                    reviewer_name=current_user.name,
+                    review_comment=review_comment,
+                )
+            )
+        except Exception as e:
+            logger.error(f"Failed to send leave approval email to employee: {e}")
+    
     return LeaveRequestResponse(
         id=leave_req.id,
         employee_id=leave_req.employee_id,
@@ -217,6 +273,29 @@ async def reject_leave_request_endpoint(
     from sqlalchemy import select
     result = await db.execute(select(User).where(User.id == leave_req.employee_id))
     employee = result.scalar_one_or_none()
+    
+    # Send email notification to employee
+    from app.services.email_service import email_service
+    import asyncio
+    import logging
+    logger = logging.getLogger(__name__)
+    
+    if employee and employee.email_verified:
+        try:
+            asyncio.create_task(
+                email_service.send_leave_request_response(
+                    employee_email=employee.email,
+                    employee_name=employee.name,
+                    status="rejected",
+                    leave_type=leave_req.type.value,
+                    start_date=str(leave_req.start_date),
+                    end_date=str(leave_req.end_date),
+                    reviewer_name=current_user.name,
+                    review_comment=review_comment,
+                )
+            )
+        except Exception as e:
+            logger.error(f"Failed to send leave rejection email to employee: {e}")
     
     return LeaveRequestResponse(
         id=leave_req.id,
