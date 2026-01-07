@@ -19,13 +19,44 @@ const api = axios.create({
 let accessToken: string | null = null
 let refreshToken: string | null = null
 
+// Helper function to validate JWT token format
+const isValidJWTFormat = (token: string | null): boolean => {
+  if (!token || typeof token !== 'string') return false
+  // JWT tokens have 3 parts separated by dots
+  const parts = token.split('.')
+  if (parts.length !== 3) return false
+  // Each part should be non-empty
+  return parts.every(part => part.length > 0)
+}
+
 // Initialize tokens from localStorage on module load
 if (typeof window !== 'undefined') {
-  accessToken = localStorage.getItem('access_token')
-  refreshToken = localStorage.getItem('refresh_token')
+  const storedAccess = localStorage.getItem('access_token')
+  const storedRefresh = localStorage.getItem('refresh_token')
+  
+  // Only use tokens if they're in valid JWT format
+  if (storedAccess && isValidJWTFormat(storedAccess)) {
+    accessToken = storedAccess
+  } else if (storedAccess) {
+    // Invalid token format, remove it
+    localStorage.removeItem('access_token')
+  }
+  
+  if (storedRefresh && isValidJWTFormat(storedRefresh)) {
+    refreshToken = storedRefresh
+  } else if (storedRefresh) {
+    // Invalid token format, remove it
+    localStorage.removeItem('refresh_token')
+  }
 }
 
 export const setTokens = (access: string, refresh: string) => {
+  // Validate token format before storing
+  if (!isValidJWTFormat(access) || !isValidJWTFormat(refresh)) {
+    console.error('Invalid token format detected, not storing tokens')
+    return
+  }
+  
   accessToken = access
   refreshToken = refresh
   // Store both tokens in localStorage for persistence
@@ -45,17 +76,29 @@ export const clearTokens = () => {
 }
 
 export const getAccessToken = () => {
-  if (accessToken) return accessToken
+  if (accessToken && isValidJWTFormat(accessToken)) return accessToken
   if (typeof window !== 'undefined') {
-    return localStorage.getItem('access_token')
+    const stored = localStorage.getItem('access_token')
+    if (stored && isValidJWTFormat(stored)) {
+      return stored
+    } else if (stored) {
+      // Invalid token, remove it
+      localStorage.removeItem('access_token')
+    }
   }
   return null
 }
 
 export const getRefreshToken = () => {
-  if (refreshToken) return refreshToken
+  if (refreshToken && isValidJWTFormat(refreshToken)) return refreshToken
   if (typeof window !== 'undefined') {
-    return localStorage.getItem('refresh_token')
+    const stored = localStorage.getItem('refresh_token')
+    if (stored && isValidJWTFormat(stored)) {
+      return stored
+    } else if (stored) {
+      // Invalid token, remove it
+      localStorage.removeItem('refresh_token')
+    }
   }
   return null
 }
@@ -188,7 +231,8 @@ export const initializeAuth = async (): Promise<boolean> => {
   const storedAccess = localStorage.getItem('access_token')
   const storedRefresh = localStorage.getItem('refresh_token')
   
-  if (storedAccess) {
+  // Validate token format before using
+  if (storedAccess && isValidJWTFormat(storedAccess) && storedRefresh && isValidJWTFormat(storedRefresh)) {
     // Restore tokens from localStorage
     accessToken = storedAccess
     refreshToken = storedRefresh
@@ -231,7 +275,10 @@ api.interceptors.request.use(
     
     // Always sync token from localStorage before making request
     if (typeof window !== 'undefined' && !accessToken) {
-      accessToken = localStorage.getItem('access_token')
+      const stored = localStorage.getItem('access_token')
+      if (stored && isValidJWTFormat(stored)) {
+        accessToken = stored
+      }
     }
     
     const token = getAccessToken()

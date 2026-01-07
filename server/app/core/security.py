@@ -51,10 +51,23 @@ def create_refresh_token(data: dict) -> str:
 
 def decode_token(token: str) -> Optional[dict]:
     """Decode and verify a JWT token."""
+    if not token or not isinstance(token, str) or not token.strip():
+        return None
+    
     try:
         payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
         return payload
-    except JWTError:
+    except JWTError as e:
+        # Log specific JWT errors for debugging
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.debug(f"JWT decode error: {str(e)}")
+        return None
+    except Exception as e:
+        # Catch any other unexpected errors (like base64 decoding errors)
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.debug(f"Unexpected token decode error: {str(e)}")
         return None
 
 

@@ -17,7 +17,7 @@ export interface User {
   company_id: string
   name: string
   email: string
-  role: 'ADMIN' | 'EMPLOYEE'
+  role: 'ADMIN' | 'EMPLOYEE' | 'DEVELOPER'
   status: 'active' | 'inactive'
   company_name: string
   email_verified: boolean

@@ -14,7 +14,14 @@ interface TokenPayload {
  */
 function decodeJWT(token: string): TokenPayload | null {
   try {
-    const base64Url = token.split('.')[1]
+    // Validate token format first
+    if (!token || typeof token !== 'string') return null
+    const parts = token.split('.')
+    if (parts.length !== 3 || parts.some(part => !part)) return null
+    
+    const base64Url = parts[1]
+    if (!base64Url) return null
+    
     const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/')
     const jsonPayload = decodeURIComponent(
       atob(base64)
@@ -24,6 +31,7 @@ function decodeJWT(token: string): TokenPayload | null {
     )
     return JSON.parse(jsonPayload)
   } catch (error) {
+    // Invalid base64 or JSON - token is malformed
     return null
   }
 }

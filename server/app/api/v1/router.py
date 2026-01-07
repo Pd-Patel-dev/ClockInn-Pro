@@ -1,5 +1,5 @@
 from fastapi import APIRouter
-from app.api.v1.endpoints import auth, users, time, leave, reports, payroll, company, health, shifts, kiosk, gmail, admin
+from app.api.v1.endpoints import auth, users, time, leave, reports, payroll, company, health, shifts, kiosk, gmail, admin, developer
 
 api_router = APIRouter()
 
@@ -15,4 +15,5 @@ api_router.include_router(shifts.router, prefix="", tags=["shifts"])
 api_router.include_router(payroll.router, prefix="", tags=["payroll"])
 api_router.include_router(company.router, prefix="", tags=["company"])
 api_router.include_router(kiosk.router, prefix="/kiosk", tags=["kiosk"])
+api_router.include_router(developer.router, prefix="/developer", tags=["developer"])
 

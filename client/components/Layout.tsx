@@ -136,6 +136,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
 
   const isAdmin = user.role === 'ADMIN'
   const isEmployee = user.role === 'EMPLOYEE'
+  const isDeveloper = user.role === 'DEVELOPER'
 
   const employeeLinks = [
     { href: '/dashboard', label: 'Dashboard' },
@@ -156,7 +157,12 @@ export default function Layout({ children }: { children: React.ReactNode }) {
     { href: '/settings', label: 'Settings' },
   ]
 
-  const links = isAdmin ? adminLinks : employeeLinks
+  const developerLinks = [
+    { href: '/developer', label: 'Developer Portal' },
+    { href: '/settings', label: 'Email Service' },
+  ]
+
+  const links = isDeveloper ? developerLinks : (isAdmin ? adminLinks : employeeLinks)
 
   const isActive = (href: string) => {
     if (href === '/dashboard') {

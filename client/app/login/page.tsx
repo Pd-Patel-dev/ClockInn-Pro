@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { login } from '@/lib/auth'
+import { login, getCurrentUser } from '@/lib/auth'
 import { startTokenRefreshInterval } from '@/lib/api'
 import Link from 'next/link'
 
@@ -49,7 +49,19 @@ function LoginContent() {
       await login(data)
       // Start proactive token refresh after login
       startTokenRefreshInterval()
-      router.push('/dashboard')
+      
+      // Get current user to check role and redirect accordingly
+      try {
+        const currentUser = await getCurrentUser()
+        if (currentUser.role === 'DEVELOPER') {
+          router.push('/developer')
+        } else {
+          router.push('/dashboard')
+        }
+      } catch (err) {
+        // If we can't get user, default to dashboard
+        router.push('/dashboard')
+      }
     } catch (err: any) {
       // Handle email verification required - redirect to verify-email page
       if (err.isVerificationRequired || err.response?.status === 403) {
@@ -70,8 +82,18 @@ function LoginContent() {
       
       // Extract error message from detail (handle both string and object)
       let errorMessage = 'Login failed. Please try again.'
-      const detail = err.response?.data?.detail
-      if (detail) {
+      const responseData = err.response?.data
+      const detail = responseData?.detail
+      
+      // Handle validation errors (422 or 400 with errors array)
+      if (responseData?.errors && Array.isArray(responseData.errors)) {
+        const validationErrors = responseData.errors.map((e: any) => {
+          const field = e.field || e.loc?.join('.') || 'field'
+          const msg = e.message || e.msg || 'Invalid value'
+          return `${field}: ${msg}`
+        }).join(', ')
+        errorMessage = `Validation error: ${validationErrors}`
+      } else if (detail) {
         if (typeof detail === 'string') {
           errorMessage = detail
         } else if (typeof detail === 'object' && detail?.message) {
@@ -79,7 +101,10 @@ function LoginContent() {
         } else if (typeof detail === 'object' && detail?.error) {
           errorMessage = detail.error
         }
+      } else if (err.message) {
+        errorMessage = err.message
       }
+      
       setError(errorMessage)
     } finally {
       setLoading(false)

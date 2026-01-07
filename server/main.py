@@ -106,8 +106,9 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
             "type": error_type
         })
     
+    # Return 400 instead of 422 for better compatibility
     return JSONResponse(
-        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        status_code=status.HTTP_400_BAD_REQUEST,
         content={
             "detail": "Validation error",
             "errors": errors,

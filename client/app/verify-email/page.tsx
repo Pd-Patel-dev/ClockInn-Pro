@@ -44,7 +44,18 @@ function VerifyEmailContent() {
       // Check if already verified
       if (response.data?.message?.includes('already verified')) {
         setError('Email is already verified. Redirecting...')
-        setTimeout(() => router.push('/dashboard'), 2000)
+        setTimeout(async () => {
+          try {
+            const currentUser = await getCurrentUser()
+            if (currentUser.role === 'DEVELOPER') {
+              router.push('/developer')
+            } else {
+              router.push('/dashboard')
+            }
+          } catch (err) {
+            router.push('/dashboard')
+          }
+        }, 2000)
       }
     } catch (err: any) {
       logger.error('Failed to send verification PIN', err as Error)
@@ -100,8 +111,12 @@ function VerifyEmailContent() {
           if (user) {
             // Check if this is the logged-in user and if they're already verified
             if (user.email === emailParam && user.email_verified && !user.verification_required) {
-              // Already verified, redirect to dashboard
-              router.push('/dashboard')
+              // Already verified, redirect based on role
+              if (user.role === 'DEVELOPER') {
+                router.push('/developer')
+              } else {
+                router.push('/dashboard')
+              }
               return
             }
           }
@@ -115,8 +130,12 @@ function VerifyEmailContent() {
           if (user) {
             // Check if user is already verified
             if (user.email_verified && !user.verification_required) {
-              // Already verified, redirect to dashboard
-              router.push('/dashboard')
+              // Already verified, redirect based on role
+              if (user.role === 'DEVELOPER') {
+                router.push('/developer')
+              } else {
+                router.push('/dashboard')
+              }
               return
             }
             setEmail(user.email)
@@ -231,8 +250,18 @@ function VerifyEmailContent() {
       // Clear PIN
       setPin(['', '', '', '', '', ''])
       
-      // Redirect to dashboard after successful verification
-      router.push('/dashboard')
+      // Redirect based on user role after successful verification
+      try {
+        const currentUser = await getCurrentUser()
+        if (currentUser.role === 'DEVELOPER') {
+          router.push('/developer')
+        } else {
+          router.push('/dashboard')
+        }
+      } catch (err) {
+        // If we can't get user, default to dashboard
+        router.push('/dashboard')
+      }
     } catch (err: any) {
       // Handle network errors
       if (!err.response) {

@@ -40,6 +40,13 @@ async def login_endpoint(
     db: AsyncSession = Depends(get_db),
 ):
     """Login with email and password."""
+    # Log received data for debugging (only in development)
+    import os
+    import logging
+    logger = logging.getLogger(__name__)
+    if os.getenv("ENVIRONMENT", "").lower() not in ["prod", "production"]:
+        logger.debug(f"Login attempt for email: {login_data.email[:3]}***")
+    
     # IP and user agent are optional - can be added later if needed
     user, access_token, refresh_token = await login(db, login_data, ip=None, user_agent=None)
     return TokenResponse(

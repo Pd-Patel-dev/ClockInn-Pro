@@ -6,7 +6,7 @@ from pydantic import BaseModel
 from typing import Optional
 import logging
 
-from app.core.dependencies import get_current_admin
+from app.core.dependencies import get_current_developer
 from app.models.user import User
 from app.services.email_service import email_service
 from app.core.config import settings
@@ -36,7 +36,7 @@ class GmailTokenUpdateRequest(BaseModel):
 @router.get("/health", response_model=GmailHealthResponse)
 @handle_endpoint_errors(operation_name="gmail_health_check")
 async def check_gmail_health(
-    current_user: User = Depends(get_current_admin),
+    current_user: User = Depends(get_current_developer),
 ):
     """
     Check Gmail API service health and token status.
@@ -114,7 +114,7 @@ async def check_gmail_health(
 @router.get("/oauth-url", response_model=GmailOAuthUrlResponse)
 @handle_endpoint_errors(operation_name="get_gmail_oauth_url")
 async def get_gmail_oauth_url(
-    current_user: User = Depends(get_current_admin),
+    current_user: User = Depends(get_current_developer),
     redirect_uri: Optional[str] = Query(None, description="Optional redirect URI (defaults to production URL)"),
 ):
     """
@@ -179,7 +179,7 @@ async def get_gmail_oauth_url(
 @handle_endpoint_errors(operation_name="update_gmail_token")
 async def update_gmail_token(
     request: GmailTokenUpdateRequest,
-    current_user: User = Depends(get_current_admin),
+    current_user: User = Depends(get_current_developer),
 ):
     """
     Update Gmail API token from authorization code or token JSON.
@@ -255,7 +255,7 @@ async def update_gmail_token(
 @handle_endpoint_errors(operation_name="test_gmail_send")
 async def test_gmail_send(
     test_email: str = Query(..., description="Email address to send test email to"),
-    current_user: User = Depends(get_current_admin),
+    current_user: User = Depends(get_current_developer),
 ):
     """
     Send a test email to verify Gmail API is working.

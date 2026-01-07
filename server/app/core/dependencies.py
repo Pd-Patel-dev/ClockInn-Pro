@@ -18,6 +18,14 @@ async def get_current_user(
 ) -> User:
     """Get current authenticated user from JWT token."""
     token = credentials.credentials
+    
+    # Validate token format before decoding
+    if not token or not token.strip():
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid authentication credentials: token is empty",
+        )
+    
     payload = decode_token(token)
     
     if payload is None or payload.get("type") != "access":
@@ -113,6 +121,18 @@ async def get_current_admin(
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Admin access required",
+        )
+    return current_user
+
+
+async def get_current_developer(
+    current_user: User = Depends(get_current_verified_user),
+) -> User:
+    """Require DEVELOPER role and verified email."""
+    if current_user.role != UserRole.DEVELOPER:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Developer access required",
         )
     return current_user
 

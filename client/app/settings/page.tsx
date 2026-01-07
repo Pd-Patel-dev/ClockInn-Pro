@@ -93,15 +93,23 @@ export default function AdminSettingsPage() {
     resolver: zodResolver(companySettingsSchema),
   })
 
+  const [user, setUser] = useState<any>(null)
+
   useEffect(() => {
     const checkAdminAndFetch = async () => {
       try {
-        const user = await getCurrentUser()
-        if (user.role !== 'ADMIN') {
+        const currentUser = await getCurrentUser()
+        setUser(currentUser)
+        if (currentUser.role !== 'ADMIN' && currentUser.role !== 'DEVELOPER') {
           router.push('/dashboard')
           return
         }
         fetchCompanyInfo()
+        // Set default tab for developers (email service only)
+        if (currentUser.role === 'DEVELOPER') {
+          setActiveTab('email')
+          checkGmailHealth()
+        }
       } catch (err: any) {
         logger.error('Authentication error', err as Error, { action: 'fetchCompanyInfo' })
         router.push('/login')
@@ -159,22 +167,25 @@ export default function AdminSettingsPage() {
   const fetchCompanyInfo = async () => {
     setLoading(true)
     try {
-      const response = await api.get('/admin/company')
-      setCompanyInfo(response.data)
-      
-      // Reset form with fetched values
-      resetSettings({
-        timezone: response.data.settings.timezone,
-        payroll_week_start_day: response.data.settings.payroll_week_start_day,
-        biweekly_anchor_date: response.data.settings.biweekly_anchor_date ? (typeof response.data.settings.biweekly_anchor_date === 'string' ? response.data.settings.biweekly_anchor_date.split('T')[0] : response.data.settings.biweekly_anchor_date) : '',
-        overtime_enabled: response.data.settings.overtime_enabled,
-        overtime_threshold_hours_per_week: response.data.settings.overtime_threshold_hours_per_week,
-        overtime_multiplier_default: response.data.settings.overtime_multiplier_default.toString(),
-        rounding_policy: response.data.settings.rounding_policy as 'none' | '5' | '10' | '15',
-        breaks_paid: response.data.settings.breaks_paid ?? false,
-      })
-      
-      setValueName('name', response.data.name)
+      // Only fetch company info for admins (developers don't need it)
+      if (user?.role === 'ADMIN') {
+        const response = await api.get('/admin/company')
+        setCompanyInfo(response.data)
+        
+        // Reset form with fetched values
+        resetSettings({
+          timezone: response.data.settings.timezone,
+          payroll_week_start_day: response.data.settings.payroll_week_start_day,
+          biweekly_anchor_date: response.data.settings.biweekly_anchor_date ? (typeof response.data.settings.biweekly_anchor_date === 'string' ? response.data.settings.biweekly_anchor_date.split('T')[0] : response.data.settings.biweekly_anchor_date) : '',
+          overtime_enabled: response.data.settings.overtime_enabled,
+          overtime_threshold_hours_per_week: response.data.settings.overtime_threshold_hours_per_week,
+          overtime_multiplier_default: response.data.settings.overtime_multiplier_default.toString(),
+          rounding_policy: response.data.settings.rounding_policy as 'none' | '5' | '10' | '15',
+          breaks_paid: response.data.settings.breaks_paid ?? false,
+        })
+        
+        setValueName('name', response.data.name)
+      }
     } catch (error: any) {
       logger.error('Failed to fetch company info', error as Error, { endpoint: '/admin/company' })
       if (error.response?.status === 403) {
@@ -285,7 +296,7 @@ export default function AdminSettingsPage() {
     )
   }
 
-  if (!companyInfo) {
+  if (!companyInfo && user?.role === 'ADMIN') {
     return (
       <Layout>
         <div className="px-4 py-6 sm:px-0">
@@ -294,6 +305,7 @@ export default function AdminSettingsPage() {
       </Layout>
     )
   }
+  
 
   return (
     <Layout>
@@ -303,44 +315,50 @@ export default function AdminSettingsPage() {
         {/* Tabs */}
         <div className="border-b border-gray-200 mb-6">
           <nav className="-mb-px flex space-x-8">
-            <button
-              onClick={() => setActiveTab('info')}
-              className={`py-4 px-1 border-b-2 font-medium text-sm ${
-                activeTab === 'info'
-                  ? 'border-primary-500 text-primary-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-              }`}
-            >
-              Company Information
-            </button>
-            <button
-              onClick={() => setActiveTab('payroll')}
-              className={`py-4 px-1 border-b-2 font-medium text-sm ${
-                activeTab === 'payroll'
-                  ? 'border-primary-500 text-primary-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-              }`}
-            >
-              Payroll Settings
-            </button>
-            <button
-              onClick={() => {
-                setActiveTab('email')
-                checkGmailHealth()
-              }}
-              className={`py-4 px-1 border-b-2 font-medium text-sm ${
-                activeTab === 'email'
-                  ? 'border-primary-500 text-primary-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-              }`}
-            >
-              Email Service
-            </button>
+            {user?.role === 'ADMIN' && (
+              <>
+                <button
+                  onClick={() => setActiveTab('info')}
+                  className={`py-4 px-1 border-b-2 font-medium text-sm ${
+                    activeTab === 'info'
+                      ? 'border-primary-500 text-primary-600'
+                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                  }`}
+                >
+                  Company Information
+                </button>
+                <button
+                  onClick={() => setActiveTab('payroll')}
+                  className={`py-4 px-1 border-b-2 font-medium text-sm ${
+                    activeTab === 'payroll'
+                      ? 'border-primary-500 text-primary-600'
+                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                  }`}
+                >
+                  Payroll Settings
+                </button>
+              </>
+            )}
+            {user?.role === 'DEVELOPER' && (
+              <button
+                onClick={() => {
+                  setActiveTab('email')
+                  checkGmailHealth()
+                }}
+                className={`py-4 px-1 border-b-2 font-medium text-sm ${
+                  activeTab === 'email'
+                    ? 'border-primary-500 text-primary-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                }`}
+              >
+                Email Service
+              </button>
+            )}
           </nav>
         </div>
 
-        {/* Company Information Tab */}
-        {activeTab === 'info' && (
+        {/* Company Information Tab - Admin Only */}
+        {activeTab === 'info' && user?.role === 'ADMIN' && (
           <div className="space-y-6">
             {/* Kiosk URL Section */}
             <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
@@ -485,8 +503,8 @@ export default function AdminSettingsPage() {
           </div>
         )}
 
-        {/* Email Service Tab */}
-        {activeTab === 'email' && (
+        {/* Email Service Tab - Developer Only */}
+        {activeTab === 'email' && user?.role === 'DEVELOPER' && (
           <div className="space-y-6">
             <div className="bg-white shadow rounded-lg p-6">
               <h2 className="text-xl font-semibold mb-4">Gmail API Configuration</h2>
@@ -615,8 +633,8 @@ export default function AdminSettingsPage() {
           </div>
         )}
 
-        {/* Payroll Settings Tab */}
-        {activeTab === 'payroll' && (
+        {/* Payroll Settings Tab - Admin Only */}
+        {activeTab === 'payroll' && user?.role === 'ADMIN' && (
           <div className="bg-white shadow rounded-lg p-6">
             <h2 className="text-xl font-semibold mb-4">Payroll Settings</h2>
             <p className="text-sm text-gray-600 mb-6">
