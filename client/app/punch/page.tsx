@@ -21,6 +21,12 @@ export default function MyPunchPage() {
         const currentUser = await getCurrentUser()
         setUser(currentUser)
         
+        // Check if user needs email verification
+        if (!currentUser.email_verified || currentUser.verification_required) {
+          router.push(`/verify-email?email=${encodeURIComponent(currentUser.email)}`)
+          return
+        }
+        
         try {
           const response = await api.get('/time/my?limit=1')
           const entries = response.data.entries || []
@@ -75,7 +81,18 @@ export default function MyPunchPage() {
       clearPin()
       setTimeout(() => setMessage(null), 5000)
     } catch (err: any) {
-      setMessage(err.response?.data?.detail || 'Punch failed. Please try again.')
+      const errorDetail = err.response?.data?.detail
+      
+      // Check if verification is required
+      if (err.response?.status === 403 && 
+          (errorDetail?.error === 'EMAIL_VERIFICATION_REQUIRED' || 
+           (typeof errorDetail === 'object' && errorDetail?.error === 'EMAIL_VERIFICATION_REQUIRED'))) {
+        const email = errorDetail?.email || user?.email
+        router.push(`/verify-email?email=${encodeURIComponent(email || '')}`)
+        return
+      }
+      
+      setMessage(typeof errorDetail === 'string' ? errorDetail : errorDetail?.message || 'Punch failed. Please try again.')
       clearPin()
     } finally {
       setLoading(false)

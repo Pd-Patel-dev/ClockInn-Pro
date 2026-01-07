@@ -115,6 +115,17 @@ async def kiosk_clock(
             detail="Invalid PIN",
         )
     
+    # Check if employee's email is verified
+    from app.services.verification_service import check_verification_required
+    if check_verification_required(matching_employee):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={
+                "error": "EMAIL_VERIFICATION_REQUIRED",
+                "message": "Your email must be verified to use the kiosk. Please verify your email first.",
+            }
+        )
+    
     # Clock in/out (PIN already verified)
     entry = await punch(
         db,

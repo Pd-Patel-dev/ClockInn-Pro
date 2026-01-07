@@ -111,7 +111,16 @@ export default function KioskSlugPage() {
         setSuccess(false)
       }, 10000)
     } catch (err: any) {
-      setMessage(err.response?.data?.detail || 'Invalid PIN. Please try again.')
+      const errorDetail = err.response?.data?.detail
+      
+      // Check if verification is required
+      if (err.response?.status === 403 && 
+          (errorDetail?.error === 'EMAIL_VERIFICATION_REQUIRED' || 
+           (typeof errorDetail === 'object' && errorDetail?.error === 'EMAIL_VERIFICATION_REQUIRED'))) {
+        setMessage(errorDetail?.message || 'Your email must be verified to use the kiosk. Please verify your email first by logging into your account.')
+      } else {
+        setMessage(typeof errorDetail === 'string' ? errorDetail : errorDetail?.message || 'Invalid PIN. Please try again.')
+      }
       setSuccess(false)
       setPinDisplay('') // Clear PIN on error too
     } finally {
