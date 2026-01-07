@@ -100,25 +100,36 @@ async def get_developer_stats(
             stats["database_status"] = "disconnected"
             stats["database_error"] = str(e)
         
-        # Email service status - detailed
-        email_info = {
-            "initialized": email_service.service is not None,
-            "has_credentials": email_service.creds is not None,
-            "sender_email": settings.GMAIL_SENDER_EMAIL,
-        }
-        
-        # Add token expiration info if credentials exist
-        if email_service.creds:
-            email_info["token_valid"] = email_service.creds.valid
-            email_info["token_expired"] = email_service.creds.expired
-            email_info["has_refresh_token"] = bool(email_service.creds.refresh_token)
-            if email_service.creds.expiry:
-                email_info["token_expires_at"] = email_service.creds.expiry.isoformat()
-                now = datetime.now(timezone.utc)
-                if email_service.creds.expiry > now:
-                    time_until_expiry = (email_service.creds.expiry - now).total_seconds()
-                    email_info["token_expires_in_seconds"] = int(time_until_expiry)
-                    email_info["token_expires_in_hours"] = round(time_until_expiry / 3600, 2)
+        # Email service status - detailed (wrap in try-catch to prevent failures)
+        try:
+            email_info = {
+                "initialized": email_service.service is not None,
+                "has_credentials": email_service.creds is not None,
+                "sender_email": settings.GMAIL_SENDER_EMAIL or "Not configured",
+            }
+            
+            # Add token expiration info if credentials exist
+            if email_service.creds:
+                try:
+                    email_info["token_valid"] = email_service.creds.valid
+                    email_info["token_expired"] = email_service.creds.expired
+                    email_info["has_refresh_token"] = bool(email_service.creds.refresh_token)
+                    if email_service.creds.expiry:
+                        email_info["token_expires_at"] = email_service.creds.expiry.isoformat()
+                        now = datetime.now(timezone.utc)
+                        if email_service.creds.expiry > now:
+                            time_until_expiry = (email_service.creds.expiry - now).total_seconds()
+                            email_info["token_expires_in_seconds"] = int(time_until_expiry)
+                            email_info["token_expires_in_hours"] = round(time_until_expiry / 3600, 2)
+                except Exception as e:
+                    logger.warning(f"Error reading email service creds: {e}")
+        except Exception as e:
+            logger.error(f"Error getting email service info: {e}", exc_info=True)
+            email_info = {
+                "initialized": False,
+                "has_credentials": False,
+                "sender_email": "Error loading",
+            }
         
         stats["email_service"] = email_info
         
@@ -168,25 +179,51 @@ async def get_developer_stats(
                     if "supabase" in db_url.lower():
                         database_info["provider"] = "supabase"
         
-        stats["configuration"] = {
-            "database_configured": bool(settings.DATABASE_URL),
-            "database_info": database_info,
-            "secret_key_configured": bool(settings.SECRET_KEY),
-            "gmail_credentials_configured": gmail_credentials_configured,
-            "gmail_token_configured": gmail_token_configured,
-            "gmail_credentials_source": "env_var" if settings.GMAIL_CREDENTIALS_JSON else ("file" if gmail_creds_file.exists() else "none"),
-            "gmail_token_source": "env_var" if settings.GMAIL_TOKEN_JSON else ("file" if gmail_token_file.exists() else "none"),
-            "cors_origins_configured": bool(settings.CORS_ORIGINS),
-            "cors_origins": cors_origins_list,
-            "frontend_url": settings.FRONTEND_URL,
-            "refresh_token_expire_days": settings.REFRESH_TOKEN_EXPIRE_DAYS,
-            "access_token_expire_minutes": settings.ACCESS_TOKEN_EXPIRE_MINUTES,
-            "rate_limit_enabled": settings.RATE_LIMIT_ENABLED,
-            "rate_limit_per_minute": settings.RATE_LIMIT_PER_MINUTE,
-        }
+        # Configuration status (wrap in try-catch to ensure it's always set)
+        try:
+            stats["configuration"] = {
+                "database_configured": bool(settings.DATABASE_URL),
+                "database_info": database_info,
+                "secret_key_configured": bool(settings.SECRET_KEY),
+                "gmail_credentials_configured": gmail_credentials_configured,
+                "gmail_token_configured": gmail_token_configured,
+                "gmail_credentials_source": "env_var" if settings.GMAIL_CREDENTIALS_JSON else ("file" if gmail_creds_file.exists() else "none"),
+                "gmail_token_source": "env_var" if settings.GMAIL_TOKEN_JSON else ("file" if gmail_token_file.exists() else "none"),
+                "cors_origins_configured": bool(settings.CORS_ORIGINS),
+                "cors_origins": cors_origins_list,
+                "frontend_url": settings.FRONTEND_URL,
+                "refresh_token_expire_days": settings.REFRESH_TOKEN_EXPIRE_DAYS,
+                "access_token_expire_minutes": settings.ACCESS_TOKEN_EXPIRE_MINUTES,
+                "rate_limit_enabled": settings.RATE_LIMIT_ENABLED,
+                "rate_limit_per_minute": settings.RATE_LIMIT_PER_MINUTE,
+            }
+        except Exception as e:
+            logger.error(f"Error getting configuration info: {e}", exc_info=True)
+            stats["configuration"] = {
+                "database_configured": False,
+                "secret_key_configured": False,
+                "gmail_credentials_configured": False,
+                "gmail_token_configured": False,
+                "cors_origins_configured": False,
+            }
         
     except Exception as e:
         logger.error(f"Error fetching developer stats: {e}", exc_info=True)
+        # Ensure email_service and configuration are always set even on error
+        if "email_service" not in stats:
+            stats["email_service"] = {
+                "initialized": False,
+                "has_credentials": False,
+                "sender_email": "Error loading",
+            }
+        if "configuration" not in stats:
+            stats["configuration"] = {
+                "database_configured": False,
+                "secret_key_configured": False,
+                "gmail_credentials_configured": False,
+                "gmail_token_configured": False,
+                "cors_origins_configured": False,
+            }
         stats["error"] = str(e)
     
     return stats
