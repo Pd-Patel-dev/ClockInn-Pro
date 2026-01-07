@@ -85,6 +85,15 @@ function LoginContent() {
       const responseData = err.response?.data
       const detail = responseData?.detail
       
+      // Log error for debugging
+      if (process.env.NODE_ENV === 'development') {
+        console.error('Login error:', {
+          status: err.response?.status,
+          data: responseData,
+          detail: detail,
+        })
+      }
+      
       // Handle validation errors (422 or 400 with errors array)
       if (responseData?.errors && Array.isArray(responseData.errors)) {
         const validationErrors = responseData.errors.map((e: any) => {
@@ -100,7 +109,17 @@ function LoginContent() {
           errorMessage = detail.message
         } else if (typeof detail === 'object' && detail?.error) {
           errorMessage = detail.error
+        } else if (Array.isArray(detail)) {
+          // Pydantic validation errors can be an array
+          const validationErrors = detail.map((e: any) => {
+            const field = e.loc?.join('.') || 'field'
+            const msg = e.msg || e.message || 'Invalid value'
+            return `${field}: ${msg}`
+          }).join(', ')
+          errorMessage = `Validation error: ${validationErrors}`
         }
+      } else if (responseData?.message) {
+        errorMessage = responseData.message
       } else if (err.message) {
         errorMessage = err.message
       }
