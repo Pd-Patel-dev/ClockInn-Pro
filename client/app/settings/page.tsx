@@ -104,7 +104,8 @@ export default function AdminSettingsPage() {
           router.push('/dashboard')
           return
         }
-        fetchCompanyInfo()
+        // Pass currentUser to fetchCompanyInfo to avoid stale closure
+        fetchCompanyInfo(currentUser)
         // Set default tab for developers (email service only)
         if (currentUser.role === 'DEVELOPER') {
           setActiveTab('email')
@@ -164,11 +165,13 @@ export default function AdminSettingsPage() {
     }
   }
 
-  const fetchCompanyInfo = async () => {
+  const fetchCompanyInfo = async (currentUser?: any) => {
     setLoading(true)
     try {
+      // Use passed currentUser or state user, prefer passed user to avoid stale closure
+      const userToCheck = currentUser || user
       // Only fetch company info for admins (developers don't need it)
-      if (user?.role === 'ADMIN') {
+      if (userToCheck?.role === 'ADMIN') {
         const response = await api.get('/admin/company')
         setCompanyInfo(response.data)
         
@@ -250,7 +253,7 @@ export default function AdminSettingsPage() {
       
       // Also re-fetch to ensure we have the absolute latest data
       setTimeout(() => {
-        fetchCompanyInfo()
+        fetchCompanyInfo(user)
       }, 200)
       
       toast.success('Company settings updated successfully!')
