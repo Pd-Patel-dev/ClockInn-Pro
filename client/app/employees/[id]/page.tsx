@@ -10,6 +10,10 @@ import logger from '@/lib/logger'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
+import { useToast } from '@/components/Toast'
+import ConfirmationDialog from '@/components/ConfirmationDialog'
+import { FormField, Input, Select } from '@/components/FormField'
+import { ButtonSpinner } from '@/components/LoadingSpinner'
 
 interface Employee {
   id: string
@@ -69,6 +73,7 @@ export default function EmployeeDetailPage() {
   const router = useRouter()
   const params = useParams()
   const employeeId = params?.id as string
+  const toast = useToast()
 
   const [employee, setEmployee] = useState<Employee | null>(null)
   const [entries, setEntries] = useState<TimeEntry[]>([])
@@ -80,7 +85,15 @@ export default function EmployeeDetailPage() {
   const [showEditEmployee, setShowEditEmployee] = useState(false)
   const [currentPage, setCurrentPage] = useState(1)
   const [total, setTotal] = useState(0)
+  const [deletingEntry, setDeletingEntry] = useState(false)
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const [updating, setUpdating] = useState(false)
   const pageSize = 20
+
+  const closeEditEmployeeForm = () => {
+    setShowEditEmployee(false)
+    editEmployeeForm.reset()
+  }
 
   const manualForm = useForm<ManualEntryForm>({
     resolver: zodResolver(manualEntrySchema),
@@ -183,6 +196,7 @@ export default function EmployeeDetailPage() {
         note: data.note || null,
       })
 
+      toast.success('Manual time entry created successfully')
       manualForm.reset()
       setShowManualForm(false)
       fetchEntries()
@@ -208,6 +222,7 @@ export default function EmployeeDetailPage() {
         edit_reason: data.edit_reason,
       })
 
+      toast.success('Time entry updated successfully')
       editForm.reset()
       setEditingEntry(null)
       fetchEntries()
@@ -232,7 +247,41 @@ export default function EmployeeDetailPage() {
     setEditingEntry(entry)
   }
 
+  const handleDeleteEntry = () => {
+    if (!editingEntry) return
+    setShowDeleteConfirm(true)
+  }
+
+  const confirmDeleteEntry = async () => {
+    if (!editingEntry) return
+    setShowDeleteConfirm(false)
+    setDeletingEntry(true)
+    try {
+      await api.delete(`/time/admin/time/${editingEntry.id}`)
+      toast.success('Time entry deleted successfully')
+      setEditingEntry(null)
+      editForm.reset()
+      fetchEntries()
+    } catch (error: any) {
+      logger.error('Failed to delete entry', error as Error)
+      toast.error(error.response?.data?.detail || 'Failed to delete time entry')
+    } finally {
+      setDeletingEntry(false)
+    }
+  }
+
+  const closeEditForm = () => {
+    setEditingEntry(null)
+    editForm.reset()
+  }
+
+  const closeManualForm = () => {
+    setShowManualForm(false)
+    manualForm.reset()
+  }
+
   const onSubmitEditEmployee = async (data: EditEmployeeForm) => {
+    setUpdating(true)
     try {
       const updateData: any = {
         name: data.name,
@@ -270,13 +319,17 @@ export default function EmployeeDetailPage() {
 
       await api.put(`/users/admin/employees/${employeeId}`, updateData)
       
+      toast.success('Employee updated successfully!')
       setShowEditEmployee(false)
+      editEmployeeForm.reset()
       fetchEmployee()
       setError(null)
     } catch (error: any) {
       logger.error('Failed to update employee', error as Error)
       const errorMessage = error.response?.data?.detail || error.response?.data?.message || 'Failed to update employee'
-      setError(Array.isArray(errorMessage) ? errorMessage.join(', ') : errorMessage)
+      toast.error(Array.isArray(errorMessage) ? errorMessage.join(', ') : errorMessage)
+    } finally {
+      setUpdating(false)
     }
   }
 
@@ -398,242 +451,352 @@ export default function EmployeeDetailPage() {
           </div>
         )}
 
-        {/* Edit Employee Form */}
+        {/* Edit Employee Modal */}
         {showEditEmployee && employee && (
-          <div className="bg-white rounded-lg border border-gray-200 p-6 mb-6">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">Edit Employee</h3>
-            <form onSubmit={editEmployeeForm.handleSubmit(onSubmitEditEmployee)} className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center p-4">
+            <div className="relative bg-white rounded-xl shadow-2xl w-full max-w-2xl m-4">
+              {/* Header */}
+              <div className="flex justify-between items-center px-8 py-6 border-b border-gray-200">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Name *</label>
-                  <input
-                    type="text"
-                    {...editEmployeeForm.register('name')}
-                    className="block w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
-                  />
-                  {editEmployeeForm.formState.errors.name && (
-                    <p className="mt-1 text-sm text-red-600">{editEmployeeForm.formState.errors.name.message}</p>
-                  )}
+                  <h3 className="text-2xl font-bold text-gray-900">Edit Employee</h3>
+                  <p className="text-sm text-gray-500 mt-1">Update employee information below</p>
                 </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Status *</label>
-                  <select
-                    {...editEmployeeForm.register('status')}
-                    className="block w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                <button
+                  onClick={closeEditEmployeeForm}
+                  className="text-gray-400 hover:text-gray-600 text-3xl leading-none transition-colors"
+                  disabled={updating}
+                  aria-label="Close"
+                >
+                  ×
+                </button>
+              </div>
+
+              {/* Form Content */}
+              <form onSubmit={editEmployeeForm.handleSubmit(onSubmitEditEmployee)} className="p-8">
+                {/* Basic Information Section */}
+                <div className="mb-8">
+                  <h4 className="text-lg font-semibold text-gray-900 mb-4 pb-2 border-b border-gray-200">
+                    Basic Information
+                  </h4>
+                  <div className="space-y-5">
+                    <FormField label="Name" error={editEmployeeForm.formState.errors.name?.message} required>
+                      <Input {...editEmployeeForm.register('name')} error={!!editEmployeeForm.formState.errors.name} />
+                    </FormField>
+                    
+                    <FormField label="Email" hint="Email cannot be changed">
+                      <Input
+                        type="email"
+                        value={employee.email}
+                        disabled
+                        className="bg-gray-100 text-gray-500 cursor-not-allowed"
+                      />
+                    </FormField>
+                    
+                    <FormField label="Status" error={editEmployeeForm.formState.errors.status?.message} required>
+                      <Select {...editEmployeeForm.register('status')} error={!!editEmployeeForm.formState.errors.status}>
+                        <option value="active">Active</option>
+                        <option value="inactive">Inactive</option>
+                      </Select>
+                    </FormField>
+                  </div>
+                </div>
+
+                {/* Additional Details Section */}
+                <div className="mb-8">
+                  <h4 className="text-lg font-semibold text-gray-900 mb-4 pb-2 border-b border-gray-200">
+                    Additional Details
+                  </h4>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <FormField 
+                      label="PIN" 
+                      error={editEmployeeForm.formState.errors.pin?.message}
+                      hint={employee.has_pin ? 'Leave empty to keep current PIN, or enter new 4-digit PIN' : 'Enter 4-digit PIN or leave empty'}
+                    >
+                      <Input 
+                        {...editEmployeeForm.register('pin')} 
+                        type="text" 
+                        maxLength={4} 
+                        error={!!editEmployeeForm.formState.errors.pin}
+                        placeholder="Enter new 4-digit PIN"
+                      />
+                    </FormField>
+                    
+                    <FormField label="Job Role" error={editEmployeeForm.formState.errors.job_role?.message} hint="e.g., Manager, Developer, Sales">
+                      <Input {...editEmployeeForm.register('job_role')} type="text" error={!!editEmployeeForm.formState.errors.job_role} />
+                    </FormField>
+                    
+                    <FormField label="Pay Rate" error={editEmployeeForm.formState.errors.pay_rate?.message} hint="Hourly rate in dollars">
+                      <Input {...editEmployeeForm.register('pay_rate')} type="number" step="0.01" min="0" error={!!editEmployeeForm.formState.errors.pay_rate} />
+                    </FormField>
+                  </div>
+                </div>
+
+                {/* Action Buttons */}
+                <div className="flex gap-4 pt-6 mt-8 border-t border-gray-200">
+                  <button
+                    type="submit"
+                    disabled={updating}
+                    className="flex-1 px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-semibold text-sm shadow-md hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:shadow-md flex items-center justify-center gap-2"
                   >
-                    <option value="active">Active</option>
-                    <option value="inactive">Inactive</option>
-                  </select>
-                  {editEmployeeForm.formState.errors.status && (
-                    <p className="mt-1 text-sm text-red-600">{editEmployeeForm.formState.errors.status.message}</p>
-                  )}
+                    {updating && <ButtonSpinner />}
+                    {updating ? 'Saving...' : 'Save Changes'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={closeEditEmployeeForm}
+                    disabled={updating}
+                    className="px-6 py-3 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 font-semibold text-sm transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    Cancel
+                  </button>
                 </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">PIN (leave empty to keep current, or enter new 4-digit PIN)</label>
-                  <input
-                    type="text"
-                    maxLength={4}
-                    {...editEmployeeForm.register('pin')}
-                    className="block w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
-                    placeholder="Leave empty to keep current"
-                  />
-                  {editEmployeeForm.formState.errors.pin && (
-                    <p className="mt-1 text-sm text-red-600">{editEmployeeForm.formState.errors.pin.message}</p>
-                  )}
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Job Role</label>
-                  <input
-                    type="text"
-                    {...editEmployeeForm.register('job_role')}
-                    className="block w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Pay Rate</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    {...editEmployeeForm.register('pay_rate')}
-                    className="block w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
-                    placeholder="0.00"
-                  />
-                </div>
-              </div>
-              <div className="flex gap-2">
-                <button
-                  type="submit"
-                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium"
-                >
-                  Save Changes
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowEditEmployee(false)
-                    editEmployeeForm.reset()
-                  }}
-                  className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 font-medium"
-                >
-                  Cancel
-                </button>
-              </div>
-            </form>
+              </form>
+            </div>
           </div>
         )}
 
-        {/* Manual Entry Form */}
+        {/* Add Manual Entry Modal */}
         {showManualForm && (
-          <div className="bg-white rounded-lg border border-gray-200 p-6 mb-6">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">Add Manual Time Entry</h3>
-            <form onSubmit={manualForm.handleSubmit(onSubmitManual)} className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Clock In Date</label>
-                  <input
-                    type="date"
-                    {...manualForm.register('clock_in_at')}
-                    className="block w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Clock In Time</label>
-                  <input
-                    type="time"
-                    {...manualForm.register('clock_in_time')}
-                    className="block w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Clock Out Date (Optional)</label>
-                  <input
-                    type="date"
-                    {...manualForm.register('clock_out_at')}
-                    className="block w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Clock Out Time (Optional)</label>
-                  <input
-                    type="time"
-                    {...manualForm.register('clock_out_time')}
-                    className="block w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Break Minutes</label>
-                  <input
-                    type="number"
-                    {...manualForm.register('break_minutes')}
-                    className="block w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Note (Optional)</label>
-                  <input
-                    type="text"
-                    {...manualForm.register('note')}
-                    className="block w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
-                  />
-                </div>
-              </div>
-              <div className="flex gap-2">
+          <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center">
+            <div className="relative bg-white rounded-lg shadow-xl p-6 w-full max-w-2xl m-4">
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="text-xl font-semibold text-gray-900">Add Manual Time Entry</h3>
                 <button
-                  type="submit"
-                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium"
+                  onClick={closeManualForm}
+                  className="text-gray-400 hover:text-gray-600 text-2xl"
                 >
-                  Create Entry
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowManualForm(false)
-                    manualForm.reset()
-                  }}
-                  className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 font-medium"
-                >
-                  Cancel
+                  ×
                 </button>
               </div>
-            </form>
+              <form onSubmit={manualForm.handleSubmit(onSubmitManual)} className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Clock In Date</label>
+                    <input
+                      type="date"
+                      {...manualForm.register('clock_in_at')}
+                      className="block w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                    />
+                    {manualForm.formState.errors.clock_in_at && (
+                      <p className="mt-1 text-sm text-red-600">{manualForm.formState.errors.clock_in_at.message}</p>
+                    )}
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Clock In Time</label>
+                    <input
+                      type="time"
+                      {...manualForm.register('clock_in_time')}
+                      className="block w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                    />
+                    {manualForm.formState.errors.clock_in_time && (
+                      <p className="mt-1 text-sm text-red-600">{manualForm.formState.errors.clock_in_time.message}</p>
+                    )}
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Clock Out Date (Optional)</label>
+                    <input
+                      type="date"
+                      {...manualForm.register('clock_out_at')}
+                      className="block w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Clock Out Time (Optional)</label>
+                    <input
+                      type="time"
+                      {...manualForm.register('clock_out_time')}
+                      className="block w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Break Minutes</label>
+                    <input
+                      type="number"
+                      {...manualForm.register('break_minutes')}
+                      className="block w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Note (Optional)</label>
+                    <input
+                      type="text"
+                      {...manualForm.register('note')}
+                      className="block w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                    />
+                  </div>
+                </div>
+                <div className="flex gap-3 pt-4 border-t border-gray-200">
+                  <button
+                    type="submit"
+                    className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium"
+                  >
+                    Create Entry
+                  </button>
+                  <button
+                    type="button"
+                    onClick={closeManualForm}
+                    className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 font-medium"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </form>
+            </div>
           </div>
         )}
 
-        {/* Edit Entry Form */}
+        {/* Edit Entry Modal */}
         {editingEntry && (
-          <div className="bg-white rounded-lg border border-gray-200 p-6 mb-6">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">Edit Time Entry</h3>
-            <form onSubmit={editForm.handleSubmit(onSubmitEdit)} className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center p-4">
+            <div className="relative bg-white rounded-xl shadow-2xl w-full max-w-3xl m-4">
+              {/* Header */}
+              <div className="flex justify-between items-center px-8 py-6 border-b border-gray-200">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Clock In Date</label>
-                  <input
-                    type="date"
-                    {...editForm.register('clock_in_at')}
-                    className="block w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
-                  />
+                  <h3 className="text-2xl font-bold text-gray-900">Edit Time Entry</h3>
+                  <p className="text-sm text-gray-500 mt-1">Update the time entry details below</p>
                 </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Clock In Time</label>
-                  <input
-                    type="time"
-                    {...editForm.register('clock_in_time')}
-                    className="block w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Clock Out Date (Optional)</label>
-                  <input
-                    type="date"
-                    {...editForm.register('clock_out_at')}
-                    className="block w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Clock Out Time (Optional)</label>
-                  <input
-                    type="time"
-                    {...editForm.register('clock_out_time')}
-                    className="block w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Break Minutes</label>
-                  <input
-                    type="number"
-                    {...editForm.register('break_minutes')}
-                    className="block w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Edit Reason *</label>
-                  <input
-                    type="text"
-                    {...editForm.register('edit_reason')}
-                    className="block w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
-                  />
-                </div>
-              </div>
-              <div className="flex gap-2">
                 <button
-                  type="submit"
-                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium"
+                  onClick={closeEditForm}
+                  className="text-gray-400 hover:text-gray-600 text-3xl leading-none transition-colors"
+                  disabled={deletingEntry}
+                  aria-label="Close"
                 >
-                  Save Changes
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setEditingEntry(null)
-                    editForm.reset()
-                  }}
-                  className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 font-medium"
-                >
-                  Cancel
+                  ×
                 </button>
               </div>
-            </form>
+
+              {/* Form Content */}
+              <form onSubmit={editForm.handleSubmit(onSubmitEdit)} className="p-8">
+                {/* Clock In Section */}
+                <div className="mb-8">
+                  <h4 className="text-lg font-semibold text-gray-900 mb-4 pb-2 border-b border-gray-200">
+                    Clock In
+                  </h4>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div>
+                      <label className="block text-sm font-semibold text-gray-700 mb-3">
+                        Date <span className="text-red-500">*</span>
+                      </label>
+                      <input
+                        type="date"
+                        {...editForm.register('clock_in_at')}
+                        className="block w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm transition-all shadow-sm hover:border-gray-400"
+                        disabled={deletingEntry}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-semibold text-gray-700 mb-3">
+                        Time <span className="text-red-500">*</span>
+                      </label>
+                      <input
+                        type="time"
+                        {...editForm.register('clock_in_time')}
+                        className="block w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm transition-all shadow-sm hover:border-gray-400"
+                        disabled={deletingEntry}
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Clock Out Section */}
+                <div className="mb-8">
+                  <h4 className="text-lg font-semibold text-gray-900 mb-4 pb-2 border-b border-gray-200">
+                    Clock Out
+                  </h4>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div>
+                      <label className="block text-sm font-semibold text-gray-700 mb-3">
+                        Date <span className="text-gray-400 text-xs font-normal">(Optional)</span>
+                      </label>
+                      <input
+                        type="date"
+                        {...editForm.register('clock_out_at')}
+                        className="block w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm transition-all shadow-sm hover:border-gray-400"
+                        disabled={deletingEntry}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-semibold text-gray-700 mb-3">
+                        Time <span className="text-gray-400 text-xs font-normal">(Optional)</span>
+                      </label>
+                      <input
+                        type="time"
+                        {...editForm.register('clock_out_time')}
+                        className="block w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm transition-all shadow-sm hover:border-gray-400"
+                        disabled={deletingEntry}
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Additional Information Section */}
+                <div className="mb-8">
+                  <h4 className="text-lg font-semibold text-gray-900 mb-4 pb-2 border-b border-gray-200">
+                    Additional Information
+                  </h4>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div>
+                      <label className="block text-sm font-semibold text-gray-700 mb-3">
+                        Break Minutes
+                      </label>
+                      <input
+                        type="number"
+                        {...editForm.register('break_minutes')}
+                        min="0"
+                        className="block w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm transition-all shadow-sm hover:border-gray-400"
+                        disabled={deletingEntry}
+                      />
+                      <p className="mt-2 text-xs text-gray-500">Total break time in minutes</p>
+                    </div>
+                    <div className="md:col-span-2">
+                      <label className="block text-sm font-semibold text-gray-700 mb-3">
+                        Edit Reason <span className="text-red-500">*</span>
+                      </label>
+                      <input
+                        type="text"
+                        {...editForm.register('edit_reason')}
+                        placeholder="Enter reason for editing this time entry"
+                        className="block w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm transition-all shadow-sm hover:border-gray-400"
+                        disabled={deletingEntry}
+                      />
+                      {editForm.formState.errors.edit_reason && (
+                        <p className="mt-2 text-sm text-red-600 font-medium">
+                          {editForm.formState.errors.edit_reason.message}
+                        </p>
+                      )}
+                      <p className="mt-2 text-xs text-gray-500">Please provide a reason for making changes to this entry</p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Action Buttons */}
+                <div className="flex gap-4 pt-6 mt-8 border-t border-gray-200">
+                  <button
+                    type="submit"
+                    disabled={deletingEntry}
+                    className="flex-1 px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-semibold text-sm shadow-md hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:shadow-md"
+                  >
+                    Save Changes
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleDeleteEntry}
+                    disabled={deletingEntry}
+                    className="px-6 py-3 bg-red-600 text-white rounded-lg hover:bg-red-700 font-semibold text-sm shadow-md hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:shadow-md"
+                  >
+                    {deletingEntry ? 'Deleting...' : 'Delete'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={closeEditForm}
+                    disabled={deletingEntry}
+                    className="px-6 py-3 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 font-semibold text-sm transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </form>
+            </div>
           </div>
         )}
 
@@ -778,6 +941,18 @@ export default function EmployeeDetailPage() {
           )}
         </div>
       </div>
+
+      {/* Delete Confirmation Dialog */}
+      <ConfirmationDialog
+        isOpen={showDeleteConfirm}
+        title="Delete Time Entry"
+        message="Are you sure you want to delete this time entry? This action cannot be undone."
+        confirmText="Delete"
+        cancelText="Cancel"
+        type="warning"
+        onConfirm={confirmDeleteEntry}
+        onCancel={() => setShowDeleteConfirm(false)}
+      />
     </Layout>
   )
 }

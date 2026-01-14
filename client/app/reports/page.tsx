@@ -5,6 +5,7 @@ import Layout from '@/components/Layout'
 import api from '@/lib/api'
 import { useToast } from '@/components/Toast'
 import logger from '@/lib/logger'
+import ConfirmationDialog from '@/components/ConfirmationDialog'
 
 interface Employee {
   id: string
@@ -17,6 +18,8 @@ export default function AdminReportsPage() {
   const [employees, setEmployees] = useState<Employee[]>([])
   const [loading, setLoading] = useState(false)
   const [exporting, setExporting] = useState(false)
+  const [showErrorDialog, setShowErrorDialog] = useState(false)
+  const [errorMessage, setErrorMessage] = useState('')
   const [formData, setFormData] = useState({
     range_type: 'none',
     start_date: '',
@@ -97,7 +100,11 @@ export default function AdminReportsPage() {
       link.click()
       link.remove()
     } catch (error: any) {
-      alert(error.response?.data?.detail || 'Failed to generate report')
+      const errorMsg = error.response?.data?.detail || 'Failed to generate report'
+      setErrorMessage(errorMsg)
+      setShowErrorDialog(true)
+    } finally {
+      setExporting(false)
     }
   }
 
@@ -200,6 +207,17 @@ export default function AdminReportsPage() {
           </div>
         </div>
       </div>
+
+      {/* Error Dialog */}
+      <ConfirmationDialog
+        isOpen={showErrorDialog}
+        title="Error"
+        message={errorMessage}
+        confirmText="OK"
+        type="error"
+        showCancel={false}
+        onConfirm={() => setShowErrorDialog(false)}
+      />
     </Layout>
   )
 }

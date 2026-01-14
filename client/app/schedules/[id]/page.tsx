@@ -8,6 +8,7 @@ import { getCurrentUser, User } from '@/lib/auth'
 import { format, parseISO, addDays } from 'date-fns'
 import logger from '@/lib/logger'
 import { useToast } from '@/components/Toast'
+import ConfirmationDialog from '@/components/ConfirmationDialog'
 
 interface Shift {
   id: string
@@ -67,11 +68,16 @@ export default function ShiftDetailPage() {
     }
   }, [shiftId, router])
 
-  const handleDelete = async () => {
-    if (!shift || !confirm('Are you sure you want to delete this shift?')) {
-      return
-    }
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
 
+  const handleDelete = () => {
+    if (!shift) return
+    setShowDeleteConfirm(true)
+  }
+
+  const confirmDelete = async () => {
+    if (!shift) return
+    setShowDeleteConfirm(false)
     setDeleting(true)
     try {
       await api.delete(`/shifts/${shiftId}`)
@@ -306,6 +312,18 @@ export default function ShiftDetailPage() {
           </div>
         </div>
       </div>
+
+      {/* Delete Confirmation Dialog */}
+      <ConfirmationDialog
+        isOpen={showDeleteConfirm}
+        title="Delete Shift"
+        message="Are you sure you want to delete this shift?"
+        confirmText="Delete"
+        cancelText="Cancel"
+        type="warning"
+        onConfirm={confirmDelete}
+        onCancel={() => setShowDeleteConfirm(false)}
+      />
     </Layout>
   )
 }

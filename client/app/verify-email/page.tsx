@@ -16,6 +16,8 @@ function VerifyEmailContent() {
   const [resendCooldown, setResendCooldown] = useState(0)
   const [sending, setSending] = useState(false)
   const [checkingUser, setCheckingUser] = useState(true)
+  const [verifying, setVerifying] = useState(false)
+  const [verificationSuccess, setVerificationSuccess] = useState(false)
   const inputRefs = useRef<(HTMLInputElement | null)[]>([])
   const initializationRef = useRef<string | null>(null) // Track what we've already initialized
   const resendCooldownRef = useRef(0) // Ref to track latest cooldown value (avoids stale closures)
@@ -240,6 +242,7 @@ function VerifyEmailContent() {
 
     setLoading(true)
     setError(null)
+    setVerifying(true)
 
     try {
       await api.post('/auth/verify-email', {
@@ -250,19 +253,16 @@ function VerifyEmailContent() {
       // Clear PIN
       setPin(['', '', '', '', '', ''])
       
-      // Redirect based on user role after successful verification
-      try {
-        const currentUser = await getCurrentUser()
-        if (currentUser.role === 'DEVELOPER') {
-          router.push('/developer')
-        } else {
-          router.push('/dashboard')
-        }
-      } catch (err) {
-        // If we can't get user, default to dashboard
+      // Show success state
+      setVerificationSuccess(true)
+      setVerifying(false)
+      
+      // Redirect to dashboard after showing success message
+      setTimeout(() => {
         router.push('/dashboard')
-      }
+      }, 2000)
     } catch (err: any) {
+      setVerifying(false)
       // Handle network errors
       if (!err.response) {
         setError('Network error. Please check your connection and try again.')
@@ -285,6 +285,49 @@ function VerifyEmailContent() {
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-teal-600 mx-auto"></div>
           <div className="mt-4 text-gray-600">Loading...</div>
+        </div>
+      </div>
+    )
+  }
+
+  if (verificationSuccess) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-md w-full space-y-8">
+          <div className="bg-white rounded-lg shadow-xl p-8 text-center">
+            <div className="mb-4">
+              <div className="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-green-100">
+                <svg className="h-6 w-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                </svg>
+              </div>
+            </div>
+            <h1 className="text-2xl font-bold text-gray-900 mb-2">Email Verified Successfully!</h1>
+            <p className="text-gray-600 mb-4">
+              Redirecting to dashboard...
+            </p>
+            <div className="mt-4">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-teal-600 mx-auto"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  if (verifying) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-md w-full space-y-8">
+          <div className="bg-white rounded-lg shadow-xl p-8 text-center">
+            <div className="mb-4">
+              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-teal-600 mx-auto"></div>
+            </div>
+            <h1 className="text-2xl font-bold text-gray-900 mb-2">Verifying Email...</h1>
+            <p className="text-gray-600">
+              Please wait while we verify your email address.
+            </p>
+          </div>
         </div>
       </div>
     )

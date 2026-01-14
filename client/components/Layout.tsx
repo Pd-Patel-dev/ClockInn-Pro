@@ -14,8 +14,8 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
 
   useEffect(() => {
-    // Don't fetch user on login or verify-email pages
-    if (pathname === '/login' || pathname === '/verify-email' || pathname === '/register') {
+    // Don't fetch user on login, verify-email, set-password, or register pages
+    if (pathname === '/login' || pathname === '/verify-email' || pathname === '/set-password' || pathname === '/register') {
       setLoading(false)
       return
     }

@@ -8,6 +8,7 @@ import { getCurrentUser } from '@/lib/auth'
 import logger from '@/lib/logger'
 import { useToast } from '@/components/Toast'
 import { ButtonSpinner } from '@/components/LoadingSpinner'
+import ConfirmationDialog from '@/components/ConfirmationDialog'
 
 interface PayrollLineItem {
   id: string
@@ -58,6 +59,8 @@ export default function PayrollDetailsPage() {
   const [exporting, setExporting] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [voiding, setVoiding] = useState(false)
+  const [showFinalizeConfirm, setShowFinalizeConfirm] = useState(false)
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
 
   useEffect(() => {
     const checkAdminAndFetch = async () => {
@@ -97,10 +100,12 @@ export default function PayrollDetailsPage() {
     }
   }
 
-  const handleFinalize = async () => {
-    if (!confirm('Are you sure you want to finalize this payroll run? This action cannot be undone.')) {
-      return
-    }
+  const handleFinalize = () => {
+    setShowFinalizeConfirm(true)
+  }
+
+  const confirmFinalize = async () => {
+    setShowFinalizeConfirm(false)
     setFinalizing(true)
     try {
       await api.post(`/admin/payroll/runs/${payrollRunId}/finalize`, {})
@@ -162,10 +167,12 @@ export default function PayrollDetailsPage() {
     }
   }
 
-  const handleDelete = async () => {
-    if (!confirm('Are you sure you want to delete this payroll run? This action cannot be undone.')) {
-      return
-    }
+  const handleDelete = () => {
+    setShowDeleteConfirm(true)
+  }
+
+  const confirmDelete = async () => {
+    setShowDeleteConfirm(false)
     setDeleting(true)
     try {
       await api.delete(`/admin/payroll/runs/${payrollRunId}`)
@@ -399,6 +406,30 @@ export default function PayrollDetailsPage() {
             </div>
           </div>
         )}
+
+        {/* Finalize Confirmation Dialog */}
+        <ConfirmationDialog
+          isOpen={showFinalizeConfirm}
+          title="Finalize Payroll Run"
+          message="Are you sure you want to finalize this payroll run? This action cannot be undone."
+          confirmText="Finalize"
+          cancelText="Cancel"
+          type="warning"
+          onConfirm={confirmFinalize}
+          onCancel={() => setShowFinalizeConfirm(false)}
+        />
+
+        {/* Delete Confirmation Dialog */}
+        <ConfirmationDialog
+          isOpen={showDeleteConfirm}
+          title="Delete Payroll Run"
+          message="Are you sure you want to delete this payroll run? This action cannot be undone."
+          confirmText="Delete"
+          cancelText="Cancel"
+          type="warning"
+          onConfirm={confirmDelete}
+          onCancel={() => setShowDeleteConfirm(false)}
+        />
       </div>
     </Layout>
   )

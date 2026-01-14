@@ -63,6 +63,18 @@ function LoginContent() {
         router.push('/dashboard')
       }
     } catch (err: any) {
+      // Handle network errors (server not responding)
+      if (!err.response) {
+        if (err.code === 'ERR_NETWORK' || err.message?.includes('Network Error') || err.message?.includes('ERR_EMPTY_RESPONSE')) {
+          setError('Unable to connect to the server. Please make sure the server is running and try again.')
+          setLoading(false)
+          return
+        }
+        setError('Network error. Please check your connection and try again.')
+        setLoading(false)
+        return
+      }
+      
       // Handle email verification required - redirect to verify-email page
       if (err.isVerificationRequired || err.response?.status === 403) {
         const detail = err.response?.data?.detail

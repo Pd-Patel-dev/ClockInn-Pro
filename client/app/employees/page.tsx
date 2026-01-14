@@ -15,11 +15,11 @@ import { EmployeeRow } from '@/components/EmployeeRow'
 import { useToast } from '@/components/Toast'
 import { LoadingSpinner, ButtonSpinner } from '@/components/LoadingSpinner'
 import { FormField, Input, Select } from '@/components/FormField'
+import ConfirmationDialog from '@/components/ConfirmationDialog'
 
 const employeeSchema = z.object({
   name: z.string().min(1, 'Name is required'),
   email: z.string().email('Invalid email address'),
-  password: z.string().min(8, 'Password must be at least 8 characters'),
   pin: z.string().length(4, 'PIN must be 4 digits').optional(),
   job_role: z.string().optional(),
   pay_rate: z.string().optional().transform((val) => {
@@ -66,6 +66,8 @@ export default function AdminEmployeesPage() {
   const [editingEmployee, setEditingEmployee] = useState<Employee | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [updating, setUpdating] = useState(false)
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const [employeeToDelete, setEmployeeToDelete] = useState<{ id: string; name: string } | null>(null)
   
   // Debounce search query
   const debouncedSearchQuery = useDebounce(searchQuery, 300)
@@ -124,6 +126,11 @@ export default function AdminEmployeesPage() {
     }
   }
 
+  const closeAddForm = () => {
+    setShowForm(false)
+    reset()
+  }
+
   const onSubmit = async (data: EmployeeForm) => {
     setSubmitting(true)
     try {
@@ -139,14 +146,20 @@ export default function AdminEmployeesPage() {
     }
   }
 
-  const deleteEmployee = async (employeeId: string, employeeName: string) => {
-    if (!confirm(`Are you sure you want to delete ${employeeName}? This action cannot be undone and will delete all associated time entries, leave requests, and sessions.`)) {
-      return
-    }
+  const deleteEmployee = (employeeId: string, employeeName: string) => {
+    setEmployeeToDelete({ id: employeeId, name: employeeName })
+    setShowDeleteConfirm(true)
+  }
+
+  const confirmDeleteEmployee = async () => {
+    if (!employeeToDelete) return
+    setShowDeleteConfirm(false)
+    const { id, name } = employeeToDelete
+    setEmployeeToDelete(null)
     
-    setDeletingEmployee(employeeId)
+    setDeletingEmployee(id)
     try {
-      await api.delete(`/users/admin/employees/${employeeId}`)
+      await api.delete(`/users/admin/employees/${id}`)
       toast.success('Employee deleted successfully!')
       fetchEmployees()
     } catch (error: any) {
@@ -158,11 +171,14 @@ export default function AdminEmployeesPage() {
 
   const openEditForm = (employee: Employee) => {
     setEditingEmployee(employee)
-    setEditValue('name', employee.name)
-    setEditValue('status', employee.status)
-    setEditValue('pin', '') // Don't pre-fill PIN for security
-    setEditValue('job_role', employee.job_role || '')
-    setEditValue('pay_rate', employee.pay_rate?.toString() || '')
+    // Reset form with employee data
+    resetEdit({
+      name: employee.name,
+      status: employee.status,
+      pin: '', // Don't pre-fill PIN for security
+      job_role: employee.job_role || '',
+      pay_rate: employee.pay_rate?.toString() || '',
+    })
   }
 
   const closeEditForm = () => {
@@ -231,10 +247,10 @@ export default function AdminEmployeesPage() {
         <div className="flex justify-between items-center mb-6">
           <h1 className="text-2xl font-bold">Employees</h1>
           <button
-            onClick={() => setShowForm(!showForm)}
+            onClick={() => setShowForm(true)}
             className="px-4 py-2 bg-primary-600 text-white rounded-md hover:bg-primary-700"
           >
-            {showForm ? 'Cancel' : 'Add Employee'}
+            Add Employee
           </button>
         </div>
 
@@ -285,45 +301,6 @@ export default function AdminEmployeesPage() {
             </button>
           </div>
         </div>
-        {showForm && (
-          <div className="bg-white shadow rounded-lg p-6 mb-6">
-            <h2 className="text-xl font-semibold mb-4">New Employee</h2>
-            <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-              <FormField label="Name" error={errors.name?.message} required>
-                <Input {...register('name')} error={!!errors.name} />
-              </FormField>
-              
-              <FormField label="Email" error={errors.email?.message} required>
-                <Input {...register('email')} type="email" error={!!errors.email} />
-              </FormField>
-              
-              <FormField label="Password" error={errors.password?.message} required>
-                <Input {...register('password')} type="password" error={!!errors.password} />
-              </FormField>
-              
-              <FormField label="PIN" error={errors.pin?.message} hint="4-digit PIN for kiosk access (optional)">
-                <Input {...register('pin')} type="text" maxLength={4} error={!!errors.pin} />
-              </FormField>
-              
-              <FormField label="Job Role" error={errors.job_role?.message} hint="e.g., Manager, Developer, Sales">
-                <Input {...register('job_role')} type="text" error={!!errors.job_role} />
-              </FormField>
-              
-              <FormField label="Pay Rate" error={errors.pay_rate?.message} hint="Hourly rate in dollars (optional)">
-                <Input {...register('pay_rate')} type="number" step="0.01" min="0" error={!!errors.pay_rate} />
-              </FormField>
-              
-              <button
-                type="submit"
-                disabled={submitting}
-                className="px-4 py-2 bg-primary-600 text-white rounded-md hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-              >
-                {submitting && <ButtonSpinner />}
-                {submitting ? 'Creating...' : 'Create Employee'}
-              </button>
-            </form>
-          </div>
-        )}
         {loading ? (
           <div className="text-center py-8">Loading...</div>
         ) : (
@@ -388,74 +365,58 @@ export default function AdminEmployeesPage() {
           </div>
         )}
 
-        {/* Edit Employee Modal */}
-        {editingEmployee && (
+        {/* Add Employee Modal */}
+        {showForm && (
           <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center">
             <div className="relative bg-white rounded-lg shadow-xl p-6 w-full max-w-md m-4">
               <div className="flex justify-between items-center mb-4">
-                <h2 className="text-xl font-semibold">Edit Employee</h2>
+                <h2 className="text-xl font-semibold">New Employee</h2>
                 <button
-                  onClick={closeEditForm}
+                  onClick={closeAddForm}
                   className="text-gray-400 hover:text-gray-600 text-2xl"
                 >
                   ×
                 </button>
               </div>
-              <form onSubmit={handleSubmitEdit(onEditSubmit)} className="space-y-4">
-                <FormField label="Name" error={editErrors.name?.message} required>
-                  <Input {...registerEdit('name')} error={!!editErrors.name} />
+              <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+                <FormField label="Name" error={errors.name?.message} required>
+                  <Input {...register('name')} error={!!errors.name} />
                 </FormField>
                 
-                <FormField label="Email" hint="Email cannot be changed">
-                  <Input
-                    type="email"
-                    value={editingEmployee.email}
-                    disabled
-                    className="bg-gray-100 text-gray-500 cursor-not-allowed"
-                  />
+                <FormField label="Email" error={errors.email?.message} required>
+                  <Input {...register('email')} type="email" error={!!errors.email} />
                 </FormField>
                 
-                <FormField label="Status" error={editErrors.status?.message} required>
-                  <Select {...registerEdit('status')} error={!!editErrors.status}>
-                    <option value="active">Active</option>
-                    <option value="inactive">Inactive</option>
-                  </Select>
+                <div className="bg-blue-50 border border-blue-200 rounded-md p-3 text-sm text-blue-800">
+                  <p className="font-medium mb-1">Password Setup</p>
+                  <p>The employee will receive an email with a link to set their password.</p>
+                </div>
+                
+                <FormField label="PIN" error={errors.pin?.message} hint="4-digit PIN for kiosk access (optional)">
+                  <Input {...register('pin')} type="text" maxLength={4} error={!!errors.pin} />
                 </FormField>
                 
-                <FormField 
-                  label="PIN" 
-                  error={editErrors.pin?.message}
-                  hint={editingEmployee.has_pin ? 'Leave empty to keep current PIN, or enter new 4-digit PIN' : 'Enter 4-digit PIN or leave empty'}
-                >
-                  <Input 
-                    {...registerEdit('pin')} 
-                    type="text" 
-                    maxLength={4} 
-                    error={!!editErrors.pin}
-                    placeholder="Enter new 4-digit PIN"
-                  />
+                <FormField label="Job Role" error={errors.job_role?.message} hint="e.g., Manager, Developer, Sales">
+                  <Input {...register('job_role')} type="text" error={!!errors.job_role} />
                 </FormField>
                 
-                <FormField label="Job Role" error={editErrors.job_role?.message} hint="e.g., Manager, Developer, Sales">
-                  <Input {...registerEdit('job_role')} type="text" error={!!editErrors.job_role} />
+                <FormField label="Pay Rate" error={errors.pay_rate?.message} hint="Hourly rate in dollars (optional)">
+                  <Input {...register('pay_rate')} type="number" step="0.01" min="0" error={!!errors.pay_rate} />
                 </FormField>
                 
-                <FormField label="Pay Rate" error={editErrors.pay_rate?.message} hint="Hourly rate in dollars">
-                  <Input {...registerEdit('pay_rate')} type="number" step="0.01" min="0" error={!!editErrors.pay_rate} />
-                </FormField>
                 <div className="flex gap-3 pt-4">
                   <button
                     type="submit"
-                    disabled={updating}
+                    disabled={submitting}
                     className="flex-1 px-4 py-2 bg-primary-600 text-white rounded-md hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                   >
-                    {updating && <ButtonSpinner />}
-                    {updating ? 'Saving...' : 'Save Changes'}
+                    {submitting && <ButtonSpinner />}
+                    {submitting ? 'Creating...' : 'Create Employee'}
                   </button>
                   <button
                     type="button"
-                    onClick={closeEditForm}
-                    disabled={updating}
+                    onClick={closeAddForm}
+                    disabled={submitting}
                     className="flex-1 px-4 py-2 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     Cancel
@@ -465,6 +426,125 @@ export default function AdminEmployeesPage() {
             </div>
           </div>
         )}
+
+        {/* Edit Employee Modal */}
+        {editingEmployee && (
+          <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center p-4">
+            <div className="relative bg-white rounded-xl shadow-2xl w-full max-w-2xl m-4">
+              {/* Header */}
+              <div className="flex justify-between items-center px-8 py-6 border-b border-gray-200">
+                <div>
+                  <h3 className="text-2xl font-bold text-gray-900">Edit Employee</h3>
+                  <p className="text-sm text-gray-500 mt-1">Update employee information below</p>
+                </div>
+                <button
+                  onClick={closeEditForm}
+                  className="text-gray-400 hover:text-gray-600 text-3xl leading-none transition-colors"
+                  disabled={updating}
+                  aria-label="Close"
+                >
+                  ×
+                </button>
+              </div>
+
+              {/* Form Content */}
+              <form onSubmit={handleSubmitEdit(onEditSubmit)} className="p-8">
+                {/* Basic Information Section */}
+                <div className="mb-8">
+                  <h4 className="text-lg font-semibold text-gray-900 mb-4 pb-2 border-b border-gray-200">
+                    Basic Information
+                  </h4>
+                  <div className="space-y-5">
+                    <FormField label="Name" error={editErrors.name?.message} required>
+                      <Input {...registerEdit('name')} error={!!editErrors.name} />
+                    </FormField>
+                    
+                    <FormField label="Email" hint="Email cannot be changed">
+                      <Input
+                        type="email"
+                        value={editingEmployee.email}
+                        disabled
+                        className="bg-gray-100 text-gray-500 cursor-not-allowed"
+                      />
+                    </FormField>
+                    
+                    <FormField label="Status" error={editErrors.status?.message} required>
+                      <Select {...registerEdit('status')} error={!!editErrors.status}>
+                        <option value="active">Active</option>
+                        <option value="inactive">Inactive</option>
+                      </Select>
+                    </FormField>
+                  </div>
+                </div>
+
+                {/* Additional Details Section */}
+                <div className="mb-8">
+                  <h4 className="text-lg font-semibold text-gray-900 mb-4 pb-2 border-b border-gray-200">
+                    Additional Details
+                  </h4>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <FormField 
+                      label="PIN" 
+                      error={editErrors.pin?.message}
+                      hint={editingEmployee.has_pin ? 'Leave empty to keep current PIN, or enter new 4-digit PIN' : 'Enter 4-digit PIN or leave empty'}
+                    >
+                      <Input 
+                        {...registerEdit('pin')} 
+                        type="text" 
+                        maxLength={4} 
+                        error={!!editErrors.pin}
+                        placeholder="Enter new 4-digit PIN"
+                      />
+                    </FormField>
+                    
+                    <FormField label="Job Role" error={editErrors.job_role?.message} hint="e.g., Manager, Developer, Sales">
+                      <Input {...registerEdit('job_role')} type="text" error={!!editErrors.job_role} />
+                    </FormField>
+                    
+                    <FormField label="Pay Rate" error={editErrors.pay_rate?.message} hint="Hourly rate in dollars">
+                      <Input {...registerEdit('pay_rate')} type="number" step="0.01" min="0" error={!!editErrors.pay_rate} />
+                    </FormField>
+                  </div>
+                </div>
+
+                {/* Action Buttons */}
+                <div className="flex gap-4 pt-6 mt-8 border-t border-gray-200">
+                  <button
+                    type="submit"
+                    disabled={updating}
+                    className="flex-1 px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-semibold text-sm shadow-md hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:shadow-md flex items-center justify-center gap-2"
+                  >
+                    {updating && <ButtonSpinner />}
+                    {updating ? 'Saving...' : 'Save Changes'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={closeEditForm}
+                    disabled={updating}
+                    className="px-6 py-3 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 font-semibold text-sm transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {/* Delete Employee Confirmation Dialog */}
+        <ConfirmationDialog
+          isOpen={showDeleteConfirm}
+          title="Delete Employee"
+          message={employeeToDelete ? `Are you sure you want to delete ${employeeToDelete.name}? This action cannot be undone and will delete all associated time entries, leave requests, and sessions.` : ''}
+          confirmText="Delete"
+          cancelText="Cancel"
+          type="warning"
+          onConfirm={confirmDeleteEmployee}
+          onCancel={() => {
+            setShowDeleteConfirm(false)
+            setEmployeeToDelete(null)
+          }}
+        />
       </div>
     </Layout>
   )
