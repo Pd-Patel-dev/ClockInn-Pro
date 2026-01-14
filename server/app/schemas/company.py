@@ -12,7 +12,7 @@ class CompanySettingsResponse(BaseModel):
     overtime_enabled: bool
     overtime_threshold_hours_per_week: int
     overtime_multiplier_default: Decimal
-    rounding_policy: str  # none, 5, 10, 15
+    rounding_policy: str  # none, 5, 6, 10, 15, 30
     breaks_paid: bool  # Whether breaks are paid (default: False)
 
 
@@ -50,7 +50,7 @@ class CompanySettingsUpdate(BaseModel):
     overtime_enabled: Optional[bool] = Field(None, description="Enable/disable overtime calculation")
     overtime_threshold_hours_per_week: Optional[int] = Field(None, ge=1, le=168, description="Hours before overtime kicks in")
     overtime_multiplier_default: Optional[float] = Field(None, ge=1, le=3, description="Default overtime multiplier (e.g., 1.5)")
-    rounding_policy: Optional[str] = Field(None, pattern="^(none|5|10|15)$", description="Rounding policy: none, 5, 10, or 15 minutes")
+    rounding_policy: Optional[str] = Field(None, pattern="^(none|5|6|10|15|30)$", description="Rounding policy: none, 5, 6, 10, 15 (7-minute rule), or 30 minutes")
     breaks_paid: Optional[bool] = Field(None, description="Whether breaks are paid (default: False - breaks are deducted from pay)")
 
 

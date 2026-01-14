@@ -4,6 +4,7 @@ from sqlalchemy import select, and_
 from datetime import date
 from typing import Optional
 from uuid import UUID
+import uuid
 
 from app.core.database import get_db
 from app.core.dependencies import get_current_user, get_current_admin, get_current_verified_user
@@ -528,4 +529,63 @@ async def edit_time_entry_endpoint(
         created_at=entry.created_at,
         updated_at=entry.updated_at,
     )
+
+
+@router.delete("/admin/time/{entry_id}")
+@handle_endpoint_errors(operation_name="delete_time_entry")
+async def delete_time_entry_endpoint(
+    entry_id: str,
+    current_user: User = Depends(get_current_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Delete a time entry (admin only)."""
+    from app.models.audit_log import AuditLog
+    
+    e_id = parse_uuid(entry_id, "Time entry ID")
+    
+    # Find entry and verify it belongs to the company
+    result = await db.execute(
+        select(TimeEntry).where(
+            and_(
+                TimeEntry.id == e_id,
+                TimeEntry.company_id == current_user.company_id
+            )
+        )
+    )
+    entry = result.scalar_one_or_none()
+    
+    if not entry:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Time entry not found",
+        )
+    
+    # Get employee name for audit log
+    employee_result = await db.execute(select(User).where(User.id == entry.employee_id))
+    employee = employee_result.scalar_one_or_none()
+    employee_name = employee.name if employee else "Unknown"
+    
+    # Create audit log before deleting
+    audit_log = AuditLog(
+        id=uuid.uuid4(),
+        company_id=current_user.company_id,
+        actor_user_id=current_user.id,
+        action="time_entry_deleted",
+        entity_type="time_entry",
+        entity_id=entry.id,
+        metadata_json={
+            "employee_id": str(entry.employee_id),
+            "employee_name": employee_name,
+            "clock_in_at": entry.clock_in_at.isoformat() if entry.clock_in_at else None,
+            "clock_out_at": entry.clock_out_at.isoformat() if entry.clock_out_at else None,
+        },
+    )
+    db.add(audit_log)
+    
+    # Delete the entry
+    from sqlalchemy import delete
+    await db.execute(delete(TimeEntry).where(TimeEntry.id == e_id))
+    await db.commit()
+    
+    return {"message": "Time entry deleted successfully"}
 

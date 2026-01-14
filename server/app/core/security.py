@@ -88,3 +88,16 @@ def validate_password_strength(password: str) -> tuple[bool, Optional[str]]:
         return False, "Password must contain at least one number"
     return True, None
 
+
+def create_password_setup_token(user_id: str, email: str) -> str:
+    """Create a JWT token for password setup (valid for 7 days)."""
+    to_encode = {
+        "sub": user_id,
+        "email": email,
+        "type": "password_setup",
+    }
+    expire = datetime.utcnow() + timedelta(days=7)
+    to_encode.update({"exp": expire})
+    encoded_jwt = jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
+    return encoded_jwt
+

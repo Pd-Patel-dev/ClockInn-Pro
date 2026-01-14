@@ -37,3 +37,8 @@ class VerifyEmailRequest(BaseModel):
     email: EmailStr
     pin: str = Field(..., min_length=6, max_length=6, pattern="^[0-9]{6}$")
 
+
+class SetPasswordRequest(BaseModel):
+    token: str
+    password: str = Field(..., min_length=8, max_length=255)
+

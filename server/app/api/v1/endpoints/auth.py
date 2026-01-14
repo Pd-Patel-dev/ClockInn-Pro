@@ -1,5 +1,6 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.ext.asyncio import AsyncSession
+import uuid
 
 from app.core.database import get_db
 from app.core.dependencies import get_current_user
@@ -10,6 +11,7 @@ from app.schemas.auth import (
     TokenResponse,
     RefreshTokenRequest,
     LogoutRequest,
+    SetPasswordRequest,
 )
 from app.services.auth_service import register_company, login, refresh_access_token, logout
 from app.services.verification_service import send_verification_pin, verify_email_pin
@@ -159,4 +161,163 @@ async def verify_email_endpoint(
         )
     
     return {"message": "Email verified successfully."}
+
+
+@router.get("/set-password/info")
+@handle_endpoint_errors(operation_name="get_password_setup_info")
+async def get_password_setup_info(
+    token: str = Query(..., description="Password setup token"),
+    db: AsyncSession = Depends(get_db),
+):
+    """Get user information from password setup token."""
+    from sqlalchemy import select
+    from app.core.security import decode_token, normalize_email
+    
+    # Decode and verify token
+    payload = decode_token(token)
+    if not payload:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid or expired token."
+        )
+    
+    # Check token type
+    if payload.get("type") != "password_setup":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid token type."
+        )
+    
+    user_id = payload.get("sub")
+    token_email = payload.get("email")
+    
+    if not user_id or not token_email:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid token payload."
+        )
+    
+    # Find user
+    try:
+        user_uuid = uuid.UUID(user_id)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid user ID in token."
+        )
+    
+    result = await db.execute(
+        select(User).where(User.id == user_uuid)
+    )
+    user = result.scalar_one_or_none()
+    
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found."
+        )
+    
+    # Verify email matches
+    normalized_email = normalize_email(token_email)
+    if normalize_email(user.email) != normalized_email:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Token email does not match user email."
+        )
+    
+    return {
+        "name": user.name,
+        "email": user.email,
+    }
+
+
+@router.post("/set-password")
+@handle_endpoint_errors(operation_name="set_password")
+async def set_password_endpoint(
+    request: SetPasswordRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """Set password for new employee using setup token."""
+    from sqlalchemy import select
+    from app.core.security import (
+        decode_token,
+        validate_password_strength,
+        get_password_hash,
+        normalize_email,
+    )
+    
+    # Decode and verify token
+    payload = decode_token(request.token)
+    if not payload:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid or expired token."
+        )
+    
+    # Check token type
+    if payload.get("type") != "password_setup":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid token type."
+        )
+    
+    user_id = payload.get("sub")
+    token_email = payload.get("email")
+    
+    if not user_id or not token_email:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid token payload."
+        )
+    
+    # Validate password strength
+    is_valid, error_msg = validate_password_strength(request.password)
+    if not is_valid:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=error_msg,
+        )
+    
+    # Find user
+    try:
+        user_uuid = uuid.UUID(user_id)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid user ID in token."
+        )
+    
+    result = await db.execute(
+        select(User).where(User.id == user_uuid)
+    )
+    user = result.scalar_one_or_none()
+    
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found."
+        )
+    
+    # Verify email matches
+    normalized_email = normalize_email(token_email)
+    if normalize_email(user.email) != normalized_email:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Token email does not match user email."
+        )
+    
+    # Set password
+    user.password_hash = get_password_hash(request.password)
+    
+    try:
+        db.add(user)
+        await db.commit()
+        await db.refresh(user)
+        return {"message": "Password set successfully. You can now log in."}
+    except Exception as e:
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to set password: {str(e)}"
+        )
 

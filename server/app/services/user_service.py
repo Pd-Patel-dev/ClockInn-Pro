@@ -3,6 +3,7 @@ from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_, func, delete as sql_delete
 from fastapi import HTTPException, status
+import logging
 
 from app.models.user import User, UserRole, UserStatus
 from app.models.audit_log import AuditLog
@@ -15,6 +16,8 @@ from app.core.security import (
 )
 from app.schemas.user import UserCreate, UserUpdate
 import uuid
+
+logger = logging.getLogger(__name__)
 
 
 async def get_user_by_id(
@@ -69,13 +72,25 @@ async def create_employee(
     data: UserCreate,
 ) -> User:
     """Create a new employee."""
-    # Validate password
-    is_valid, error_msg = validate_password_strength(data.password)
-    if not is_valid:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=error_msg,
-        )
+    import secrets
+    from app.core.security import create_password_setup_token
+    from app.services.email_service import email_service
+    from app.core.config import settings
+    
+    # If password is provided, validate it (for backward compatibility)
+    if data.password:
+        is_valid, error_msg = validate_password_strength(data.password)
+        if not is_valid:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=error_msg,
+            )
+        password_hash = get_password_hash(data.password)
+    else:
+        # Generate a secure random password that will be replaced when user sets their password
+        # This ensures password_hash is not null in the database
+        temp_password = secrets.token_urlsafe(32)
+        password_hash = get_password_hash(temp_password)
     
     normalized_email = normalize_email(data.email)
     
@@ -123,7 +138,7 @@ async def create_employee(
         role=UserRole.EMPLOYEE,
         name=data.name,
         email=normalized_email,
-        password_hash=get_password_hash(data.password),
+        password_hash=password_hash,
         pin_hash=pin_hash,
         status=UserStatus.ACTIVE,
         job_role=data.job_role,
@@ -134,6 +149,23 @@ async def create_employee(
         db.add(user)
         await db.commit()
         await db.refresh(user)
+        
+        # If password was not provided, send password setup email
+        if not data.password:
+            try:
+                setup_token = create_password_setup_token(str(user.id), normalized_email)
+                setup_link = f"{settings.FRONTEND_URL}/set-password?token={setup_token}"
+                email_sent = await email_service.send_password_setup_email(
+                    normalized_email,
+                    data.name,
+                    setup_link
+                )
+                if not email_sent:
+                    logger.warning(f"Failed to send password setup email to {normalized_email}, but employee was created")
+            except Exception as e:
+                logger.error(f"Failed to send password setup email: {e}")
+                # Don't fail employee creation if email fails
+        
         return user
     except Exception as e:
         await db.rollback()

@@ -515,6 +515,80 @@ ClockIn Pro"""
         except Exception as e:
             logger.error(f"Unexpected error sending leave response: {e}")
             return False
+    
+    async def send_password_setup_email(self, to_email: str, employee_name: str, setup_link: str) -> bool:
+        """
+        Send password setup email to new employee.
+        
+        Args:
+            to_email: Employee email address
+            employee_name: Name of employee
+            setup_link: URL link to set password
+            
+        Returns:
+            True if email sent successfully, False otherwise
+        """
+        # Refresh token before sending
+        if not self._refresh_token_if_needed():
+            logger.error("Gmail service not initialized or token refresh failed. Cannot send email.")
+            return False
+        
+        if not self.service:
+            logger.error("Gmail service not initialized. Cannot send email.")
+            return False
+        
+        try:
+            subject = "Set Up Your Password — ClockIn Pro"
+            
+            body = f"""Hello {employee_name},
+
+Welcome to ClockIn Pro! Your account has been created.
+
+To get started, please set your password by clicking the link below:
+
+{setup_link}
+
+This link will expire in 7 days.
+
+If you didn't expect this email, please ignore it.
+
+ClockIn Pro"""
+            
+            message = self._create_message(to_email, subject, body)
+            
+            result = self.service.users().messages().send(
+                userId='me',
+                body=message
+            ).execute()
+            
+            logger.info(f"Password setup email sent to {to_email}. Message ID: {result.get('id')}")
+            return True
+            
+        except HttpError as error:
+            error_details = error.error_details if hasattr(error, 'error_details') else str(error)
+            
+            if error.resp.status == 401:
+                logger.error("Gmail API authentication failed. Token may have expired.")
+                if self._refresh_token_if_needed():
+                    try:
+                        result = self.service.users().messages().send(
+                            userId='me',
+                            body=message
+                        ).execute()
+                        logger.info(f"Password setup email sent to {to_email} after token refresh. Message ID: {result.get('id')}")
+                        return True
+                    except Exception as retry_error:
+                        logger.error(f"Failed to send password setup email after token refresh: {retry_error}")
+                        return False
+                else:
+                    logger.error("Gmail refresh token has expired. Re-authorization required.")
+                    return False
+            
+            logger.error(f"Gmail API error while sending password setup email: {error_details}")
+            return False
+        except Exception as e:
+            logger.error(f"Unexpected error sending password setup email: {e}")
+            return False
 
 
 # Global email service instance

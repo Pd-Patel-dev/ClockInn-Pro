@@ -97,10 +97,22 @@ def apply_rounding(minutes: int, rounding_policy: str) -> int:
         return minutes
     elif rounding_policy == "5":
         return round(minutes / 5) * 5
+    elif rounding_policy == "6":
+        # Round to nearest 6 minutes (1/10th of an hour)
+        return round(minutes / 6) * 6
     elif rounding_policy == "10":
         return round(minutes / 10) * 10
     elif rounding_policy == "15":
-        return round(minutes / 15) * 15
+        # 15 minutes with 7-minute rule:
+        # - 0-7 minutes: round DOWN to previous 15-minute mark
+        # - 8-14 minutes: round UP to next 15-minute mark
+        remainder = minutes % 15
+        if remainder <= 7:
+            return (minutes // 15) * 15
+        else:
+            return ((minutes // 15) + 1) * 15
+    elif rounding_policy == "30":
+        return round(minutes / 30) * 30
     return minutes
 
 

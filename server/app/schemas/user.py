@@ -14,7 +14,7 @@ class UserBase(BaseModel):
 class UserCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=255)
     email: EmailStr
-    password: str = Field(..., min_length=8, max_length=255)
+    password: Optional[str] = Field(None, min_length=8, max_length=255)
     role: UserRole = UserRole.EMPLOYEE
     pin: Optional[str] = Field(None, min_length=4, max_length=4, pattern="^[0-9]{4}$")
     job_role: Optional[str] = Field(None, max_length=255)

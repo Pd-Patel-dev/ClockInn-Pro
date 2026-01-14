@@ -2,9 +2,9 @@
 Professional Time & Attendance Report PDF Generator
 
 Generates a clean, professional time attendance report PDF with:
-- Header with company name and metadata
-- One page per employee with summary cards, time entries table, and notes
-- Footer with confidentiality notice
+- Simple header with company name and metadata
+- One page per employee with summary cards, time entries table
+- Clean footer with page numbers
 """
 from typing import List, Dict
 from datetime import datetime, date
@@ -15,7 +15,7 @@ from reportlab.lib.units import inch
 from reportlab.lib.enums import TA_LEFT, TA_RIGHT, TA_CENTER
 from reportlab.platypus import (
     SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, 
-    PageBreak, Flowable
+    PageBreak
 )
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.pdfgen import canvas
@@ -23,14 +23,11 @@ import re
 
 
 def sanitize_html(text: str) -> str:
-    """Sanitize text for ReportLab Paragraph (supports basic XML tags like <b>)."""
+    """Sanitize text for ReportLab Paragraph."""
     if not text:
         return ""
     text = str(text)
-    # ReportLab Paragraph supports XML-style tags, but we should escape entities properly
-    # Remove script tags and similar
     text = re.sub(r'<script[^>]*>.*?</script>', '', text, flags=re.IGNORECASE | re.DOTALL)
-    # Replace & with &amp; only if not already an entity
     text = re.sub(r'&(?!\w+;)', '&amp;', text)
     return text
 
@@ -62,20 +59,7 @@ def generate_time_attendance_report_pdf(
         period_end: Period end date
         generated_at: Generation timestamp
         generated_by: Name of person who generated report
-        employees_data: List of employee data dicts, each containing:
-            - employee_name: str
-            - job_role: str (optional)
-            - total_entries: int
-            - total_hours: float
-            - total_break_minutes: int
-            - avg_hours_per_day: float
-            - entries: List of time entry dicts with:
-                - date: str
-                - clock_in: str
-                - clock_out: str
-                - hours: float
-                - break_minutes: int
-                - status: str
+        employees_data: List of employee data dicts
     
     Returns:
         PDF bytes
@@ -84,85 +68,67 @@ def generate_time_attendance_report_pdf(
     doc = SimpleDocTemplate(
         buffer,
         pagesize=letter,
-        leftMargin=0.6*inch,
-        rightMargin=0.6*inch,
-        topMargin=0.65*inch,
-        bottomMargin=0.65*inch,
+        leftMargin=0.75*inch,
+        rightMargin=0.75*inch,
+        topMargin=0.75*inch,
+        bottomMargin=0.75*inch,
     )
     story = []
     styles = getSampleStyleSheet()
     
-    # Color scheme
-    primary_color = colors.HexColor('#2563eb')
-    accent_blue = colors.HexColor('#1e40af')
-    header_bg = colors.HexColor('#1e293b')
-    light_bg = colors.HexColor('#f1f5f9')
-    medium_gray = colors.HexColor('#cbd5e1')
-    light_gray = colors.HexColor('#e2e8f0')
-    muted_gray = colors.HexColor('#64748b')
-    dark_gray = colors.HexColor('#334155')
-    notes_bg = colors.HexColor('#eff6ff')
-    border_gray = colors.HexColor('#e2e8f0')
+    # Clean, professional color scheme
+    primary_color = colors.HexColor('#1e40af')
+    dark_text = colors.HexColor('#1f2937')
+    gray_text = colors.HexColor('#6b7280')
+    light_gray = colors.HexColor('#f3f4f6')
+    border_color = colors.HexColor('#e5e7eb')
     
     # Process each employee - one page per employee
     for emp_idx, emp_data in enumerate(employees_data):
         if emp_idx > 0:
             story.append(PageBreak())
         
-        # ========== HEADER (same for all pages) ==========
-        # Left side: Company info
+        # ========== HEADER ==========
+        header_table_data = []
+        
+        # Company name (left)
         company_style = ParagraphStyle(
             'Company',
             parent=styles['Normal'],
-            fontSize=14,
+            fontSize=18,
             fontName='Helvetica-Bold',
-            textColor=header_bg,
-            leftIndent=0,
-            spaceAfter=3,
-            leading=16,
+            textColor=dark_text,
+            spaceAfter=8,
+            leading=22,
         )
         
-        company_text = f'<para leftIndent="0">{sanitize_html(company_name)}</para>'
-        left_content = [[Paragraph(company_text, company_style)]]
+        company_cell = [[Paragraph(sanitize_html(company_name), company_style)]]
         
-        # Right side: Metadata
-        meta_label_style = ParagraphStyle(
-            'MetaLabel',
+        # Metadata (right)
+        meta_style = ParagraphStyle(
+            'Meta',
             parent=styles['Normal'],
-            fontSize=7.5,
-            textColor=muted_gray,
-            alignment=TA_LEFT,
-            fontName='Helvetica',
-            leading=9,
-        )
-        meta_value_style = ParagraphStyle(
-            'MetaValue',
-            parent=styles['Normal'],
-            fontSize=7.5,
-            textColor=dark_gray,
-            alignment=TA_LEFT,
-            fontName='Helvetica-Bold',
-            leading=9,
+            fontSize=9,
+            textColor=gray_text,
+            alignment=TA_RIGHT,
+            leading=12,
         )
         
         period_str = f"{period_start.strftime('%b %d, %Y')} - {period_end.strftime('%b %d, %Y')}"
         generated_str = generated_at.strftime('%b %d, %Y at %I:%M %p')
         
-        metadata = [
-            [Paragraph("<b>Period:</b>", meta_label_style), Paragraph(sanitize_html(period_str), meta_value_style)],
-            [Paragraph("<b>Generated:</b>", meta_label_style), Paragraph(sanitize_html(generated_str), meta_value_style)],
-            [Paragraph("<b>Generated By:</b>", meta_label_style), Paragraph(sanitize_html(generated_by), meta_value_style)],
-        ]
+        metadata = f"""
+        <b>Report Period:</b> {sanitize_html(period_str)}<br/>
+        <b>Generated:</b> {sanitize_html(generated_str)}<br/>
+        <b>Generated By:</b> {sanitize_html(generated_by)}
+        """
         
-        header_table = Table(
-            [
-                [
-                    Table(left_content, colWidths=[None]),
-                    Table(metadata, colWidths=[1.25*inch, 2.4*inch]),
-                ]
-            ],
-            colWidths=[3.6*inch, 3.4*inch],
-        )
+        header_table_data.append([
+            Table(company_cell, colWidths=[4*inch]),
+            Paragraph(metadata, meta_style)
+        ])
+        
+        header_table = Table(header_table_data, colWidths=[4*inch, 2.5*inch])
         header_table.setStyle(TableStyle([
             ('VALIGN', (0, 0), (-1, -1), 'TOP'),
             ('LEFTPADDING', (0, 0), (-1, -1), 0),
@@ -172,12 +138,12 @@ def generate_time_attendance_report_pdf(
         ]))
         
         story.append(header_table)
-        story.append(Spacer(1, 0.2*inch))
+        story.append(Spacer(1, 0.15*inch))
         
         # Divider line
-        divider = Table([['']], colWidths=[6.8*inch], rowHeights=[2])
+        divider = Table([['']], colWidths=[6.5*inch], rowHeights=[1])
         divider.setStyle(TableStyle([
-            ('LINEBELOW', (0, 0), (-1, -1), 1.5, medium_gray),
+            ('LINEBELOW', (0, 0), (-1, -1), 1, border_color),
             ('TOPPADDING', (0, 0), (-1, -1), 0),
             ('BOTTOMPADDING', (0, 0), (-1, -1), 0),
         ]))
@@ -188,23 +154,31 @@ def generate_time_attendance_report_pdf(
         employee_name = sanitize_html(str(emp_data.get('employee_name', 'Unknown')))
         job_role = sanitize_html(str(emp_data.get('job_role', '')))
         
-        employee_title_style = ParagraphStyle(
-            'EmployeeTitle',
+        employee_style = ParagraphStyle(
+            'Employee',
             parent=styles['Normal'],
             fontSize=16,
             fontName='Helvetica-Bold',
-            textColor=header_bg,
-            alignment=TA_LEFT,
-            spaceAfter=4,
-            leading=19,
+            textColor=dark_text,
+            spaceAfter=2,
+            leading=20,
         )
         
-        employee_title_text = employee_name
-        if job_role:
-            employee_title_text += f" <font color='{muted_gray}' size='12'>• {job_role}</font>"
+        role_style = ParagraphStyle(
+            'Role',
+            parent=styles['Normal'],
+            fontSize=11,
+            fontName='Helvetica',
+            textColor=gray_text,
+            spaceAfter=16,
+            leading=14,
+        )
         
-        story.append(Paragraph(employee_title_text, employee_title_style))
-        story.append(Spacer(1, 0.2*inch))
+        story.append(Paragraph(employee_name, employee_style))
+        if job_role:
+            story.append(Paragraph(job_role, role_style))
+        else:
+            story.append(Spacer(1, 14))
         
         # ========== SUMMARY CARDS ==========
         total_entries = emp_data.get('total_entries', 0)
@@ -215,18 +189,18 @@ def generate_time_attendance_report_pdf(
         card_number_style = ParagraphStyle(
             'CardNumber',
             parent=styles['Normal'],
-            fontSize=18,
+            fontSize=20,
             fontName='Helvetica-Bold',
-            textColor=header_bg,
+            textColor=primary_color,
             alignment=TA_CENTER,
             spaceAfter=4,
-            leading=21,
+            leading=24,
         )
         card_label_style = ParagraphStyle(
             'CardLabel',
             parent=styles['Normal'],
-            fontSize=9.5,
-            textColor=muted_gray,
+            fontSize=9,
+            textColor=gray_text,
             alignment=TA_CENTER,
             spaceAfter=0,
             fontName='Helvetica',
@@ -235,23 +209,22 @@ def generate_time_attendance_report_pdf(
         
         summary_cards = Table([
             [
-                [Paragraph(f"{total_entries}", card_number_style), Paragraph("Total Entries", card_label_style)],
-                [Paragraph(f"{total_hours:,.2f}", card_number_style), Paragraph("Total Hours", card_label_style)],
+                [Paragraph(f"{total_entries}", card_number_style), Paragraph("Entries", card_label_style)],
+                [Paragraph(f"{total_hours:.2f}", card_number_style), Paragraph("Total Hours", card_label_style)],
                 [Paragraph(f"{total_break_minutes}", card_number_style), Paragraph("Break (min)", card_label_style)],
                 [Paragraph(f"{avg_hours:.2f}", card_number_style), Paragraph("Avg Hours/Day", card_label_style)],
             ]
-        ], colWidths=[1.7*inch] * 4)
+        ], colWidths=[1.625*inch] * 4)
         
         summary_cards.setStyle(TableStyle([
             ('BACKGROUND', (0, 0), (-1, -1), colors.white),
-            ('GRID', (0, 0), (-1, -1), 0.5, border_gray),
-            ('BOX', (0, 0), (-1, -1), 0.5, border_gray),
+            ('BOX', (0, 0), (-1, -1), 1, border_color),
             ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
             ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-            ('TOPPADDING', (0, 0), (-1, -1), 14),
-            ('BOTTOMPADDING', (0, 0), (-1, -1), 14),
-            ('LEFTPADDING', (0, 0), (-1, -1), 10),
-            ('RIGHTPADDING', (0, 0), (-1, -1), 10),
+            ('TOPPADDING', (0, 0), (-1, -1), 16),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 16),
+            ('LEFTPADDING', (0, 0), (-1, -1), 8),
+            ('RIGHTPADDING', (0, 0), (-1, -1), 8),
         ]))
         
         story.append(summary_cards)
@@ -264,52 +237,45 @@ def generate_time_attendance_report_pdf(
             table_data = []
             
             # Header row
-            header_row = [
-                "Date",
-                "Clock In",
-                "Clock Out",
-                "Hours",
-                "Break",
-                "Status"
-            ]
-            header_cell_style = ParagraphStyle(
+            header_style = ParagraphStyle(
                 'Header',
                 parent=styles['Normal'],
-                fontSize=9.5,
+                fontSize=10,
                 fontName='Helvetica-Bold',
                 textColor=colors.white,
                 alignment=TA_CENTER,
-                leading=11,
+                leading=12,
             )
-            table_data.append([Paragraph(sanitize_html(str(cell)), header_cell_style) for cell in header_row])
+            header_row = ["Date", "Clock In", "Clock Out", "Hours", "Break", "Status"]
+            table_data.append([Paragraph(sanitize_html(str(cell)), header_style) for cell in header_row])
             
             # Data rows
-            cell_style_left = ParagraphStyle(
+            cell_style = ParagraphStyle(
                 'Cell',
                 parent=styles['Normal'],
-                fontSize=8.5,
+                fontSize=9,
                 alignment=TA_LEFT,
                 fontName='Helvetica',
-                leading=10,
-                textColor=dark_gray,
-            )
-            cell_style_right = ParagraphStyle(
-                'Cell',
-                parent=styles['Normal'],
-                fontSize=8.5,
-                alignment=TA_RIGHT,
-                fontName='Helvetica',
-                leading=10,
-                textColor=dark_gray,
+                leading=11,
+                textColor=dark_text,
             )
             cell_style_center = ParagraphStyle(
-                'Cell',
+                'CellCenter',
                 parent=styles['Normal'],
-                fontSize=8.5,
+                fontSize=9,
                 alignment=TA_CENTER,
                 fontName='Helvetica',
-                leading=10,
-                textColor=dark_gray,
+                leading=11,
+                textColor=dark_text,
+            )
+            cell_style_right = ParagraphStyle(
+                'CellRight',
+                parent=styles['Normal'],
+                fontSize=9,
+                alignment=TA_RIGHT,
+                fontName='Helvetica',
+                leading=11,
+                textColor=dark_text,
             )
             
             for entry in entries:
@@ -318,15 +284,14 @@ def generate_time_attendance_report_pdf(
                 clock_out = sanitize_html(str(entry.get('clock_out', 'Open')))
                 hours = float(entry.get('hours', 0))
                 break_minutes = int(entry.get('break_minutes', 0))
-                status_raw = str(entry.get('status', ''))
-                status = sanitize_html(capitalize_status(status_raw))
+                status = sanitize_html(capitalize_status(str(entry.get('status', ''))))
                 
                 table_data.append([
-                    Paragraph(date_str, cell_style_left),
+                    Paragraph(date_str, cell_style),
                     Paragraph(clock_in, cell_style_center),
                     Paragraph(clock_out, cell_style_center),
                     Paragraph(f"{hours:.2f}", cell_style_right),
-                    Paragraph(f"{break_minutes} min", cell_style_right),
+                    Paragraph(f"{break_minutes}", cell_style_right),
                     Paragraph(status, cell_style_center),
                 ])
             
@@ -334,46 +299,44 @@ def generate_time_attendance_report_pdf(
             totals_style = ParagraphStyle(
                 'Totals',
                 parent=styles['Normal'],
-                fontSize=9.5,
+                fontSize=10,
                 fontName='Helvetica-Bold',
                 textColor=colors.white,
-                alignment=TA_CENTER,
+                alignment=TA_LEFT,
             )
             totals_style_right = ParagraphStyle(
                 'TotalsRight',
                 parent=styles['Normal'],
-                fontSize=9.5,
+                fontSize=10,
                 fontName='Helvetica-Bold',
                 textColor=colors.white,
                 alignment=TA_RIGHT,
             )
             
             table_data.append([
-                Paragraph("TOTALS", totals_style),
+                Paragraph("TOTAL", totals_style),
                 Paragraph("", totals_style),
                 Paragraph("", totals_style),
-                Paragraph(f"{total_hours:,.2f}", totals_style_right),
-                Paragraph(f"{total_break_minutes} min", totals_style_right),
+                Paragraph(f"{total_hours:.2f}", totals_style_right),
+                Paragraph(f"{total_break_minutes}", totals_style_right),
                 Paragraph("", totals_style),
             ])
             
             # Create table
-            col_widths = [1.3*inch, 1.1*inch, 1.1*inch, 0.9*inch, 0.9*inch, 1.0*inch]
+            col_widths = [1.3*inch, 1.0*inch, 1.0*inch, 0.9*inch, 0.9*inch, 1.1*inch]
             table = Table(table_data, colWidths=col_widths)
             
             table.setStyle(TableStyle([
                 # Header row
-                ('BACKGROUND', (0, 0), (-1, 0), header_bg),
+                ('BACKGROUND', (0, 0), (-1, 0), primary_color),
                 ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
                 ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-                ('FONTSIZE', (0, 0), (-1, 0), 9.5),
-                ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
-                ('TOPPADDING', (0, 0), (-1, 0), 12),
-                ('LINEBELOW', (0, 0), (-1, 0), 2, header_bg),
+                ('FONTSIZE', (0, 0), (-1, 0), 10),
+                ('BOTTOMPADDING', (0, 0), (-1, 0), 10),
+                ('TOPPADDING', (0, 0), (-1, 0), 10),
                 
-                # Data rows
-                ('BACKGROUND', (0, 1), (-1, -2), colors.white),
-                ('ROWBACKGROUNDS', (0, 1), (-1, -2), [colors.white, light_bg]),
+                # Data rows - alternating background
+                ('ROWBACKGROUNDS', (0, 1), (-1, -2), [colors.white, light_gray]),
                 ('TOPPADDING', (0, 1), (-1, -2), 8),
                 ('BOTTOMPADDING', (0, 1), (-1, -2), 8),
                 
@@ -384,20 +347,17 @@ def generate_time_attendance_report_pdf(
                 ('ALIGN', (5, 1), (5, -2), 'CENTER'),  # Status
                 
                 # Totals row
-                ('BACKGROUND', (0, -1), (-1, -1), accent_blue),
+                ('BACKGROUND', (0, -1), (-1, -1), primary_color),
                 ('TEXTCOLOR', (0, -1), (-1, -1), colors.white),
                 ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'),
-                ('FONTSIZE', (0, -1), (-1, -1), 9.5),
-                ('TOPPADDING', (0, -1), (-1, -1), 12),
-                ('BOTTOMPADDING', (0, -1), (-1, -1), 12),
-                ('LINEABOVE', (0, -1), (-1, -1), 2.5, accent_blue),
+                ('FONTSIZE', (0, -1), (-1, -1), 10),
+                ('TOPPADDING', (0, -1), (-1, -1), 10),
+                ('BOTTOMPADDING', (0, -1), (-1, -1), 10),
                 ('ALIGN', (0, -1), (2, -1), 'LEFT'),
                 ('ALIGN', (3, -1), (4, -1), 'RIGHT'),
                 
                 # Grid
-                ('GRID', (0, 0), (-1, -1), 0.5, border_gray),
-                ('LINEBELOW', (0, 0), (-1, 0), 2, header_bg),
-                ('LINEABOVE', (0, -1), (-1, -1), 2.5, accent_blue),
+                ('GRID', (0, 0), (-1, -1), 0.5, border_color),
                 ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
                 ('LEFTPADDING', (0, 0), (-1, -1), 8),
                 ('RIGHTPADDING', (0, 0), (-1, -1), 8),
@@ -410,69 +370,25 @@ def generate_time_attendance_report_pdf(
                 'NoEntries',
                 parent=styles['Normal'],
                 fontSize=10,
-                textColor=muted_gray,
+                textColor=gray_text,
                 alignment=TA_CENTER,
                 spaceAfter=20,
             )
             story.append(Paragraph("No time entries found for this period", no_entries_style))
-        
-        story.append(Spacer(1, 0.25*inch))
-        
-        # ========== NOTES SECTION ==========
-        notes_style = ParagraphStyle(
-            'Notes',
-            parent=styles['Normal'],
-            fontSize=9,
-            textColor=dark_gray,
-            leftIndent=0,
-            rightIndent=0,
-            spaceAfter=4,
-            leading=13,
-        )
-        
-        notes_text = (
-            "<b>Notes</b><br/>"
-            "Hours are calculated based on company rounding policy. Open entries indicate clock-in without clock-out. "
-            "This report reflects time entries as of the generated timestamp."
-        )
-        
-        notes_table = Table([
-            [Paragraph(notes_text, notes_style)]
-        ], colWidths=[6.8*inch])
-        
-        notes_table.setStyle(TableStyle([
-            ('BACKGROUND', (0, 0), (-1, -1), notes_bg),
-            ('BOX', (0, 0), (-1, -1), 1, colors.HexColor('#bfdbfe')),
-            ('TOPPADDING', (0, 0), (-1, -1), 12),
-            ('BOTTOMPADDING', (0, 0), (-1, -1), 12),
-            ('LEFTPADDING', (0, 0), (-1, -1), 14),
-            ('RIGHTPADDING', (0, 0), (-1, -1), 14),
-            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-        ]))
-        
-        story.append(notes_table)
     
     # ========== FOOTER ==========
     def add_footer(canvas_obj, doc):
-        """Add footer with divider, confidentiality notice, and page number."""
+        """Add footer with page number."""
         canvas_obj.saveState()
         
-        # Draw divider line
-        canvas_obj.setStrokeColor(medium_gray)
-        canvas_obj.setLineWidth(1)
-        y = 0.55 * inch
-        canvas_obj.line(0.6 * inch, y, 7.4 * inch, y)
-        
-        # Confidentiality notice (left)
-        canvas_obj.setFont("Helvetica", 8.5)
-        canvas_obj.setFillColor(muted_gray)
-        canvas_obj.drawString(0.6 * inch, y - 16, "Confidential - For internal use only")
-        
-        # Page number (right)
+        # Page number (centered)
         page_num = canvas_obj.getPageNumber()
+        canvas_obj.setFont("Helvetica", 9)
+        canvas_obj.setFillColor(gray_text)
         page_text = f"Page {page_num}"
-        text_width = canvas_obj.stringWidth(page_text, "Helvetica", 8.5)
-        canvas_obj.drawString(7.4 * inch - text_width, y - 16, page_text)
+        text_width = canvas_obj.stringWidth(page_text, "Helvetica", 9)
+        page_width = doc.pagesize[0]
+        canvas_obj.drawString((page_width - text_width) / 2, 0.5 * inch, page_text)
         
         canvas_obj.restoreState()
     
@@ -480,4 +396,3 @@ def generate_time_attendance_report_pdf(
     doc.build(story, onFirstPage=add_footer, onLaterPages=add_footer)
     buffer.seek(0)
     return buffer.read()
-
