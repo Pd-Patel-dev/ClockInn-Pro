@@ -27,7 +27,7 @@ const companySettingsSchema = z.object({
     const num = parseFloat(val)
     return isNaN(num) ? '1.5' : num.toString()
   }).pipe(z.string()),
-  rounding_policy: z.enum(['none', '5', '10', '15']),
+  rounding_policy: z.enum(['none', '5', '6', '10', '15', '30']),
   breaks_paid: z.boolean(),
 })
 
@@ -183,7 +183,7 @@ export default function AdminSettingsPage() {
           overtime_enabled: response.data.settings.overtime_enabled,
           overtime_threshold_hours_per_week: response.data.settings.overtime_threshold_hours_per_week,
           overtime_multiplier_default: response.data.settings.overtime_multiplier_default.toString(),
-          rounding_policy: response.data.settings.rounding_policy as 'none' | '5' | '10' | '15',
+          rounding_policy: response.data.settings.rounding_policy as 'none' | '5' | '6' | '10' | '15' | '30',
           breaks_paid: response.data.settings.breaks_paid ?? false,
         })
         
@@ -246,7 +246,7 @@ export default function AdminSettingsPage() {
           overtime_enabled: response.data.settings.overtime_enabled,
           overtime_threshold_hours_per_week: response.data.settings.overtime_threshold_hours_per_week,
           overtime_multiplier_default: response.data.settings.overtime_multiplier_default.toString(),
-          rounding_policy: response.data.settings.rounding_policy as 'none' | '5' | '10' | '15',
+          rounding_policy: response.data.settings.rounding_policy as 'none' | '5' | '6' | '10' | '15' | '30',
           breaks_paid: response.data.settings.breaks_paid ?? false,
         }, { keepDefaultValues: false })
       }, 50)
@@ -787,7 +787,7 @@ export default function AdminSettingsPage() {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700">Rounding Policy</label>
+                <label className="block text-sm font-medium text-gray-700">Time Rounding:</label>
                 <Controller
                   name="rounding_policy"
                   control={controlSettings}
@@ -796,14 +796,16 @@ export default function AdminSettingsPage() {
                       {...field}
                       className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm"
                     >
-                      <option value="none">None (Exact minutes)</option>
-                      <option value="5">5 minutes</option>
-                      <option value="10">10 minutes</option>
-                      <option value="15">15 minutes</option>
+                      <option value="none">None</option>
+                      <option value="5">5 Minutes</option>
+                      <option value="6">6 Minutes (1/10th of an hour)</option>
+                      <option value="10">10 Minutes</option>
+                      <option value="15">15 Minutes (7-minute rule)</option>
+                      <option value="30">30 Minutes</option>
                     </select>
                   )}
                 />
-                <p className="mt-1 text-xs text-gray-500">Round time entries to nearest interval (or exact if none)</p>
+                <p className="mt-1 text-xs text-gray-500">Round time entries to the nearest interval. The 7-minute rule for 15-minute rounding rounds down if ≤7 minutes and up if ≥8 minutes into the quarter hour.</p>
                 {settingsErrors.rounding_policy && (
                   <p className="mt-1 text-sm text-red-600">{settingsErrors.rounding_policy.message}</p>
                 )}
