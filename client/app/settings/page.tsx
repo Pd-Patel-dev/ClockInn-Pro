@@ -1030,7 +1030,7 @@ export default function AdminSettingsPage() {
                     </div>
                   )}
                 />
-                <p className="mt-1 text-xs text-gray-500">Select which roles require cash drawer entry (only applies if "Require for All" is disabled)</p>
+                <p className="mt-1 text-xs text-gray-500">Select which roles require cash drawer entry (only applies if &quot;Require for All&quot; is disabled)</p>
               </div>
 
               <div>

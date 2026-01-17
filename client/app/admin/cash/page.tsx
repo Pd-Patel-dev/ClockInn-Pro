@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import Layout from '@/components/Layout'
 import api from '@/lib/api'
@@ -70,7 +70,6 @@ export default function AdminCashDrawerPage() {
           return
         }
         setUser(currentUser)
-        fetchSessions()
       } catch (error) {
         router.push('/login')
       } finally {
@@ -80,7 +79,7 @@ export default function AdminCashDrawerPage() {
     fetchUser()
   }, [router])
 
-  const fetchSessions = async () => {
+  const fetchSessions = useCallback(async () => {
     setLoadingSessions(true)
     try {
       const params = new URLSearchParams({
@@ -97,13 +96,13 @@ export default function AdminCashDrawerPage() {
     } finally {
       setLoadingSessions(false)
     }
-  }
+  }, [fromDate, toDate, statusFilter, toast])
 
   useEffect(() => {
     if (user) {
       fetchSessions()
     }
-  }, [fromDate, toDate, statusFilter, user])
+  }, [user, fetchSessions])
 
   const handleEdit = (session: CashDrawerSession) => {
     setSelectedSession(session)

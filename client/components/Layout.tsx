@@ -103,9 +103,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       abortController.abort()
       // Don't stop token refresh interval here - it should run as long as user is logged in
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    // user?.email is only used as fallback in error handling, we don't want effect to re-run on user changes
-  }, [router, pathname])
+  }, [router, pathname, user?.email])
 
   // Stop token refresh interval when component unmounts (e.g., on logout)
   useEffect(() => {
