@@ -17,10 +17,18 @@ class TimeEntryCreate(BaseModel):
     employee_id: Optional[UUID] = None
     pin: str = Field(..., min_length=4, max_length=4, pattern="^[0-9]{4}$")
     source: TimeEntrySource = TimeEntrySource.KIOSK
+    cash_start_cents: Optional[int] = Field(None, ge=0, description="Starting cash in cents (required on clock-in if cash drawer enabled)")
+    cash_end_cents: Optional[int] = Field(None, ge=0, description="Ending cash in cents (required on clock-out if cash drawer session exists)")
+    collected_cash_cents: Optional[int] = Field(None, ge=0, description="Total cash collected from customers (for punch-out)")
+    beverages_cash_cents: Optional[int] = Field(None, ge=0, description="Cash from beverage sales (for punch-out)")
 
 
 class TimeEntryPunchMe(BaseModel):
     pin: str = Field(..., min_length=4, max_length=4, pattern="^[0-9]{4}$")
+    cash_start_cents: Optional[int] = Field(None, ge=0, description="Starting cash in cents (required on clock-in if cash drawer enabled)")
+    cash_end_cents: Optional[int] = Field(None, ge=0, description="Ending cash in cents (required on clock-out if cash drawer session exists)")
+    collected_cash_cents: Optional[int] = Field(None, ge=0, description="Total cash collected from customers (for punch-out)")
+    beverages_cash_cents: Optional[int] = Field(None, ge=0, description="Cash from beverage sales (for punch-out)")
 
 
 class TimeEntryPunchByPin(BaseModel):

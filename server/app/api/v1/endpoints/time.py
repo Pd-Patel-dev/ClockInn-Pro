@@ -109,17 +109,22 @@ async def punch_endpoint(
     entry = await punch(
         db,
         employee.company_id,
-        data.employee_id,
-        data.employee_email,
+        employee.id,
+        None,
         data.pin,
         data.source,
+        skip_pin_verification=False,
+        cash_start_cents=data.cash_start_cents,
+        cash_end_cents=data.cash_end_cents,
+        collected_cash_cents=data.collected_cash_cents,
+        beverages_cash_cents=data.beverages_cash_cents,
     )
     
     # Get employee name
     result = await db.execute(select(User).where(User.id == entry.employee_id))
     employee = result.scalar_one_or_none()
     
-    if not employee:
+    if not employee_obj:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Employee not found")
     
     # Calculate rounded hours
@@ -200,6 +205,7 @@ async def punch_by_pin_endpoint(
     
     # Now punch with the employee's company_id
     # Skip PIN check since we already verified it above
+    # Note: punch_by_pin doesn't support cash drawer - use /punch endpoint instead
     entry = await punch(
         db,
         matching_employee.company_id,
@@ -257,6 +263,11 @@ async def punch_me_endpoint(
         None,  # No email needed
         data.pin,
         TimeEntrySource.WEB,  # Source is WEB for authenticated users
+        skip_pin_verification=False,
+        cash_start_cents=data.cash_start_cents,
+        cash_end_cents=data.cash_end_cents,
+        collected_cash_cents=data.collected_cash_cents,
+        beverages_cash_cents=data.beverages_cash_cents,
     )
     
     # Calculate rounded hours

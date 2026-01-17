@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
 import { getCurrentUser, logout, User } from '@/lib/auth'
 import { initializeAuth, startTokenRefreshInterval, stopTokenRefreshInterval } from '@/lib/api'
@@ -12,6 +12,8 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
   const [loading, setLoading] = useState(true)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+  const [openDropdown, setOpenDropdown] = useState<string | null>(null)
+  const dropdownRefs = useRef<{ [key: string]: HTMLDivElement | null }>({})
 
   useEffect(() => {
     // Don't fetch user on login, verify-email, set-password, or register pages
@@ -112,6 +114,23 @@ export default function Layout({ children }: { children: React.ReactNode }) {
     }
   }, [])
 
+  // Close dropdown when clicking outside - MUST be called before any early returns
+  useEffect(() => {
+    if (!openDropdown) return
+
+    const handleClickOutside = (event: MouseEvent) => {
+      const ref = dropdownRefs.current[openDropdown]
+      if (ref && !ref.contains(event.target as Node)) {
+        setOpenDropdown(null)
+      }
+    }
+
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside)
+    }
+  }, [openDropdown])
+
   const handleLogout = async () => {
     stopTokenRefreshInterval() // Stop proactive refresh
     await logout()
@@ -146,15 +165,44 @@ export default function Layout({ children }: { children: React.ReactNode }) {
     { href: '/leave', label: 'Leave' },
   ]
 
-  const adminLinks = [
-    { href: '/dashboard', label: 'Dashboard' },
+  // Admin navigation organized by type
+  const adminNavGroups = [
+    {
+      type: 'single',
+      items: [{ href: '/dashboard', label: 'Dashboard' }]
+    },
+    {
+      type: 'dropdown',
+      label: 'Team Management',
+      items: [
     { href: '/employees', label: 'Employees' },
+        { href: '/leave-requests', label: 'Leave Requests' },
+      ]
+    },
+    {
+      type: 'dropdown',
+      label: 'Time & Scheduling',
+      items: [
     { href: '/schedules', label: 'Schedules' },
+        { href: '/time-entries', label: 'Time Entries' },
+      ]
+    },
+    {
+      type: 'dropdown',
+      label: 'Financial',
+      items: [
     { href: '/payroll', label: 'Payroll' },
-    { href: '/time-entries', label: 'Time Entries' },
-    { href: '/leave-requests', label: 'Leave Requests' },
-    { href: '/reports', label: 'Reports' },
-    { href: '/settings', label: 'Settings' },
+        { href: '/admin/cash', label: 'Cash Drawer' },
+      ]
+    },
+    {
+      type: 'single',
+      items: [{ href: '/reports', label: 'Reports' }]
+    },
+    {
+      type: 'single',
+      items: [{ href: '/settings', label: 'Settings' }]
+    },
   ]
 
   const developerLinks = [
@@ -162,13 +210,17 @@ export default function Layout({ children }: { children: React.ReactNode }) {
     { href: '/settings', label: 'Email Service' },
   ]
 
-  const links = isDeveloper ? developerLinks : (isAdmin ? adminLinks : employeeLinks)
+  const links = isDeveloper ? developerLinks : (isAdmin ? adminNavGroups : employeeLinks)
 
   const isActive = (href: string) => {
     if (href === '/dashboard') {
       return pathname === href
     }
     return pathname.startsWith(href)
+  }
+
+  const isDropdownActive = (items: Array<{ href: string; label: string }>) => {
+    return items.some(item => isActive(item.href))
   }
 
   return (
@@ -184,8 +236,84 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                 </Link>
               </div>
               {/* Desktop Navigation */}
-              <div className="hidden md:ml-8 md:flex md:space-x-1">
-                {links.map((link) => (
+              <div className="hidden md:ml-8 md:flex md:space-x-1 md:items-center">
+                {isAdmin ? (
+                  adminNavGroups.map((group, idx) => {
+                    if (group.type === 'single') {
+                      return group.items.map((item) => (
+                        <Link
+                          key={item.href}
+                          href={item.href}
+                          className={`inline-flex items-center px-3 py-2 text-sm font-medium border-b-2 transition-colors ${
+                            isActive(item.href)
+                              ? 'border-blue-600 text-blue-600'
+                              : 'border-transparent text-gray-700 hover:text-gray-900 hover:border-gray-300'
+                          }`}
+                        >
+                          {item.label}
+                        </Link>
+                      ))
+                    } else {
+                      const dropdownId = `dropdown-${idx}`
+                      const isActiveGroup = isDropdownActive(group.items)
+                      return (
+                        <div
+                          key={dropdownId}
+                          ref={(el) => {
+                            if (el) {
+                              dropdownRefs.current[dropdownId] = el
+                            } else {
+                              delete dropdownRefs.current[dropdownId]
+                            }
+                          }}
+                          className="relative"
+                        >
+                          <button
+                            onClick={() => setOpenDropdown(openDropdown === dropdownId ? null : dropdownId)}
+                            className={`inline-flex items-center px-3 py-2 text-sm font-medium border-b-2 transition-colors ${
+                              isActiveGroup
+                                ? 'border-blue-600 text-blue-600'
+                                : 'border-transparent text-gray-700 hover:text-gray-900 hover:border-gray-300'
+                            }`}
+                          >
+                            {group.label}
+                            <svg
+                              className={`ml-1 h-4 w-4 transition-transform ${
+                                openDropdown === dropdownId ? 'rotate-180' : ''
+                              }`}
+                              fill="none"
+                              stroke="currentColor"
+                              viewBox="0 0 24 24"
+                            >
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                            </svg>
+                          </button>
+                          {openDropdown === dropdownId && (
+                            <div className="absolute top-full left-0 mt-1 w-48 bg-white rounded-md shadow-lg border border-gray-200 z-50">
+                              <div className="py-1">
+                                {group.items.map((item) => (
+                                  <Link
+                                    key={item.href}
+                                    href={item.href}
+                                    onClick={() => setOpenDropdown(null)}
+                                    className={`block px-4 py-2 text-sm transition-colors ${
+                                      isActive(item.href)
+                                        ? 'bg-blue-50 text-blue-600 font-medium'
+                                        : 'text-gray-700 hover:bg-gray-50 hover:text-gray-900'
+                                    }`}
+                                  >
+                                    {item.label}
+                                  </Link>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )
+                    }
+                  })
+                ) : (
+                  links.map((link) => (
                   <Link
                     key={link.href}
                     href={link.href}
@@ -197,7 +325,8 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                   >
                     {link.label}
                   </Link>
-                ))}
+                  ))
+                )}
               </div>
             </div>
             {/* User Menu */}
@@ -231,7 +360,74 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         {mobileMenuOpen && (
           <div className="md:hidden border-t border-gray-200 bg-white">
             <div className="px-2 pt-2 pb-3 space-y-1">
-              {links.map((link) => (
+              {isAdmin ? (
+                adminNavGroups.map((group, idx) => {
+                  if (group.type === 'single') {
+                    return group.items.map((item) => (
+                      <Link
+                        key={item.href}
+                        href={item.href}
+                        onClick={() => setMobileMenuOpen(false)}
+                        className={`block px-3 py-2 text-sm font-medium border-l-4 transition-colors ${
+                          isActive(item.href)
+                            ? 'border-blue-600 text-blue-600 bg-blue-50'
+                            : 'border-transparent text-gray-700 hover:bg-gray-100'
+                        }`}
+                      >
+                        {item.label}
+                      </Link>
+                    ))
+                  } else {
+                    const dropdownId = `mobile-dropdown-${idx}`
+                    return (
+                      <div key={dropdownId}>
+                        <button
+                          onClick={() => setOpenDropdown(openDropdown === dropdownId ? null : dropdownId)}
+                          className={`w-full flex items-center justify-between px-3 py-2 text-sm font-medium border-l-4 transition-colors ${
+                            isDropdownActive(group.items)
+                              ? 'border-blue-600 text-blue-600 bg-blue-50'
+                              : 'border-transparent text-gray-700 hover:bg-gray-100'
+                          }`}
+                        >
+                          {group.label}
+                          <svg
+                            className={`h-4 w-4 transition-transform ${
+                              openDropdown === dropdownId ? 'rotate-180' : ''
+                            }`}
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                          </svg>
+                        </button>
+                        {openDropdown === dropdownId && (
+                          <div className="pl-4 space-y-1">
+                            {group.items.map((item) => (
+                              <Link
+                                key={item.href}
+                                href={item.href}
+                                onClick={() => {
+                                  setMobileMenuOpen(false)
+                                  setOpenDropdown(null)
+                                }}
+                                className={`block px-3 py-2 text-sm transition-colors ${
+                                  isActive(item.href)
+                                    ? 'text-blue-600 font-medium bg-blue-50'
+                                    : 'text-gray-600 hover:bg-gray-50'
+                                }`}
+                              >
+                                {item.label}
+                              </Link>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )
+                  }
+                })
+              ) : (
+                links.map((link) => (
                 <Link
                   key={link.href}
                   href={link.href}
@@ -244,7 +440,8 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                 >
                   {link.label}
                 </Link>
-              ))}
+                ))
+              )}
             </div>
           </div>
         )}

@@ -21,8 +21,27 @@ access_logger = logging.getLogger("access")
 async def lifespan(app: FastAPI):
     # Startup
     logger.info("Starting ClockInn API server...")
-    # Note: Tables are created via Alembic migrations, no need to test connection here
-    # Database connection will be established on first request
+    # Run database migrations on startup
+    try:
+        from alembic.config import Config
+        from alembic import command
+        from pathlib import Path
+        from app.core.config import settings
+        
+        alembic_cfg = Config(str(Path(__file__).parent / "alembic.ini"))
+        # Convert async URL to sync for Alembic
+        db_url = settings.DATABASE_URL
+        if db_url.startswith("postgresql+asyncpg://"):
+            db_url = db_url.replace("postgresql+asyncpg://", "postgresql://", 1)
+        alembic_cfg.set_main_option("sqlalchemy.url", db_url)
+        
+        logger.info("Running database migrations...")
+        command.upgrade(alembic_cfg, "head")
+        logger.info("✅ Database migrations completed successfully")
+    except Exception as e:
+        logger.warning(f"⚠️  Migration check failed (this is OK if migrations are run separately): {e}")
+        # Don't fail startup if migrations fail - they might be run manually
+    
     logger.info("ClockInn API server started successfully")
     yield
     # Shutdown

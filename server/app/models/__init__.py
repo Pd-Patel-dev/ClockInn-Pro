@@ -6,6 +6,7 @@ from app.models.leave_request import LeaveRequest
 from app.models.audit_log import AuditLog
 from app.models.payroll import PayrollRun, PayrollLineItem, PayrollAdjustment
 from app.models.shift import Shift, ShiftTemplate, ScheduleSwap
+from app.models.cash_drawer import CashDrawerSession, CashDrawerAudit
 
 __all__ = [
     "Company",
@@ -20,5 +21,7 @@ __all__ = [
     "Shift",
     "ShiftTemplate",
     "ScheduleSwap",
+    "CashDrawerSession",
+    "CashDrawerAudit",
 ]
 

@@ -31,8 +31,20 @@ const companySettingsSchema = z.object({
   breaks_paid: z.boolean(),
 })
 
+const cashDrawerSettingsSchema = z.object({
+  cash_drawer_enabled: z.boolean(),
+  cash_drawer_required_for_all: z.boolean(),
+  cash_drawer_required_roles: z.array(z.string()).optional(),
+  cash_drawer_currency: z.string().min(1, 'Currency is required'),
+  cash_drawer_starting_amount_cents: z.number().int().min(0),
+  cash_drawer_variance_threshold_cents: z.number().int().min(0),
+  cash_drawer_allow_edit: z.boolean(),
+  cash_drawer_require_manager_review: z.boolean(),
+})
+
 type CompanyNameForm = z.infer<typeof companyNameSchema>
 type CompanySettingsForm = z.infer<typeof companySettingsSchema>
+type CashDrawerSettingsForm = z.infer<typeof cashDrawerSettingsSchema>
 
 interface CompanySettings {
   timezone: string
@@ -43,6 +55,14 @@ interface CompanySettings {
   overtime_multiplier_default: number
   rounding_policy: string
   breaks_paid: boolean
+  cash_drawer_enabled?: boolean
+  cash_drawer_required_for_all?: boolean
+  cash_drawer_required_roles?: string[]
+  cash_drawer_currency?: string
+  cash_drawer_starting_amount_cents?: number
+  cash_drawer_variance_threshold_cents?: number
+  cash_drawer_allow_edit?: boolean
+  cash_drawer_require_manager_review?: boolean
 }
 
 interface AdminInfo {
@@ -69,7 +89,7 @@ export default function AdminSettingsPage() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [companyInfo, setCompanyInfo] = useState<CompanyInfo | null>(null)
-  const [activeTab, setActiveTab] = useState<'info' | 'payroll' | 'email'>('info')
+  const [activeTab, setActiveTab] = useState<'info' | 'payroll' | 'cash' | 'email'>('info')
   const [gmailHealth, setGmailHealth] = useState<any>(null)
   const [checkingGmail, setCheckingGmail] = useState(false)
   const [kioskUrl, setKioskUrl] = useState<string>('')
@@ -92,6 +112,19 @@ export default function AdminSettingsPage() {
   } = useForm<CompanySettingsForm>({
     resolver: zodResolver(companySettingsSchema),
   })
+
+  const {
+    control: controlCashDrawer,
+    handleSubmit: handleSubmitCashDrawer,
+    formState: { errors: cashDrawerErrors },
+    reset: resetCashDrawer,
+    watch: watchCashDrawer,
+  } = useForm<CashDrawerSettingsForm>({
+    resolver: zodResolver(cashDrawerSettingsSchema),
+  })
+  
+  const cashDrawerEnabled = watchCashDrawer('cash_drawer_enabled')
+  const cashDrawerRequiredForAll = watchCashDrawer('cash_drawer_required_for_all')
 
   const [user, setUser] = useState<any>(null)
 
@@ -187,6 +220,18 @@ export default function AdminSettingsPage() {
           breaks_paid: response.data.settings.breaks_paid ?? false,
         })
         
+        // Reset cash drawer form
+        resetCashDrawer({
+          cash_drawer_enabled: response.data.settings.cash_drawer_enabled ?? false,
+          cash_drawer_required_for_all: response.data.settings.cash_drawer_required_for_all ?? true,
+          cash_drawer_required_roles: response.data.settings.cash_drawer_required_roles ?? ['EMPLOYEE'],
+          cash_drawer_currency: response.data.settings.cash_drawer_currency ?? 'USD',
+          cash_drawer_starting_amount_cents: response.data.settings.cash_drawer_starting_amount_cents ?? 0,
+          cash_drawer_variance_threshold_cents: response.data.settings.cash_drawer_variance_threshold_cents ?? 2000,
+          cash_drawer_allow_edit: response.data.settings.cash_drawer_allow_edit ?? true,
+          cash_drawer_require_manager_review: response.data.settings.cash_drawer_require_manager_review ?? false,
+        })
+        
         setValueName('name', response.data.name)
       }
     } catch (error: any) {
@@ -268,6 +313,56 @@ export default function AdminSettingsPage() {
     }
   }
 
+  const onSubmitCashDrawer = async (data: CashDrawerSettingsForm) => {
+    setSaving(true)
+    try {
+      const updateData: any = {
+        cash_drawer_enabled: data.cash_drawer_enabled,
+        cash_drawer_required_for_all: data.cash_drawer_required_for_all,
+        cash_drawer_required_roles: data.cash_drawer_required_roles || [],
+        cash_drawer_currency: data.cash_drawer_currency,
+        cash_drawer_starting_amount_cents: data.cash_drawer_starting_amount_cents,
+        cash_drawer_variance_threshold_cents: data.cash_drawer_variance_threshold_cents,
+        cash_drawer_allow_edit: data.cash_drawer_allow_edit,
+        cash_drawer_require_manager_review: data.cash_drawer_require_manager_review,
+      }
+      
+      logger.debug('Updating cash drawer settings', { updateData })
+      
+      const response = await api.put('/admin/company/settings', updateData)
+      logger.debug('Cash drawer settings updated successfully', { response: response.data })
+      
+      setCompanyInfo(response.data)
+      
+      setTimeout(() => {
+        resetCashDrawer({
+          cash_drawer_enabled: response.data.settings.cash_drawer_enabled ?? false,
+          cash_drawer_required_for_all: response.data.settings.cash_drawer_required_for_all ?? true,
+          cash_drawer_required_roles: response.data.settings.cash_drawer_required_roles ?? ['EMPLOYEE'],
+          cash_drawer_currency: response.data.settings.cash_drawer_currency ?? 'USD',
+          cash_drawer_starting_amount_cents: response.data.settings.cash_drawer_starting_amount_cents ?? 0,
+          cash_drawer_variance_threshold_cents: response.data.settings.cash_drawer_variance_threshold_cents ?? 2000,
+          cash_drawer_allow_edit: response.data.settings.cash_drawer_allow_edit ?? true,
+          cash_drawer_require_manager_review: response.data.settings.cash_drawer_require_manager_review ?? false,
+        }, { keepDefaultValues: false })
+      }, 50)
+      
+      setTimeout(() => {
+        fetchCompanyInfo(user)
+      }, 200)
+      
+      toast.success('Cash drawer settings updated successfully!')
+    } catch (error: any) {
+      logger.error('Failed to update cash drawer settings', error as Error, { 
+        endpoint: '/admin/company/settings',
+        errorDetails: error.response?.data 
+      })
+      toast.error(error.response?.data?.detail || 'Failed to update cash drawer settings')
+    } finally {
+      setSaving(false)
+    }
+  }
+
   const weekDays = [
     { value: 0, label: 'Monday' },
     { value: 1, label: 'Tuesday' },
@@ -339,6 +434,16 @@ export default function AdminSettingsPage() {
                   }`}
                 >
                   Payroll Settings
+                </button>
+                <button
+                  onClick={() => setActiveTab('cash')}
+                  className={`py-4 px-1 border-b-2 font-medium text-sm ${
+                    activeTab === 'cash'
+                      ? 'border-primary-500 text-primary-600'
+                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                  }`}
+                >
+                  Cash Drawer
                 </button>
               </>
             )}
@@ -831,6 +936,216 @@ export default function AdminSettingsPage() {
                 <p className="mt-1 text-xs text-gray-500">
                   When enabled, break time is included in paid hours. When disabled (default), breaks are deducted from total hours worked.
                 </p>
+              </div>
+
+              <div className="flex justify-end">
+                <button
+                  type="submit"
+                  disabled={saving}
+                  className="px-4 py-2 bg-primary-600 text-white rounded-md hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {saving ? 'Saving...' : 'Save Settings'}
+                </button>
+              </div>
+            </form>
+          </div>
+        )}
+
+        {/* Cash Drawer Settings Tab - Admin Only */}
+        {activeTab === 'cash' && user?.role === 'ADMIN' && (
+          <div className="bg-white shadow rounded-lg p-6">
+            <h2 className="text-xl font-semibold mb-4">Cash Drawer Settings</h2>
+            <p className="text-sm text-gray-600 mb-6">
+              Configure cash drawer management settings. Employees will be prompted to enter cash counts when clocking in/out.
+            </p>
+            <form onSubmit={handleSubmitCashDrawer(onSubmitCashDrawer)} className="space-y-6">
+              <div>
+                <Controller
+                  name="cash_drawer_enabled"
+                  control={controlCashDrawer}
+                  render={({ field }) => (
+                    <label className="flex items-center">
+                      <input
+                        type="checkbox"
+                        checked={field.value}
+                        onChange={(e) => field.onChange(e.target.checked)}
+                        onBlur={field.onBlur}
+                        className="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                      />
+                      <span className="ml-2 text-sm text-gray-700">Enable Cash Drawer Management</span>
+                    </label>
+                  )}
+                />
+                <p className="mt-1 text-xs text-gray-500">When enabled, employees will be required to enter cash counts when clocking in/out</p>
+              </div>
+
+              <div>
+                <Controller
+                  name="cash_drawer_required_for_all"
+                  control={controlCashDrawer}
+                  render={({ field }) => (
+                    <label className="flex items-center">
+                      <input
+                        type="checkbox"
+                        checked={field.value}
+                        onChange={(e) => field.onChange(e.target.checked)}
+                        onBlur={field.onBlur}
+                        disabled={!cashDrawerEnabled}
+                        className="rounded border-gray-300 text-primary-600 focus:ring-primary-500 disabled:opacity-50"
+                      />
+                      <span className="ml-2 text-sm text-gray-700">Require Cash Drawer for All Employees</span>
+                    </label>
+                  )}
+                />
+                <p className="mt-1 text-xs text-gray-500">When enabled, all employees must enter cash counts. When disabled, only specified roles are required.</p>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700">Required Roles</label>
+                <Controller
+                  name="cash_drawer_required_roles"
+                  control={controlCashDrawer}
+                  render={({ field }) => (
+                    <div className="mt-2 space-y-2">
+                      {['EMPLOYEE', 'MANAGER', 'ADMIN'].map((role) => (
+                        <label key={role} className="flex items-center">
+                          <input
+                            type="checkbox"
+                            checked={field.value?.includes(role) || false}
+                            onChange={(e) => {
+                              const currentRoles = field.value || []
+                              if (e.target.checked) {
+                                field.onChange([...currentRoles, role])
+                              } else {
+                                field.onChange(currentRoles.filter((r) => r !== role))
+                              }
+                            }}
+                            onBlur={field.onBlur}
+                            disabled={!cashDrawerEnabled || cashDrawerRequiredForAll}
+                            className="rounded border-gray-300 text-primary-600 focus:ring-primary-500 disabled:opacity-50"
+                          />
+                          <span className="ml-2 text-sm text-gray-700">{role}</span>
+                        </label>
+                      ))}
+                    </div>
+                  )}
+                />
+                <p className="mt-1 text-xs text-gray-500">Select which roles require cash drawer entry (only applies if "Require for All" is disabled)</p>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700">Currency</label>
+                <Controller
+                  name="cash_drawer_currency"
+                  control={controlCashDrawer}
+                  render={({ field }) => (
+                    <select
+                      {...field}
+                      disabled={!cashDrawerEnabled}
+                      className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm disabled:opacity-50"
+                    >
+                      <option value="USD">USD - US Dollar</option>
+                      <option value="EUR">EUR - Euro</option>
+                      <option value="GBP">GBP - British Pound</option>
+                      <option value="CAD">CAD - Canadian Dollar</option>
+                      <option value="AUD">AUD - Australian Dollar</option>
+                    </select>
+                  )}
+                />
+                <p className="mt-1 text-xs text-gray-500">Currency used for cash drawer amounts</p>
+                {cashDrawerErrors.cash_drawer_currency && (
+                  <p className="mt-1 text-sm text-red-600">{cashDrawerErrors.cash_drawer_currency.message}</p>
+                )}
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700">Starting Cash Count ($)</label>
+                <Controller
+                  name="cash_drawer_starting_amount_cents"
+                  control={controlCashDrawer}
+                  render={({ field }) => (
+                    <input
+                      {...field}
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={(field.value || 0) / 100}
+                      onChange={(e) => field.onChange(Math.round(parseFloat(e.target.value || '0') * 100))}
+                      disabled={!cashDrawerEnabled}
+                      className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm disabled:opacity-50"
+                    />
+                  )}
+                />
+                <p className="mt-1 text-xs text-gray-500">Default starting cash amount in dollars. This can be used as a reference or pre-filled value when employees clock in (default: $0.00)</p>
+                {cashDrawerErrors.cash_drawer_starting_amount_cents && (
+                  <p className="mt-1 text-sm text-red-600">{cashDrawerErrors.cash_drawer_starting_amount_cents.message}</p>
+                )}
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700">Variance Threshold ($)</label>
+                <Controller
+                  name="cash_drawer_variance_threshold_cents"
+                  control={controlCashDrawer}
+                  render={({ field }) => (
+                    <input
+                      {...field}
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={(field.value || 0) / 100}
+                      onChange={(e) => field.onChange(Math.round(parseFloat(e.target.value || '0') * 100))}
+                      disabled={!cashDrawerEnabled}
+                      className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm disabled:opacity-50"
+                    />
+                  )}
+                />
+                <p className="mt-1 text-xs text-gray-500">Cash variance threshold in dollars. Sessions exceeding this amount will be flagged for review (default: $20.00)</p>
+                {cashDrawerErrors.cash_drawer_variance_threshold_cents && (
+                  <p className="mt-1 text-sm text-red-600">{cashDrawerErrors.cash_drawer_variance_threshold_cents.message}</p>
+                )}
+              </div>
+
+              <div>
+                <Controller
+                  name="cash_drawer_allow_edit"
+                  control={controlCashDrawer}
+                  render={({ field }) => (
+                    <label className="flex items-center">
+                      <input
+                        type="checkbox"
+                        checked={field.value}
+                        onChange={(e) => field.onChange(e.target.checked)}
+                        onBlur={field.onBlur}
+                        disabled={!cashDrawerEnabled}
+                        className="rounded border-gray-300 text-primary-600 focus:ring-primary-500 disabled:opacity-50"
+                      />
+                      <span className="ml-2 text-sm text-gray-700">Allow Editing Cash Drawer Sessions</span>
+                    </label>
+                  )}
+                />
+                <p className="mt-1 text-xs text-gray-500">When enabled, admins can edit cash drawer session amounts after they are created</p>
+              </div>
+
+              <div>
+                <Controller
+                  name="cash_drawer_require_manager_review"
+                  control={controlCashDrawer}
+                  render={({ field }) => (
+                    <label className="flex items-center">
+                      <input
+                        type="checkbox"
+                        checked={field.value}
+                        onChange={(e) => field.onChange(e.target.checked)}
+                        onBlur={field.onBlur}
+                        disabled={!cashDrawerEnabled}
+                        className="rounded border-gray-300 text-primary-600 focus:ring-primary-500 disabled:opacity-50"
+                      />
+                      <span className="ml-2 text-sm text-gray-700">Require Manager Review for Variances</span>
+                    </label>
+                  )}
+                />
+                <p className="mt-1 text-xs text-gray-500">When enabled, sessions with variances exceeding the threshold must be reviewed and approved by a manager</p>
               </div>
 
               <div className="flex justify-end">

@@ -14,6 +14,14 @@ class CompanySettingsResponse(BaseModel):
     overtime_multiplier_default: Decimal
     rounding_policy: str  # none, 5, 6, 10, 15, 30
     breaks_paid: bool  # Whether breaks are paid (default: False)
+    cash_drawer_enabled: Optional[bool] = False
+    cash_drawer_required_for_all: Optional[bool] = False
+    cash_drawer_required_roles: Optional[list[str]] = None
+    cash_drawer_currency: Optional[str] = None
+    cash_drawer_starting_amount_cents: Optional[int] = None
+    cash_drawer_variance_threshold_cents: Optional[int] = None
+    cash_drawer_allow_edit: Optional[bool] = None
+    cash_drawer_require_manager_review: Optional[bool] = None
 
 
 class AdminInfo(BaseModel):
@@ -52,6 +60,15 @@ class CompanySettingsUpdate(BaseModel):
     overtime_multiplier_default: Optional[float] = Field(None, ge=1, le=3, description="Default overtime multiplier (e.g., 1.5)")
     rounding_policy: Optional[str] = Field(None, pattern="^(none|5|6|10|15|30)$", description="Rounding policy: none, 5, 6, 10, 15 (7-minute rule), or 30 minutes")
     breaks_paid: Optional[bool] = Field(None, description="Whether breaks are paid (default: False - breaks are deducted from pay)")
+    # Cash drawer settings
+    cash_drawer_enabled: Optional[bool] = Field(None, description="Enable cash drawer management")
+    cash_drawer_required_for_all: Optional[bool] = Field(None, description="Require cash drawer for all employees")
+    cash_drawer_required_roles: Optional[list[str]] = Field(None, description="Roles that require cash drawer (e.g., ['EMPLOYEE'])")
+    cash_drawer_currency: Optional[str] = Field(None, max_length=10, description="Currency code (e.g., USD)")
+    cash_drawer_starting_amount_cents: Optional[int] = Field(None, ge=0, description="Default starting cash amount in cents (e.g., 10000 = $100.00)")
+    cash_drawer_variance_threshold_cents: Optional[int] = Field(None, ge=0, description="Variance threshold in cents (e.g., 2000 = $20.00)")
+    cash_drawer_allow_edit: Optional[bool] = Field(None, description="Allow editing cash drawer sessions")
+    cash_drawer_require_manager_review: Optional[bool] = Field(None, description="Require manager review for variances")
 
 
 class CompanyNameUpdate(BaseModel):

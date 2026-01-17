@@ -306,7 +306,7 @@ export default function AdminEmployeesPage() {
         ) : (
           <div className="bg-white shadow rounded-lg overflow-hidden">
             <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200">
+              <table className="w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
                 <tr>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -455,25 +455,25 @@ export default function AdminEmployeesPage() {
                     Basic Information
                   </h4>
                   <div className="space-y-5">
-                    <FormField label="Name" error={editErrors.name?.message} required>
-                      <Input {...registerEdit('name')} error={!!editErrors.name} />
-                    </FormField>
-                    
-                    <FormField label="Email" hint="Email cannot be changed">
-                      <Input
-                        type="email"
-                        value={editingEmployee.email}
-                        disabled
-                        className="bg-gray-100 text-gray-500 cursor-not-allowed"
-                      />
-                    </FormField>
-                    
-                    <FormField label="Status" error={editErrors.status?.message} required>
-                      <Select {...registerEdit('status')} error={!!editErrors.status}>
-                        <option value="active">Active</option>
-                        <option value="inactive">Inactive</option>
-                      </Select>
-                    </FormField>
+                <FormField label="Name" error={editErrors.name?.message} required>
+                  <Input {...registerEdit('name')} error={!!editErrors.name} />
+                </FormField>
+                
+                <FormField label="Email" hint="Email cannot be changed">
+                  <Input
+                    type="email"
+                    value={editingEmployee.email}
+                    disabled
+                    className="bg-gray-100 text-gray-500 cursor-not-allowed"
+                  />
+                </FormField>
+                
+                <FormField label="Status" error={editErrors.status?.message} required>
+                  <Select {...registerEdit('status')} error={!!editErrors.status}>
+                    <option value="active">Active</option>
+                    <option value="inactive">Inactive</option>
+                  </Select>
+                </FormField>
                   </div>
                 </div>
 
@@ -483,27 +483,27 @@ export default function AdminEmployeesPage() {
                     Additional Details
                   </h4>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <FormField 
-                      label="PIN" 
-                      error={editErrors.pin?.message}
-                      hint={editingEmployee.has_pin ? 'Leave empty to keep current PIN, or enter new 4-digit PIN' : 'Enter 4-digit PIN or leave empty'}
-                    >
-                      <Input 
-                        {...registerEdit('pin')} 
-                        type="text" 
-                        maxLength={4} 
-                        error={!!editErrors.pin}
-                        placeholder="Enter new 4-digit PIN"
-                      />
-                    </FormField>
-                    
-                    <FormField label="Job Role" error={editErrors.job_role?.message} hint="e.g., Manager, Developer, Sales">
-                      <Input {...registerEdit('job_role')} type="text" error={!!editErrors.job_role} />
-                    </FormField>
-                    
-                    <FormField label="Pay Rate" error={editErrors.pay_rate?.message} hint="Hourly rate in dollars">
-                      <Input {...registerEdit('pay_rate')} type="number" step="0.01" min="0" error={!!editErrors.pay_rate} />
-                    </FormField>
+                <FormField 
+                  label="PIN" 
+                  error={editErrors.pin?.message}
+                  hint={editingEmployee.has_pin ? 'Leave empty to keep current PIN, or enter new 4-digit PIN' : 'Enter 4-digit PIN or leave empty'}
+                >
+                  <Input 
+                    {...registerEdit('pin')} 
+                    type="text" 
+                    maxLength={4} 
+                    error={!!editErrors.pin}
+                    placeholder="Enter new 4-digit PIN"
+                  />
+                </FormField>
+                
+                <FormField label="Job Role" error={editErrors.job_role?.message} hint="e.g., Manager, Developer, Sales">
+                  <Input {...registerEdit('job_role')} type="text" error={!!editErrors.job_role} />
+                </FormField>
+                
+                <FormField label="Pay Rate" error={editErrors.pay_rate?.message} hint="Hourly rate in dollars">
+                  <Input {...registerEdit('pay_rate')} type="number" step="0.01" min="0" error={!!editErrors.pay_rate} />
+                </FormField>
                   </div>
                 </div>
 

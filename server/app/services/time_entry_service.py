@@ -25,6 +25,10 @@ async def punch(
     pin: str,
     source: TimeEntrySource = TimeEntrySource.KIOSK,
     skip_pin_verification: bool = False,
+    cash_start_cents: Optional[int] = None,
+    cash_end_cents: Optional[int] = None,
+    collected_cash_cents: Optional[int] = None,
+    beverages_cash_cents: Optional[int] = None,
 ) -> TimeEntry:
     """Handle clock in/out punch."""
     # Find employee
@@ -84,6 +88,29 @@ async def punch(
                 detail="The PIN you entered is incorrect. Please try again.",
             )
     
+    # Get company settings to check cash drawer requirements
+    from app.models.company import Company
+    from app.services.company_service import get_company_settings
+    from app.services.cash_drawer_service import (
+        requires_cash_drawer,
+        create_cash_drawer_session,
+        close_cash_drawer_session,
+    )
+    from app.models.cash_drawer import CashCountSource
+    
+    result = await db.execute(select(Company).where(Company.id == company_id))
+    company = result.scalar_one_or_none()
+    if not company:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Company not found",
+        )
+    
+    company_settings = get_company_settings(company)
+    # Convert role to string (handles both enum and string)
+    employee_role_str = employee.role.value if hasattr(employee.role, 'value') else str(employee.role)
+    cash_required = requires_cash_drawer(company_settings, employee_role_str)
+    
     # Check for open entry
     result = await db.execute(
         select(TimeEntry).where(
@@ -101,6 +128,32 @@ async def punch(
     try:
         if open_entry:
             # Clock out
+            # Check if cash drawer session exists and requires end cash
+            from app.models.cash_drawer import CashDrawerSession
+            result = await db.execute(
+                select(CashDrawerSession).where(
+                    CashDrawerSession.time_entry_id == open_entry.id
+                )
+            )
+            cash_session = result.scalar_one_or_none()
+            
+            if cash_session:
+                if cash_end_cents is None:
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail="Ending cash count is required to clock out",
+                    )
+                # Close cash drawer session
+                await close_cash_drawer_session(
+                    db,
+                    company_id,
+                    open_entry.id,
+                    cash_end_cents,
+                    CashCountSource.KIOSK if source == TimeEntrySource.KIOSK else CashCountSource.WEB,
+                    collected_cash_cents=collected_cash_cents,
+                    beverages_cash_cents=beverages_cash_cents,
+                )
+            
             open_entry.clock_out_at = now
             open_entry.status = TimeEntryStatus.CLOSED
             await db.commit()
@@ -108,6 +161,14 @@ async def punch(
             return open_entry
         else:
             # Clock in
+            # Check if cash drawer is required
+            if cash_required:
+                if cash_start_cents is None:
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail="Starting cash count is required to clock in",
+                    )
+            
             new_entry = TimeEntry(
                 id=uuid.uuid4(),
                 company_id=company_id,
@@ -117,9 +178,25 @@ async def punch(
                 status=TimeEntryStatus.OPEN,
             )
             db.add(new_entry)
+            await db.flush()  # Flush to get the ID
+            
+            # Create cash drawer session if required
+            if cash_required and cash_start_cents is not None:
+                await create_cash_drawer_session(
+                    db,
+                    company_id,
+                    new_entry.id,
+                    employee.id,
+                    cash_start_cents,
+                    CashCountSource.KIOSK if source == TimeEntrySource.KIOSK else CashCountSource.WEB,
+                )
+            
             await db.commit()
             await db.refresh(new_entry)
             return new_entry
+    except HTTPException:
+        await db.rollback()
+        raise
     except Exception as e:
         await db.rollback()
         raise HTTPException(

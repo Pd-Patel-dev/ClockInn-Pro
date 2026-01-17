@@ -19,6 +19,16 @@ DEFAULT_OVERTIME_MULTIPLIER = Decimal("1.5")
 DEFAULT_ROUNDING_POLICY = "none"
 DEFAULT_BREAKS_PAID = False  # By default, breaks are NOT paid
 
+# Cash drawer defaults
+DEFAULT_CASH_DRAWER_ENABLED = False
+DEFAULT_CASH_DRAWER_REQUIRED_FOR_ALL = True
+DEFAULT_CASH_DRAWER_REQUIRED_ROLES = ["EMPLOYEE"]
+DEFAULT_CASH_DRAWER_CURRENCY = "USD"
+DEFAULT_CASH_DRAWER_STARTING_AMOUNT_CENTS = 0  # $0.00
+DEFAULT_CASH_DRAWER_VARIANCE_THRESHOLD_CENTS = 2000  # $20.00
+DEFAULT_CASH_DRAWER_ALLOW_EDIT = True
+DEFAULT_CASH_DRAWER_REQUIRE_MANAGER_REVIEW = False
+
 
 def get_company_settings(company: Company) -> Dict:
     """Get company settings with defaults."""
@@ -32,6 +42,15 @@ def get_company_settings(company: Company) -> Dict:
         "overtime_multiplier_default": Decimal(str(settings.get("overtime_multiplier_default", DEFAULT_OVERTIME_MULTIPLIER))),
         "rounding_policy": settings.get("rounding_policy", DEFAULT_ROUNDING_POLICY),
         "breaks_paid": settings.get("breaks_paid", DEFAULT_BREAKS_PAID),
+        # Cash drawer settings
+        "cash_drawer_enabled": settings.get("cash_drawer_enabled", DEFAULT_CASH_DRAWER_ENABLED),
+        "cash_drawer_required_for_all": settings.get("cash_drawer_required_for_all", DEFAULT_CASH_DRAWER_REQUIRED_FOR_ALL),
+        "cash_drawer_required_roles": settings.get("cash_drawer_required_roles", DEFAULT_CASH_DRAWER_REQUIRED_ROLES),
+        "cash_drawer_currency": settings.get("cash_drawer_currency", DEFAULT_CASH_DRAWER_CURRENCY),
+        "cash_drawer_starting_amount_cents": settings.get("cash_drawer_starting_amount_cents", DEFAULT_CASH_DRAWER_STARTING_AMOUNT_CENTS),
+        "cash_drawer_variance_threshold_cents": settings.get("cash_drawer_variance_threshold_cents", DEFAULT_CASH_DRAWER_VARIANCE_THRESHOLD_CENTS),
+        "cash_drawer_allow_edit": settings.get("cash_drawer_allow_edit", DEFAULT_CASH_DRAWER_ALLOW_EDIT),
+        "cash_drawer_require_manager_review": settings.get("cash_drawer_require_manager_review", DEFAULT_CASH_DRAWER_REQUIRE_MANAGER_REVIEW),
     }
 
 
@@ -127,6 +146,23 @@ async def update_company_settings(
     if data.breaks_paid is not None:
         current_settings["breaks_paid"] = data.breaks_paid
         logger.info(f"Updated breaks_paid to: {data.breaks_paid}")
+    # Cash drawer settings
+    if data.cash_drawer_enabled is not None:
+        current_settings["cash_drawer_enabled"] = data.cash_drawer_enabled
+    if data.cash_drawer_required_for_all is not None:
+        current_settings["cash_drawer_required_for_all"] = data.cash_drawer_required_for_all
+    if data.cash_drawer_required_roles is not None:
+        current_settings["cash_drawer_required_roles"] = data.cash_drawer_required_roles
+    if data.cash_drawer_currency is not None:
+        current_settings["cash_drawer_currency"] = data.cash_drawer_currency
+    if data.cash_drawer_starting_amount_cents is not None:
+        current_settings["cash_drawer_starting_amount_cents"] = data.cash_drawer_starting_amount_cents
+    if data.cash_drawer_variance_threshold_cents is not None:
+        current_settings["cash_drawer_variance_threshold_cents"] = data.cash_drawer_variance_threshold_cents
+    if data.cash_drawer_allow_edit is not None:
+        current_settings["cash_drawer_allow_edit"] = data.cash_drawer_allow_edit
+    if data.cash_drawer_require_manager_review is not None:
+        current_settings["cash_drawer_require_manager_review"] = data.cash_drawer_require_manager_review
     
     logger.info(f"Settings after update: {current_settings}")
     
