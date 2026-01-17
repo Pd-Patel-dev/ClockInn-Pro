@@ -311,7 +311,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                     }
                   })
                 ) : (
-                  links.map((link) => (
+                  (links as Array<{ href: string; label: string }>).map((link) => (
                   <Link
                     key={link.href}
                     href={link.href}
@@ -425,7 +425,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                   }
                 })
               ) : (
-                links.map((link) => (
+                (links as Array<{ href: string; label: string }>).map((link) => (
                 <Link
                   key={link.href}
                   href={link.href}
