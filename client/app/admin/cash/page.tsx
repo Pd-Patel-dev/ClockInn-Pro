@@ -508,7 +508,7 @@ export default function AdminCashDrawerPage() {
           {/* Delete Confirmation Dialog */}
           <ConfirmationDialog
             isOpen={showDeleteDialog}
-            onClose={() => {
+            onCancel={() => {
               setShowDeleteDialog(false)
               setSelectedSession(null)
             }}
@@ -517,8 +517,7 @@ export default function AdminCashDrawerPage() {
             message={`Are you sure you want to delete this cash drawer session? This action cannot be undone.`}
             confirmText="Delete"
             cancelText="Cancel"
-            confirmButtonClassName="bg-red-600 hover:bg-red-700"
-            isLoading={deleting}
+            type="error"
           />
 
           {/* Review Dialog */}
