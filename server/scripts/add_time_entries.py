@@ -54,7 +54,7 @@ async def add_time_entries():
         result = await db.execute(
             select(User).where(
                 User.company_id == company.id,
-                User.role == UserRole.EMPLOYEE,
+                User.role.in_([UserRole.MAINTENANCE, UserRole.FRONTDESK, UserRole.HOUSEKEEPING]),
                 User.status == UserStatus.ACTIVE,
             )
         )

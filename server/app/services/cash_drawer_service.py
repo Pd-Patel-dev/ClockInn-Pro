@@ -7,7 +7,7 @@ from typing import Optional, Dict, List
 from uuid import UUID
 from datetime import datetime, date
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_, func, or_
+from sqlalchemy import select, and_, func, or_, delete
 from fastapi import HTTPException, status
 from decimal import Decimal
 
@@ -33,7 +33,7 @@ def requires_cash_drawer(company_settings: Dict, employee_role: str) -> bool:
     if company_settings.get("cash_drawer_required_for_all", True):
         return True
     
-    required_roles = company_settings.get("cash_drawer_required_roles", ["EMPLOYEE"])
+    required_roles = company_settings.get("cash_drawer_required_roles", ["FRONTDESK"])
     return employee_role in required_roles
 
 
@@ -519,3 +519,56 @@ async def get_cash_drawer_summary(
         "review_needed_count": review_needed,
         "employee_totals": list(employee_totals.values()),
     }
+
+
+async def delete_cash_drawer_session(
+    db: AsyncSession,
+    company_id: UUID,
+    session_id: UUID,
+    actor_user_id: UUID,
+) -> None:
+    """Delete a cash drawer session and its audit logs."""
+    # Get session
+    result = await db.execute(
+        select(CashDrawerSession).where(
+            and_(
+                CashDrawerSession.id == session_id,
+                CashDrawerSession.company_id == company_id,
+            )
+        )
+    )
+    session = result.scalar_one_or_none()
+    if not session:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Cash drawer session not found",
+        )
+    
+    # Create audit log entry before deletion
+    from app.models.audit_log import AuditLog
+    audit_log = AuditLog(
+        company_id=company_id,
+        actor_user_id=actor_user_id,
+        action="CASH_DRAWER_DELETE",
+        entity_type="cash_drawer_session",
+        entity_id=session.id,
+        metadata_json={
+            "session_id": str(session.id),
+            "employee_id": str(session.employee_id),
+            "time_entry_id": str(session.time_entry_id),
+            "start_cash_cents": session.start_cash_cents,
+            "end_cash_cents": session.end_cash_cents,
+            "status": session.status.value if hasattr(session.status, 'value') else str(session.status),
+        },
+    )
+    db.add(audit_log)
+    await db.flush()  # Flush audit log first
+    
+    # Delete cash drawer audit logs first (they reference the session)
+    await db.execute(delete(CashDrawerAudit).where(CashDrawerAudit.cash_drawer_session_id == session_id))
+    
+    # Delete the session
+    await db.execute(delete(CashDrawerSession).where(CashDrawerSession.id == session_id))
+    
+    # Use flush instead of commit to allow caller to manage transaction
+    await db.flush()

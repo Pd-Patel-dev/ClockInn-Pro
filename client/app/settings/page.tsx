@@ -224,7 +224,7 @@ export default function AdminSettingsPage() {
         resetCashDrawer({
           cash_drawer_enabled: response.data.settings.cash_drawer_enabled ?? false,
           cash_drawer_required_for_all: response.data.settings.cash_drawer_required_for_all ?? true,
-          cash_drawer_required_roles: response.data.settings.cash_drawer_required_roles ?? ['EMPLOYEE'],
+          cash_drawer_required_roles: response.data.settings.cash_drawer_required_roles ?? ['FRONTDESK'],
           cash_drawer_currency: response.data.settings.cash_drawer_currency ?? 'USD',
           cash_drawer_starting_amount_cents: response.data.settings.cash_drawer_starting_amount_cents ?? 0,
           cash_drawer_variance_threshold_cents: response.data.settings.cash_drawer_variance_threshold_cents ?? 2000,
@@ -338,7 +338,7 @@ export default function AdminSettingsPage() {
         resetCashDrawer({
           cash_drawer_enabled: response.data.settings.cash_drawer_enabled ?? false,
           cash_drawer_required_for_all: response.data.settings.cash_drawer_required_for_all ?? true,
-          cash_drawer_required_roles: response.data.settings.cash_drawer_required_roles ?? ['EMPLOYEE'],
+          cash_drawer_required_roles: response.data.settings.cash_drawer_required_roles ?? ['FRONTDESK'],
           cash_drawer_currency: response.data.settings.cash_drawer_currency ?? 'USD',
           cash_drawer_starting_amount_cents: response.data.settings.cash_drawer_starting_amount_cents ?? 0,
           cash_drawer_variance_threshold_cents: response.data.settings.cash_drawer_variance_threshold_cents ?? 2000,
@@ -433,7 +433,7 @@ export default function AdminSettingsPage() {
                       : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                   }`}
                 >
-                  Payroll Settings
+                  General Settings
                 </button>
                 <button
                   onClick={() => setActiveTab('cash')}
@@ -745,12 +745,12 @@ export default function AdminSettingsPage() {
           </div>
         )}
 
-        {/* Payroll Settings Tab - Admin Only */}
+        {/* General Settings Tab - Admin Only */}
         {activeTab === 'payroll' && user?.role === 'ADMIN' && (
           <div className="bg-white shadow rounded-lg p-6">
-            <h2 className="text-xl font-semibold mb-4">Payroll Settings</h2>
+            <h2 className="text-xl font-semibold mb-4">General Settings</h2>
             <p className="text-sm text-gray-600 mb-6">
-              Configure payroll calculation settings. These settings affect how payroll runs are calculated.
+              Configure general company settings including timezone, overtime, time rounding, and break policies. These settings affect time tracking and payroll calculations.
             </p>
             <form onSubmit={handleSubmitSettings(onSubmitSettings)} className="space-y-6">
               <div>
@@ -1007,24 +1007,30 @@ export default function AdminSettingsPage() {
                   control={controlCashDrawer}
                   render={({ field }) => (
                     <div className="mt-2 space-y-2">
-                      {['EMPLOYEE', 'MANAGER', 'ADMIN'].map((role) => (
-                        <label key={role} className="flex items-center">
+                      {[
+                        { value: 'MAINTENANCE', label: 'Maintenance' },
+                        { value: 'FRONTDESK', label: 'Front Desk' },
+                        { value: 'HOUSEKEEPING', label: 'Housekeeping' },
+                        { value: 'ADMIN', label: 'Admin' },
+                        { value: 'DEVELOPER', label: 'Developer' },
+                      ].map((role) => (
+                        <label key={role.value} className="flex items-center">
                           <input
                             type="checkbox"
-                            checked={field.value?.includes(role) || false}
+                            checked={field.value?.includes(role.value) || false}
                             onChange={(e) => {
                               const currentRoles = field.value || []
                               if (e.target.checked) {
-                                field.onChange([...currentRoles, role])
+                                field.onChange([...currentRoles, role.value])
                               } else {
-                                field.onChange(currentRoles.filter((r) => r !== role))
+                                field.onChange(currentRoles.filter((r) => r !== role.value))
                               }
                             }}
                             onBlur={field.onBlur}
                             disabled={!cashDrawerEnabled || cashDrawerRequiredForAll}
                             className="rounded border-gray-300 text-primary-600 focus:ring-primary-500 disabled:opacity-50"
                           />
-                          <span className="ml-2 text-sm text-gray-700">{role}</span>
+                          <span className="ml-2 text-sm text-gray-700">{role.label}</span>
                         </label>
                       ))}
                     </div>

@@ -16,7 +16,9 @@ from app.schemas.auth import (
 from app.services.auth_service import register_company, login, refresh_access_token, logout
 from app.services.verification_service import send_verification_pin, verify_email_pin
 from app.models.user import User
-from app.schemas.auth import SendVerificationPinRequest, VerifyEmailRequest
+from app.schemas.auth import SendVerificationPinRequest, VerifyEmailRequest, ForgotPasswordRequest, ResetPasswordRequest
+from app.services.password_reset_service import send_password_reset_otp, verify_otp_and_reset_password
+from app.core.security import normalize_email
 
 router = APIRouter()
 
@@ -161,6 +163,36 @@ async def verify_email_endpoint(
         )
     
     return {"message": "Email verified successfully."}
+
+
+@router.post("/forgot-password")
+@handle_endpoint_errors(operation_name="forgot_password")
+async def forgot_password_endpoint(
+    request: ForgotPasswordRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """Request a 6-digit OTP to be sent to the given email for password reset."""
+    normalized_email = normalize_email(request.email)
+    success, error_msg = await send_password_reset_otp(db, normalized_email)
+    if not success and error_msg:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=error_msg)
+    return {"message": "If an account exists with this email, a verification code has been sent."}
+
+
+@router.post("/reset-password")
+@handle_endpoint_errors(operation_name="reset_password_after_otp")
+async def reset_password_after_otp_endpoint(
+    request: ResetPasswordRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """Verify OTP and set new password (forgot password flow)."""
+    normalized_email = normalize_email(request.email)
+    success, error_msg = await verify_otp_and_reset_password(
+        db, normalized_email, request.otp, request.new_password
+    )
+    if not success:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=error_msg or "Invalid request.")
+    return {"message": "Password has been reset. You can now log in with your new password."}
 
 
 @router.get("/set-password/info")

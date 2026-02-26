@@ -29,16 +29,20 @@ async def punch(
     cash_end_cents: Optional[int] = None,
     collected_cash_cents: Optional[int] = None,
     beverages_cash_cents: Optional[int] = None,
+    ip_address: Optional[str] = None,
+    user_agent: Optional[str] = None,
+    latitude: Optional[str] = None,
+    longitude: Optional[str] = None,
 ) -> TimeEntry:
     """Handle clock in/out punch."""
-    # Find employee
+    # Find employee (any role except ADMIN/DEVELOPER)
     if employee_id:
         result = await db.execute(
             select(User).where(
                 and_(
                     User.id == employee_id,
                     User.company_id == company_id,
-                    User.role == UserRole.EMPLOYEE,
+                    User.role.in_([UserRole.MAINTENANCE, UserRole.FRONTDESK, UserRole.HOUSEKEEPING]),
                     User.status == UserStatus.ACTIVE,
                 )
             )
@@ -50,7 +54,7 @@ async def punch(
                 and_(
                     User.email == normalized_email,
                     User.company_id == company_id,
-                    User.role == UserRole.EMPLOYEE,
+                    User.role.in_([UserRole.MAINTENANCE, UserRole.FRONTDESK, UserRole.HOUSEKEEPING]),
                     User.status == UserStatus.ACTIVE,
                 )
             )
@@ -156,6 +160,11 @@ async def punch(
             
             open_entry.clock_out_at = now
             open_entry.status = TimeEntryStatus.CLOSED
+            # Store clock-out IP, user agent, and location
+            open_entry.clock_out_ip_address = ip_address
+            open_entry.clock_out_user_agent = user_agent
+            open_entry.clock_out_latitude = latitude
+            open_entry.clock_out_longitude = longitude
             await db.commit()
             await db.refresh(open_entry)
             return open_entry
@@ -176,6 +185,10 @@ async def punch(
                 clock_in_at=now,
                 source=source,
                 status=TimeEntryStatus.OPEN,
+                ip_address=ip_address,
+                user_agent=user_agent,
+                clock_in_latitude=latitude,
+                clock_in_longitude=longitude,
             )
             db.add(new_entry)
             await db.flush()  # Flush to get the ID

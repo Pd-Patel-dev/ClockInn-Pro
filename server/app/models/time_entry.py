@@ -33,6 +33,18 @@ class TimeEntry(Base):
     status = Column(Enum(TimeEntryStatus, values_callable=lambda x: [e.value for e in x]), nullable=False, default=TimeEntryStatus.OPEN)
     edited_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
     edit_reason = Column(String(500), nullable=True)
+    # IP address and metadata for clock-in
+    ip_address = Column(String(45), nullable=True)  # IPv6 can be up to 45 chars
+    user_agent = Column(String(500), nullable=True)  # Browser/user agent string
+    # Location for clock-in (latitude, longitude)
+    clock_in_latitude = Column(String(20), nullable=True)
+    clock_in_longitude = Column(String(20), nullable=True)
+    # IP address for clock-out
+    clock_out_ip_address = Column(String(45), nullable=True)
+    clock_out_user_agent = Column(String(500), nullable=True)
+    # Location for clock-out (latitude, longitude)
+    clock_out_latitude = Column(String(20), nullable=True)
+    clock_out_longitude = Column(String(20), nullable=True)
     
     # Shift reference (optional - links time entry to a scheduled shift)
     # Note: This column is added by migration 008. If migration not run, this will cause errors.

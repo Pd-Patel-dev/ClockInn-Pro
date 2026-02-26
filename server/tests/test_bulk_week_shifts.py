@@ -64,7 +64,7 @@ async def employees(db: AsyncSession, test_company: Company):
         emp = User(
             id=uuid4(),
             company_id=test_company.id,
-            role=UserRole.EMPLOYEE,
+            role=UserRole.FRONTDESK,
             name=f"Employee {i+1}",
             email=f"emp{i+1}@test.com",
             password_hash=pwd_context.hash("password123"),

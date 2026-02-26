@@ -106,7 +106,7 @@ async def add_employees():
             employee = User(
                 id=uuid.uuid4(),
                 company_id=company.id,
-                role=UserRole.EMPLOYEE,
+                role=UserRole.FRONTDESK,
                 name=name,
                 email=email,
                 password_hash=get_password_hash("Employee123!"),

@@ -51,7 +51,9 @@ async def get_developer_stats(
         stats["admin_users"] = admin_users_result.scalar_one() or 0
         
         employee_users_result = await db.execute(
-            select(func.count(User.id)).where(User.role == UserRole.EMPLOYEE)
+            select(func.count(User.id)).where(
+                User.role.in_([UserRole.MAINTENANCE, UserRole.FRONTDESK, UserRole.HOUSEKEEPING])
+            )
         )
         stats["employee_users"] = employee_users_result.scalar_one() or 0
         

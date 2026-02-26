@@ -23,6 +23,11 @@ function LoginContent() {
   const [loading, setLoading] = useState(false)
   const [sessionExpired, setSessionExpired] = useState(false)
   const [currentYear, setCurrentYear] = useState<number | null>(null)
+  const [mounted, setMounted] = useState(false)
+
+  useEffect(() => {
+    setMounted(true)
+  }, [])
 
   useEffect(() => {
     // Check if session expired
@@ -242,6 +247,13 @@ function LoginContent() {
                   <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-2">
                     Password
                   </label>
+                  {mounted && (
+                    <div className="flex justify-end -mt-2 mb-2">
+                      <Link href="/forgot-password" className="text-sm font-medium text-blue-600 hover:text-blue-500 transition-colors">
+                        Forgot password?
+                      </Link>
+                    </div>
+                  )}
                   <div className="relative">
                     <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                       <svg className="h-5 w-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">

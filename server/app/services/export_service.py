@@ -59,14 +59,19 @@ async def generate_pdf_report(
     company = result.scalar_one_or_none()
     company_name = company.name if company else "Company"
     
-    # Get company settings for rounding
+    # Get company settings for rounding and timezone
     if company:
         company_settings = get_company_settings(company)
         rounding_policy = company_settings["rounding_policy"]
         breaks_paid = company_settings["breaks_paid"]
+        timezone_str = company_settings.get("timezone", "America/Chicago")
     else:
         rounding_policy = await get_company_rounding_policy(db, company_id)
         breaks_paid = False
+        timezone_str = "America/Chicago"
+    
+    # Import timezone conversion functions
+    from app.services.timezone_service import convert_to_company_timezone
     
     # Get employees
     result = await db.execute(
@@ -104,9 +109,13 @@ async def generate_pdf_report(
         
         for entry in entries:
             entry_count += 1
-            date_str = entry.clock_in_at.strftime("%m/%d/%Y")
-            clock_in = entry.clock_in_at.strftime("%I:%M %p")
-            clock_out = entry.clock_out_at.strftime("%I:%M %p") if entry.clock_out_at else "Open"
+            # Convert UTC times to company timezone
+            clock_in_local = convert_to_company_timezone(entry.clock_in_at, timezone_str)
+            clock_out_local = convert_to_company_timezone(entry.clock_out_at, timezone_str) if entry.clock_out_at else None
+            
+            date_str = clock_in_local.strftime("%m/%d/%Y")
+            clock_in = clock_in_local.strftime("%I:%M %p")
+            clock_out = clock_out_local.strftime("%I:%M %p") if clock_out_local else "Open"
             
             if entry.clock_out_at:
                 rounded_minutes = compute_minutes_with_rounding_and_breaks(
@@ -169,6 +178,19 @@ async def generate_excel_report(
     end_date: date,
 ) -> BytesIO:
     """Generate Excel report for time entries."""
+    from app.models.company import Company
+    from app.services.company_service import get_company_settings
+    from app.services.timezone_service import convert_to_company_timezone
+    
+    # Get company timezone
+    result = await db.execute(select(Company).where(Company.id == company_id))
+    company = result.scalar_one_or_none()
+    if company:
+        company_settings = get_company_settings(company)
+        timezone_str = company_settings.get("timezone", "America/Chicago")
+    else:
+        timezone_str = "America/Chicago"
+    
     wb = Workbook()
     wb.remove(wb.active)  # Remove default sheet
     
@@ -262,12 +284,16 @@ async def generate_excel_report(
                 total_hours += hours
             total_break_minutes += entry.break_minutes
             
+            # Convert UTC times to company timezone for display
+            clock_in_local = convert_to_company_timezone(entry.clock_in_at, timezone_str)
+            clock_out_local = convert_to_company_timezone(entry.clock_out_at, timezone_str) if entry.clock_out_at else None
+            
             # Add to detailed sheet (use rounded hours)
             detail_ws.append([
                 employee.name,
-                entry.clock_in_at.strftime("%Y-%m-%d"),
-                entry.clock_in_at.strftime("%H:%M"),
-                entry.clock_out_at.strftime("%H:%M") if entry.clock_out_at else "Open",
+                clock_in_local.strftime("%Y-%m-%d"),
+                clock_in_local.strftime("%H:%M"),
+                clock_out_local.strftime("%H:%M") if clock_out_local else "Open",
                 f"{hours:.2f}" if entry.clock_out_at else "0.00",
                 entry.break_minutes,
                 entry.status.value,

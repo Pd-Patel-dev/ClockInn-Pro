@@ -7,9 +7,9 @@ interface Employee {
   id: string
   name: string
   email: string
+  role: string
   status: 'active' | 'inactive'
   has_pin: boolean
-  job_role: string | null
   pay_rate: number | null
   created_at: string
   last_login_at: string | null
@@ -49,6 +49,27 @@ export const EmployeeRow = React.memo<EmployeeRowProps>(({ employee, onEdit, onD
       <td className="px-6 py-4 whitespace-nowrap text-sm">
         <span
           className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
+            employee.role === 'ADMIN'
+              ? 'bg-purple-100 text-purple-800'
+              : employee.role === 'MAINTENANCE'
+              ? 'bg-orange-100 text-orange-800'
+              : employee.role === 'FRONTDESK'
+              ? 'bg-teal-100 text-teal-800'
+              : employee.role === 'HOUSEKEEPING'
+              ? 'bg-green-100 text-green-800'
+              : 'bg-gray-100 text-gray-800'
+          }`}
+        >
+          {employee.role === 'ADMIN' ? 'Admin' :
+           employee.role === 'MAINTENANCE' ? 'Maintenance' :
+           employee.role === 'FRONTDESK' ? 'Front Desk' :
+           employee.role === 'HOUSEKEEPING' ? 'Housekeeping' :
+           employee.role}
+        </span>
+      </td>
+      <td className="px-6 py-4 whitespace-nowrap text-sm">
+        <span
+          className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
             employee.status === 'active'
               ? 'bg-green-100 text-green-800'
               : 'bg-red-100 text-red-800'
@@ -76,9 +97,6 @@ export const EmployeeRow = React.memo<EmployeeRowProps>(({ employee, onEdit, onD
       </td>
       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
         {employee.has_pin ? 'Yes' : 'No'}
-      </td>
-      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-        {employee.job_role || '-'}
       </td>
       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
         {employee.pay_rate ? `$${employee.pay_rate.toFixed(2)}` : '-'}

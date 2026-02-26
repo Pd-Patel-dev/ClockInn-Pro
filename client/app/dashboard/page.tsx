@@ -89,7 +89,7 @@ export default function DashboardPage() {
     return null
   }
 
-  const isEmployee = user.role === 'EMPLOYEE'
+  const isEmployee = ['MAINTENANCE', 'FRONTDESK', 'HOUSEKEEPING'].includes(user.role)
   const isAdmin = user.role === 'ADMIN'
 
   const employeeQuickActions = [

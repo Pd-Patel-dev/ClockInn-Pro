@@ -4,7 +4,7 @@ Admin Cash Drawer Management Endpoints
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
-from datetime import date
+from datetime import date, datetime
 from typing import Optional
 from uuid import UUID
 from fastapi.responses import StreamingResponse
@@ -30,6 +30,7 @@ from app.services.cash_drawer_service import (
     get_cash_drawer_summary,
     edit_cash_drawer_session,
     review_cash_drawer_session,
+    delete_cash_drawer_session,
 )
 
 router = APIRouter()
@@ -131,6 +132,116 @@ async def get_cash_drawer_summary_endpoint(
     )
     
     return CashDrawerSummaryResponse(**summary)
+
+
+@router.get("/export")
+@handle_endpoint_errors(operation_name="export_cash_drawer")
+async def export_cash_drawer(
+    format: str = Query(..., pattern="^(pdf|xlsx)$", description="Export format: 'pdf' or 'xlsx'"),
+    from_date: str = Query(..., description="Start date in YYYY-MM-DD format"),
+    to_date: str = Query(..., description="End date in YYYY-MM-DD format"),
+    employee_id: Optional[UUID] = Query(None),
+    status_filter: Optional[str] = Query(None, pattern="^(OPEN|CLOSED|REVIEW_NEEDED)$"),
+    current_user: User = Depends(get_current_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Export cash drawer sessions to PDF or Excel."""
+    # Validate and parse date strings
+    if not from_date or not to_date:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="from_date and to_date are required.",
+        )
+    
+    try:
+        from_date_parsed = datetime.strptime(from_date, "%Y-%m-%d").date()
+        to_date_parsed = datetime.strptime(to_date, "%Y-%m-%d").date()
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Invalid date format. Use YYYY-MM-DD format. Error: {str(e)}",
+        )
+    
+    # Validate date range
+    if from_date_parsed > to_date_parsed:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="from_date must be less than or equal to to_date.",
+        )
+    
+    # Validate format
+    if format not in ["pdf", "xlsx"]:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Invalid format '{format}'. Must be 'pdf' or 'xlsx'.",
+        )
+    
+    from app.services.cash_drawer_export_service import (
+        generate_cash_drawer_pdf,
+        generate_cash_drawer_excel,
+    )
+    
+    # Validate status if provided
+    status_enum = None
+    if status_filter:
+        try:
+            status_enum = CashDrawerStatus(status_filter)
+        except ValueError:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"Invalid status '{status_filter}'. Must be one of: OPEN, CLOSED, REVIEW_NEEDED.",
+            )
+    
+    sessions, _ = await get_cash_drawer_sessions(
+        db,
+        current_user.company_id,
+        from_date_parsed,
+        to_date_parsed,
+        employee_id,
+        status_enum,
+        limit=10000,  # Large limit for export
+        offset=0,
+    )
+    
+    try:
+        if format == "pdf":
+            buffer = await generate_cash_drawer_pdf(
+                db,
+                current_user.company_id,
+                sessions,
+                from_date_parsed,
+                to_date_parsed,
+            )
+            filename = f"cash_drawer_{from_date_parsed.strftime('%Y%m%d')}_{to_date_parsed.strftime('%Y%m%d')}.pdf"
+            return StreamingResponse(
+                buffer,
+                media_type="application/pdf",
+                headers={
+                    "Content-Disposition": f'attachment; filename="{filename}"'
+                },
+            )
+        else:  # xlsx
+            buffer = await generate_cash_drawer_excel(
+                db,
+                current_user.company_id,
+                sessions,
+                from_date_parsed,
+                to_date_parsed,
+            )
+            filename = f"cash_drawer_{from_date_parsed.strftime('%Y%m%d')}_{to_date_parsed.strftime('%Y%m%d')}.xlsx"
+            return StreamingResponse(
+                buffer,
+                media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                headers={
+                    "Content-Disposition": f'attachment; filename="{filename}"'
+                },
+            )
+    except ValueError as e:
+        # PDF/Excel generation errors should return 500, not 400
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to generate {format.upper()} export: {str(e)}",
+        )
 
 
 @router.get("/{session_id}", response_model=CashDrawerSessionDetailResponse)
@@ -316,57 +427,22 @@ async def review_cash_drawer_session_endpoint(
     )
 
 
-@router.post("/export")
-@handle_endpoint_errors(operation_name="export_cash_drawer")
-async def export_cash_drawer(
-    request: CashDrawerExportRequest,
+@router.delete("/{session_id}", status_code=status.HTTP_204_NO_CONTENT)
+@handle_endpoint_errors(operation_name="delete_cash_drawer_session")
+async def delete_cash_drawer_session_endpoint(
+    session_id: UUID,
     current_user: User = Depends(get_current_admin),
     db: AsyncSession = Depends(get_db),
 ):
-    """Export cash drawer sessions to PDF or Excel."""
-    from app.services.cash_drawer_export_service import (
-        generate_cash_drawer_pdf,
-        generate_cash_drawer_excel,
-    )
-    
-    sessions, _ = await get_cash_drawer_sessions(
+    """Delete a cash drawer session."""
+    await delete_cash_drawer_session(
         db,
         current_user.company_id,
-        request.from_date,
-        request.to_date,
-        request.employee_id,
-        CashDrawerStatus(request.status) if request.status else None,
-        limit=10000,  # Large limit for export
-        offset=0,
+        session_id,
+        current_user.id,
     )
     
-    if request.format == "pdf":
-        buffer = await generate_cash_drawer_pdf(
-            db,
-            current_user.company_id,
-            sessions,
-            request.from_date,
-            request.to_date,
-        )
-        return StreamingResponse(
-            buffer,
-            media_type="application/pdf",
-            headers={
-                "Content-Disposition": f'attachment; filename="cash_drawer_{request.from_date}_{request.to_date}.pdf"'
-            },
-        )
-    else:  # xlsx
-        buffer = await generate_cash_drawer_excel(
-            db,
-            current_user.company_id,
-            sessions,
-            request.from_date,
-            request.to_date,
-        )
-        return StreamingResponse(
-            buffer,
-            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            headers={
-                "Content-Disposition": f'attachment; filename="cash_drawer_{request.from_date}_{request.to_date}.xlsx"'
-            },
-        )
+    # Commit the transaction to persist changes
+    await db.commit()
+    
+    return None

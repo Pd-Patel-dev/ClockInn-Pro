@@ -86,7 +86,7 @@ async def test_employee(db: AsyncSession) -> User:
     employee = User(
         id=uuid.uuid4(),
         company_id=company.id,
-        role=UserRole.EMPLOYEE,
+        role=UserRole.FRONTDESK,
         name="Test Employee",
         email="employee@test.com",
         password_hash=get_password_hash("Employee123!"),

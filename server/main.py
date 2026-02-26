@@ -21,26 +21,34 @@ access_logger = logging.getLogger("access")
 async def lifespan(app: FastAPI):
     # Startup
     logger.info("Starting ClockInn API server...")
-    # Run database migrations on startup
-    try:
-        from alembic.config import Config
-        from alembic import command
-        from pathlib import Path
-        from app.core.config import settings
-        
-        alembic_cfg = Config(str(Path(__file__).parent / "alembic.ini"))
-        # Convert async URL to sync for Alembic
-        db_url = settings.DATABASE_URL
-        if db_url.startswith("postgresql+asyncpg://"):
-            db_url = db_url.replace("postgresql+asyncpg://", "postgresql://", 1)
-        alembic_cfg.set_main_option("sqlalchemy.url", db_url)
-        
-        logger.info("Running database migrations...")
-        command.upgrade(alembic_cfg, "head")
-        logger.info("✅ Database migrations completed successfully")
-    except Exception as e:
-        logger.warning(f"⚠️  Migration check failed (this is OK if migrations are run separately): {e}")
-        # Don't fail startup if migrations fail - they might be run manually
+    # Run database migrations on startup (only if RUN_MIGRATIONS env var is set)
+    import os
+    if os.getenv("RUN_MIGRATIONS", "false").lower() == "true":
+        try:
+            from alembic.config import Config
+            from alembic import command
+            from pathlib import Path
+            from app.core.config import settings
+            import asyncio
+            
+            def run_migrations():
+                alembic_cfg = Config(str(Path(__file__).parent / "alembic.ini"))
+                # Convert async URL to sync for Alembic
+                db_url = settings.DATABASE_URL
+                if db_url.startswith("postgresql+asyncpg://"):
+                    db_url = db_url.replace("postgresql+asyncpg://", "postgresql://", 1)
+                alembic_cfg.set_main_option("sqlalchemy.url", db_url)
+                command.upgrade(alembic_cfg, "head")
+            
+            logger.info("Running database migrations...")
+            # Run in thread to avoid blocking async loop
+            await asyncio.get_event_loop().run_in_executor(None, run_migrations)
+            logger.info("✅ Database migrations completed successfully")
+        except Exception as e:
+            logger.warning(f"⚠️  Migration check failed (this is OK if migrations are run separately): {e}")
+            # Don't fail startup if migrations fail - they might be run manually
+    else:
+        logger.info("Skipping automatic migrations (set RUN_MIGRATIONS=true to enable)")
     
     logger.info("ClockInn API server started successfully")
     yield

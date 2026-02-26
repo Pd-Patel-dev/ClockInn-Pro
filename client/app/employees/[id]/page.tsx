@@ -20,7 +20,6 @@ interface Employee {
   name: string
   email: string
   status: string
-  job_role: string | null
   pay_rate: number | null
   has_pin: boolean
   last_punch_at: string | null
@@ -60,8 +59,8 @@ const editEntrySchema = z.object({
 const editEmployeeSchema = z.object({
   name: z.string().min(1, 'Name is required'),
   status: z.enum(['active', 'inactive']),
+  role: z.enum(['MAINTENANCE', 'FRONTDESK', 'HOUSEKEEPING', 'ADMIN']).optional(),
   pin: z.string().length(4, 'PIN must be 4 digits').optional().or(z.literal('')),
-  job_role: z.string().optional(),
   pay_rate: z.string().optional(),
 })
 
@@ -146,8 +145,8 @@ export default function EmployeeDetailPage() {
         editEmployeeForm.reset({
           name: response.data.name,
           status: response.data.status as 'active' | 'inactive',
+          role: response.data.role as 'MAINTENANCE' | 'FRONTDESK' | 'HOUSEKEEPING' | 'ADMIN',
           pin: '',
-          job_role: response.data.job_role || '',
           pay_rate: response.data.pay_rate?.toString() || '',
         })
       }
@@ -288,11 +287,9 @@ export default function EmployeeDetailPage() {
         status: data.status,
       }
 
-      // Only include job_role if it has a value
-      if (data.job_role && data.job_role.trim() !== '') {
-        updateData.job_role = data.job_role.trim()
-      } else {
-        updateData.job_role = null
+      // Include role if provided
+      if (data.role !== undefined) {
+        updateData.role = data.role
       }
 
       // Handle PIN: send new 4-digit PIN, empty string to clear, or omit to keep current
@@ -430,10 +427,6 @@ export default function EmployeeDetailPage() {
             </div>
             <div className="mt-6 grid grid-cols-1 md:grid-cols-3 gap-4">
               <div>
-                <p className="text-sm text-gray-600">Job Role</p>
-                <p className="text-sm font-medium text-gray-900">{employee.job_role || 'N/A'}</p>
-              </div>
-              <div>
                 <p className="text-sm text-gray-600">Pay Rate</p>
                 <p className="text-sm font-medium text-gray-900">
                   {employee.pay_rate ? `$${employee.pay_rate.toFixed(2)}/hr` : 'N/A'}
@@ -498,6 +491,15 @@ export default function EmployeeDetailPage() {
                         <option value="inactive">Inactive</option>
                       </Select>
                     </FormField>
+                    
+                    <FormField label="Role" error={editEmployeeForm.formState.errors.role?.message}>
+                      <Select {...editEmployeeForm.register('role')} error={!!editEmployeeForm.formState.errors.role}>
+                        <option value="FRONTDESK">Front Desk</option>
+                        <option value="MAINTENANCE">Maintenance</option>
+                        <option value="HOUSEKEEPING">Housekeeping</option>
+                        <option value="ADMIN">Admin</option>
+                      </Select>
+                    </FormField>
                   </div>
                 </div>
 
@@ -519,10 +521,6 @@ export default function EmployeeDetailPage() {
                         error={!!editEmployeeForm.formState.errors.pin}
                         placeholder="Enter new 4-digit PIN"
                       />
-                    </FormField>
-                    
-                    <FormField label="Job Role" error={editEmployeeForm.formState.errors.job_role?.message} hint="e.g., Manager, Developer, Sales">
-                      <Input {...editEmployeeForm.register('job_role')} type="text" error={!!editEmployeeForm.formState.errors.job_role} />
                     </FormField>
                     
                     <FormField label="Pay Rate" error={editEmployeeForm.formState.errors.pay_rate?.message} hint="Hourly rate in dollars">

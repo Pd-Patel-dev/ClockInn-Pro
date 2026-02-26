@@ -42,6 +42,31 @@ export default function KioskSlugPage() {
     isClockedIn: boolean
     clockInAt?: string
   } | null>(null)
+  const [location, setLocation] = useState<{ latitude: string; longitude: string } | null>(null)
+  const [locationLoading, setLocationLoading] = useState(false)
+
+  // Request location when page loads
+  useEffect(() => {
+    const getLocation = () => {
+      if (!navigator.geolocation) return
+      
+      setLocationLoading(true)
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          setLocation({
+            latitude: position.coords.latitude.toString(),
+            longitude: position.coords.longitude.toString(),
+          })
+          setLocationLoading(false)
+        },
+        () => {
+          setLocationLoading(false)
+        },
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 }
+      )
+    }
+    getLocation()
+  }, [])
 
   // Fetch company info by slug
   useEffect(() => {
@@ -82,6 +107,28 @@ export default function KioskSlugPage() {
     return () => clearInterval(interval)
   }, [])
 
+  // Helper to get current location as a promise
+  const getCurrentLocation = useCallback((): Promise<{ latitude: string; longitude: string } | null> => {
+    return new Promise((resolve) => {
+      if (!navigator.geolocation) {
+        resolve(null)
+        return
+      }
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          resolve({
+            latitude: position.coords.latitude.toString(),
+            longitude: position.coords.longitude.toString(),
+          })
+        },
+        () => {
+          resolve(null)
+        },
+        { enableHighAccuracy: true, timeout: 5000, maximumAge: 30000 }
+      )
+    })
+  }, [])
+
   const executePunch = useCallback(async (
     pin: string,
     cashStartCents?: number,
@@ -101,6 +148,17 @@ export default function KioskSlugPage() {
     setShowCashDialog(false)
     
     try {
+      // Try to get fresh location if not already available
+      let currentLocation = location
+      if (!currentLocation) {
+        currentLocation = await getCurrentLocation()
+        if (currentLocation) {
+          setLocation(currentLocation)
+        }
+      }
+
+      console.log('Kiosk punching with location:', currentLocation)
+
       const response = await api.post('/kiosk/clock', {
         company_slug: slug,
         pin: pin,
@@ -108,6 +166,8 @@ export default function KioskSlugPage() {
         cash_end_cents: cashEndCents,
         collected_cash_cents: collectedCashCents,
         beverages_cash_cents: beveragesCashCents,
+        latitude: currentLocation?.latitude,
+        longitude: currentLocation?.longitude,
       })
       const entry = response.data
       
@@ -188,7 +248,7 @@ export default function KioskSlugPage() {
     } finally {
       setLoading(false)
     }
-  }, [slug])
+  }, [slug, location, getCurrentLocation])
 
   const checkPin = useCallback(async (pin: string) => {
     if (!slug || pin.length !== 4) {
@@ -495,13 +555,13 @@ export default function KioskSlugPage() {
               </>
             ) : (
               <>
-                <h2 className="text-2xl font-bold text-gray-800 mb-2">
-                  Enter your PIN
-                </h2>
-                {/* Instructions */}
-                <p className="text-gray-600 text-sm mb-8">
-                  Please enter your 4-digit PIN code to verify it&apos;s you. You can use your keyboard or the keypad below.
-                </p>
+            <h2 className="text-2xl font-bold text-gray-800 mb-2">
+              Enter your PIN
+            </h2>
+            {/* Instructions */}
+            <p className="text-gray-600 text-sm mb-8">
+              Please enter your 4-digit PIN code to verify it&apos;s you. You can use your keyboard or the keypad below.
+            </p>
               </>
             )}
 
@@ -520,18 +580,18 @@ export default function KioskSlugPage() {
 
             {/* PIN Indicators - only show when not showing employee info */}
             {!employeeInfo && (
-              <div className="flex justify-center gap-4 mb-12">
-                {[0, 1, 2, 3].map((index) => (
-                  <div
-                    key={index}
-                    className={`w-4 h-4 rounded-full border-2 transition-all ${
-                      pinDisplay.length > index
-                        ? 'bg-teal-700 border-teal-700'
-                        : 'border-gray-400'
-                    }`}
-                  />
-                ))}
-              </div>
+            <div className="flex justify-center gap-4 mb-12">
+              {[0, 1, 2, 3].map((index) => (
+                <div
+                  key={index}
+                  className={`w-4 h-4 rounded-full border-2 transition-all ${
+                    pinDisplay.length > index
+                      ? 'bg-teal-700 border-teal-700'
+                      : 'border-gray-400'
+                  }`}
+                />
+              ))}
+            </div>
             )}
 
             {/* Loading indicator when checking PIN */}
@@ -619,103 +679,42 @@ export default function KioskSlugPage() {
 
       {/* Cash Drawer Dialog */}
       {showCashDialog && (
-        <div className="fixed inset-0 bg-gray-900 bg-opacity-75 overflow-y-auto h-full w-full z-[9999] flex items-center justify-center p-4">
-          <div className="relative bg-white rounded-xl shadow-2xl w-full max-w-md m-4">
-            <div className="px-8 py-6 border-b border-gray-200">
-              <h3 className="text-2xl font-bold text-gray-900 text-center">
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm overflow-y-auto h-full w-full z-[9999] flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-2xl m-4 transform transition-all animate-in zoom-in-95 duration-200 max-h-[90vh] overflow-y-auto">
+            {/* Header */}
+            <div className="px-8 pt-8 pb-6 bg-gradient-to-r from-teal-50 to-emerald-50 rounded-t-2xl border-b border-gray-100">
+              <div className="flex items-center justify-center mb-3">
+                <div className="p-3 bg-teal-100 rounded-full">
+                  <svg className="w-6 h-6 text-teal-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
+                  </svg>
+                </div>
+              </div>
+              <h3 className="text-2xl font-bold text-gray-900 text-center mb-2">
                 {isClockIn ? 'Start Your Shift' : 'End Your Shift'}
               </h3>
               {employeeInfo && (
-                <p className="text-lg text-teal-600 mt-2 text-center font-medium">
+                <p className="text-lg text-teal-600 mt-2 text-center font-semibold">
                   {isClockIn ? `Welcome, ${employeeInfo.name}!` : `Hello, ${employeeInfo.name}!`}
                 </p>
               )}
-              <p className="text-sm text-gray-500 mt-2 text-center">
-                {isClockIn ? 'Please enter the starting cash amount' : 'Please enter the cash amounts'}
+              <p className="text-sm text-gray-600 mt-2 text-center">
+                {isClockIn ? 'Enter the starting cash amount in the drawer' : 'Enter all cash amounts for your shift'}
               </p>
             </div>
+
+            {/* Content */}
             <div className="p-8">
               {isClockIn ? (
                 // Clock-in: Only need starting cash
-                <div className="mb-6">
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Starting Cash Amount ($) <span className="text-red-500">*</span>
+                <div className="mb-8">
+                  <label className="block text-sm font-semibold text-gray-700 mb-4 text-center">
+                    Starting Cash Amount <span className="text-red-500">*</span>
                   </label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    value={cashAmount}
-                    onChange={(e) => {
-                      setCashAmount(e.target.value)
-                      setCashError(null)
-                    }}
-                    onKeyPress={(e) => {
-                      if (e.key === 'Enter') {
-                        handleCashDialogSubmit()
-                      }
-                    }}
-                    autoFocus
-                    className={`block w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 ${
-                      cashError ? 'border-red-300' : 'border-gray-300'
-                    }`}
-                    placeholder={companyInfo?.cash_drawer_starting_amount_cents 
-                      ? (companyInfo.cash_drawer_starting_amount_cents / 100).toFixed(2)
-                      : "0.00"}
-                    disabled={loading}
-                  />
-                  {cashError && (
-                    <p className="mt-2 text-sm text-red-600">{cashError}</p>
-                  )}
-                </div>
-              ) : (
-                // Clock-out: Need collected cash, beverages cash, and drawer cash
-                <div className="space-y-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Collected Cash Amount ($) <span className="text-red-500">*</span>
-                    </label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      value={collectedCash}
-                      onChange={(e) => {
-                        setCollectedCash(e.target.value)
-                        setCashError(null)
-                      }}
-                      autoFocus
-                      className={`block w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 ${
-                        cashError ? 'border-red-300' : 'border-gray-300'
-                      }`}
-                      placeholder="0.00"
-                      disabled={loading}
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Beverages Sold in Cash ($) <span className="text-red-500">*</span>
-                    </label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      value={beveragesCash}
-                      onChange={(e) => {
-                        setBeveragesCash(e.target.value)
-                        setCashError(null)
-                      }}
-                      className={`block w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 ${
-                        cashError ? 'border-red-300' : 'border-gray-300'
-                      }`}
-                      placeholder="0.00"
-                      disabled={loading}
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Cash in Drawer ($) <span className="text-red-500">*</span>
-                    </label>
+                  <div className="relative group">
+                    <div className="absolute inset-y-0 left-0 pl-5 flex items-center pointer-events-none">
+                      <span className="text-gray-400 text-2xl font-medium">$</span>
+                    </div>
                     <input
                       type="number"
                       step="0.01"
@@ -730,19 +729,157 @@ export default function KioskSlugPage() {
                           handleCashDialogSubmit()
                         }
                       }}
-                      className={`block w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 ${
-                        cashError ? 'border-red-300' : 'border-gray-300'
+                      autoFocus
+                      className={`block w-full pl-12 pr-5 py-5 border-2 rounded-xl text-center text-3xl font-bold tracking-wide focus:outline-none focus:ring-4 focus:ring-teal-100 transition-all ${
+                        cashError 
+                          ? 'border-red-300 bg-red-50 focus:border-red-400 focus:ring-red-100' 
+                          : 'border-gray-200 bg-gray-50 focus:border-teal-500 focus:bg-white'
                       }`}
-                      placeholder="0.00"
+                      placeholder={companyInfo?.cash_drawer_starting_amount_cents 
+                        ? (companyInfo.cash_drawer_starting_amount_cents / 100).toFixed(2)
+                        : "0.00"}
                       disabled={loading}
                     />
                   </div>
                   {cashError && (
-                    <p className="text-sm text-red-600">{cashError}</p>
+                    <div className="mt-3 flex items-center justify-center gap-2 text-sm text-red-600">
+                      <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                      </svg>
+                      <span>{cashError}</span>
+                    </div>
+                  )}
+                  <p className="mt-3 text-xs text-gray-500 text-center">
+                    Enter the starting cash amount in dollars
+                  </p>
+                </div>
+              ) : (
+                // Clock-out: Need collected cash, beverages cash, and drawer cash
+                <div className="space-y-6 mb-8">
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-3">
+                      <div className="flex items-center gap-2">
+                        <svg className="w-4 h-4 text-teal-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                        <span>Collected Cash Amount</span>
+                        <span className="text-red-500">*</span>
+                      </div>
+                    </label>
+                    <div className="relative group">
+                      <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                        <span className="text-gray-400 text-xl font-medium">$</span>
+                      </div>
+                      <input
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        value={collectedCash}
+                        onChange={(e) => {
+                          setCollectedCash(e.target.value)
+                          setCashError(null)
+                        }}
+                        autoFocus
+                        className={`block w-full pl-10 pr-4 py-4 border-2 rounded-xl text-lg font-semibold focus:outline-none focus:ring-4 focus:ring-teal-100 transition-all ${
+                          cashError 
+                            ? 'border-red-300 bg-red-50 focus:border-red-400 focus:ring-red-100' 
+                            : 'border-gray-200 bg-gray-50 focus:border-teal-500 focus:bg-white'
+                        }`}
+                        placeholder="0.00"
+                        disabled={loading}
+                      />
+                    </div>
+                    <p className="mt-2 text-xs text-gray-500">Total cash collected from customers</p>
+                  </div>
+                  
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-3">
+                      <div className="flex items-center gap-2">
+                        <svg className="w-4 h-4 text-teal-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                        </svg>
+                        <span>Beverages Sold in Cash</span>
+                        <span className="text-red-500">*</span>
+                      </div>
+                    </label>
+                    <div className="relative group">
+                      <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                        <span className="text-gray-400 text-xl font-medium">$</span>
+                      </div>
+                      <input
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        value={beveragesCash}
+                        onChange={(e) => {
+                          setBeveragesCash(e.target.value)
+                          setCashError(null)
+                        }}
+                        className={`block w-full pl-10 pr-4 py-4 border-2 rounded-xl text-lg font-semibold focus:outline-none focus:ring-4 focus:ring-teal-100 transition-all ${
+                          cashError 
+                            ? 'border-red-300 bg-red-50 focus:border-red-400 focus:ring-red-100' 
+                            : 'border-gray-200 bg-gray-50 focus:border-teal-500 focus:bg-white'
+                        }`}
+                        placeholder="0.00"
+                        disabled={loading}
+                      />
+                    </div>
+                    <p className="mt-2 text-xs text-gray-500">Cash from beverage sales</p>
+                  </div>
+                  
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-3">
+                      <div className="flex items-center gap-2">
+                        <svg className="w-4 h-4 text-teal-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
+                        </svg>
+                        <span>Cash in Drawer</span>
+                        <span className="text-red-500">*</span>
+                      </div>
+                    </label>
+                    <div className="relative group">
+                      <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                        <span className="text-gray-400 text-xl font-medium">$</span>
+                      </div>
+                      <input
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        value={cashAmount}
+                        onChange={(e) => {
+                          setCashAmount(e.target.value)
+                          setCashError(null)
+                        }}
+                        onKeyPress={(e) => {
+                          if (e.key === 'Enter') {
+                            handleCashDialogSubmit()
+                          }
+                        }}
+                        className={`block w-full pl-10 pr-4 py-4 border-2 rounded-xl text-lg font-semibold focus:outline-none focus:ring-4 focus:ring-teal-100 transition-all ${
+                          cashError 
+                            ? 'border-red-300 bg-red-50 focus:border-red-400 focus:ring-red-100' 
+                            : 'border-gray-200 bg-gray-50 focus:border-teal-500 focus:bg-white'
+                        }`}
+                        placeholder="0.00"
+                        disabled={loading}
+                      />
+                    </div>
+                    <p className="mt-2 text-xs text-gray-500">Final cash amount remaining in drawer</p>
+                  </div>
+                  
+                  {cashError && (
+                    <div className="flex items-center justify-center gap-2 text-sm text-red-600 bg-red-50 p-3 rounded-lg">
+                      <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                      </svg>
+                      <span>{cashError}</span>
+                    </div>
                   )}
                 </div>
               )}
-              <div className="flex gap-4">
+
+              {/* Action Buttons */}
+              <div className="flex gap-3 pt-4 border-t border-gray-100">
                 <button
                   type="button"
                   onClick={handleCashDialogSubmit}
@@ -752,7 +889,7 @@ export default function KioskSlugPage() {
                     parseFloat(cashAmount) < 0 ||
                     (!isClockIn && (!collectedCash || parseFloat(collectedCash) < 0 || !beveragesCash || parseFloat(beveragesCash) < 0))
                   }
-                  className="flex-1 px-6 py-4 bg-teal-700 text-white rounded-lg hover:bg-teal-800 font-bold text-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 transition-all"
+                  className="flex-1 px-6 py-4 bg-gradient-to-r from-teal-600 to-emerald-600 text-white rounded-xl hover:from-teal-700 hover:to-emerald-700 font-semibold text-base disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 shadow-lg hover:shadow-xl transition-all transform hover:scale-[1.02] active:scale-[0.98]"
                 >
                   {loading ? (
                     <>
@@ -760,17 +897,22 @@ export default function KioskSlugPage() {
                         <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                         <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                       </svg>
-                      Processing...
+                      <span>Processing...</span>
                     </>
                   ) : (
-                    'Continue'
+                    <>
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                      </svg>
+                      <span>Continue</span>
+                    </>
                   )}
                 </button>
                 <button
                   type="button"
                   onClick={handleCashDialogCancel}
                   disabled={loading}
-                  className="px-6 py-4 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 font-semibold text-base disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                  className="px-6 py-4 bg-gray-100 text-gray-700 rounded-xl hover:bg-gray-200 font-semibold text-base disabled:opacity-50 disabled:cursor-not-allowed transition-all transform hover:scale-[1.02] active:scale-[0.98]"
                 >
                   Cancel
                 </button>

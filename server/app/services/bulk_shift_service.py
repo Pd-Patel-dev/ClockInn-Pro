@@ -138,13 +138,13 @@ async def preview_bulk_week_shifts(
     data: BulkWeekShiftCreate,
 ) -> Tuple[List[PreviewShift], List[ShiftConflictDetail]]:
     """Preview shifts that would be created without actually creating them."""
-    # Verify employee exists and belongs to company
+    # Verify employee exists and belongs to company (any role except ADMIN/DEVELOPER)
     result = await db.execute(
         select(User).where(
             and_(
                 User.id == data.employee_id,
                 User.company_id == company_id,
-                User.role == UserRole.EMPLOYEE,
+                User.role.in_([UserRole.MAINTENANCE, UserRole.FRONTDESK, UserRole.HOUSEKEEPING]),
             )
         )
     )

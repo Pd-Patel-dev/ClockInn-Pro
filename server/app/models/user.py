@@ -9,8 +9,11 @@ from app.core.database import Base
 
 class UserRole(str, enum.Enum):
     ADMIN = "ADMIN"
-    EMPLOYEE = "EMPLOYEE"
     DEVELOPER = "DEVELOPER"
+    # Hotel-specific roles
+    MAINTENANCE = "MAINTENANCE"
+    FRONTDESK = "FRONTDESK"
+    HOUSEKEEPING = "HOUSEKEEPING"
 
 
 class UserStatus(str, enum.Enum):
@@ -27,7 +30,7 @@ class User(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     company_id = Column(UUID(as_uuid=True), ForeignKey("companies.id"), nullable=False, index=True)
-    role = Column(Enum(UserRole, values_callable=lambda x: [e.value for e in x]), nullable=False, default=UserRole.EMPLOYEE)
+    role = Column(Enum(UserRole, values_callable=lambda x: [e.value for e in x]), nullable=False, default=UserRole.FRONTDESK)
     name = Column(String(255), nullable=False)
     email = Column(String(255), nullable=False, index=True)
     password_hash = Column(String(255), nullable=False)
@@ -50,6 +53,12 @@ class User(Base):
     verification_attempts = Column(Integer, nullable=False, default=0)
     last_verification_sent_at = Column(DateTime(timezone=True), nullable=True)
     verification_required = Column(Boolean, nullable=False, default=True)
+
+    # Password reset OTP (forgot password flow)
+    password_reset_otp_hash = Column(String(255), nullable=True)
+    password_reset_otp_expires_at = Column(DateTime(timezone=True), nullable=True)
+    password_reset_attempts = Column(Integer, nullable=False, default=0)
+    last_password_reset_sent_at = Column(DateTime(timezone=True), nullable=True)
 
     # Relationships
     company = relationship("Company", backref="users")

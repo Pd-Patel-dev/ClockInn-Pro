@@ -136,3 +136,21 @@ async def get_current_developer(
         )
     return current_user
 
+
+def require_permission(permission_name: str):
+    """Dependency factory for permission-based access control."""
+    async def permission_checker(
+        current_user: User = Depends(get_current_verified_user),
+        db: AsyncSession = Depends(get_db),
+    ) -> User:
+        from app.services.permission_service import user_has_permission
+        
+        has_perm = await user_has_permission(db, current_user, permission_name)
+        if not has_perm:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Permission required: {permission_name}",
+            )
+        return current_user
+    return permission_checker
+

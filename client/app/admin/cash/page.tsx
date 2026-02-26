@@ -54,8 +54,10 @@ export default function AdminCashDrawerPage() {
   const [selectedSession, setSelectedSession] = useState<CashDrawerSession | null>(null)
   const [showEditDialog, setShowEditDialog] = useState(false)
   const [showReviewDialog, setShowReviewDialog] = useState(false)
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false)
   const [reviewNote, setReviewNote] = useState('')
   const [exporting, setExporting] = useState(false)
+  const [deleting, setDeleting] = useState(false)
 
   const editForm = useForm<EditForm>({
     resolver: zodResolver(editSchema),
@@ -120,6 +122,28 @@ export default function AdminCashDrawerPage() {
     setShowReviewDialog(true)
   }
 
+  const handleDelete = (session: CashDrawerSession) => {
+    setSelectedSession(session)
+    setShowDeleteDialog(true)
+  }
+
+  const onSubmitDelete = async () => {
+    if (!selectedSession) return
+
+    setDeleting(true)
+    try {
+      await api.delete(`/admin/cash-drawers/${selectedSession.id}`)
+      toast.success('Cash drawer session deleted successfully')
+      setShowDeleteDialog(false)
+      setSelectedSession(null)
+      fetchSessions()
+    } catch (error: any) {
+      toast.error(error.response?.data?.detail || 'Failed to delete cash drawer session')
+    } finally {
+      setDeleting(false)
+    }
+  }
+
   const onSubmitEdit = async (data: EditForm) => {
     if (!selectedSession) return
 
@@ -165,16 +189,27 @@ export default function AdminCashDrawerPage() {
   const handleExport = async (format: 'pdf' | 'xlsx') => {
     setExporting(true)
     try {
-      const params = new URLSearchParams({
+      // Validate dates before making request
+      if (!fromDate || !toDate) {
+        toast.error('Please select both start and end dates')
+        return
+      }
+
+      // Use Axios params object instead of manual query string construction
+      const params: Record<string, string> = {
         format,
         from_date: fromDate,
         to_date: toDate,
-      })
+      }
+      
       if (statusFilter) {
-        params.append('status', statusFilter)
+        params.status = statusFilter
       }
 
-      const response = await api.post(`/admin/cash-drawers/export?${params.toString()}`, {}, {
+      console.log('Export request params:', params)
+
+      const response = await api.get('/admin/cash-drawers/export', {
+        params,
         responseType: 'blob',
       })
 
@@ -234,7 +269,7 @@ export default function AdminCashDrawerPage() {
   return (
     <Layout>
       <div className="px-4 py-8 sm:px-6 lg:px-8">
-        <div className="max-w-[1800px] mx-auto">
+        <div className="max-w-6xl mx-auto">
           <div className="mb-6">
             <h1 className="text-2xl font-semibold text-gray-900 mb-1">Cash Drawer Management</h1>
             <p className="text-sm text-gray-600">View and manage cash drawer sessions</p>
@@ -295,113 +330,107 @@ export default function AdminCashDrawerPage() {
 
           {/* Sessions Table */}
           <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="w-full divide-y divide-gray-200">
-                <thead className="bg-gray-50">
+            <table className="w-full">
+              <thead className="bg-gray-50 border-b">
+                <tr>
+                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
+                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Employee</th>
+                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Shift</th>
+                  <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase">Start</th>
+                  <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase">End</th>
+                  <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase">+/-</th>
+                  <th className="px-3 py-2 text-center text-xs font-medium text-gray-500 uppercase">Status</th>
+                  <th className="px-3 py-2 text-center text-xs font-medium text-gray-500 uppercase">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {loadingSessions ? (
                   <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Shift Date</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Employee</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Shift Times</th>
-                    <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Start Cash</th>
-                    <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Collected Cash</th>
-                    <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Beverages Cash</th>
-                    <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">End Cash</th>
-                    <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Over/Short</th>
-                    <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                    <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                    <td colSpan={8} className="px-3 py-8 text-center">
+                      <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600 mx-auto"></div>
+                    </td>
                   </tr>
-                </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
-                  {loadingSessions ? (
-                    <tr>
-                      <td colSpan={10} className="px-6 py-12 text-center">
-                        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
+                ) : sessions.length === 0 ? (
+                  <tr>
+                    <td colSpan={8} className="px-3 py-8 text-center text-gray-500 text-sm">
+                      No cash drawer sessions found
+                    </td>
+                  </tr>
+                ) : (
+                  sessions.map((session) => (
+                    <tr key={session.id} className="hover:bg-gray-50">
+                      <td className="px-3 py-2 text-sm text-gray-900">
+                        {format(new Date(session.start_counted_at), 'MM/dd/yy')}
                       </td>
-                    </tr>
-                  ) : sessions.length === 0 ? (
-                    <tr>
-                      <td colSpan={10} className="px-6 py-12 text-center text-gray-500">
-                        No cash drawer sessions found
+                      <td className="px-3 py-2 text-sm font-medium text-gray-900">
+                        {session.employee_name}
                       </td>
-                    </tr>
-                  ) : (
-                    sessions.map((session) => (
-                      <tr key={session.id} className="hover:bg-gray-50">
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                          {format(new Date(session.start_counted_at), 'MMM dd, yyyy')}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                          {session.employee_name}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
-                          {session.clock_in_at ? (
-                            <div>
-                              <div className="font-medium">In: {format(new Date(session.clock_in_at), 'h:mm a')}</div>
-                              {session.clock_out_at ? (
-                                <div className="text-xs text-gray-500">Out: {format(new Date(session.clock_out_at), 'h:mm a')}</div>
-                              ) : (
-                                <div className="text-xs text-yellow-600">Still Clocked In</div>
-                              )}
-                            </div>
-                          ) : (
-                            <span className="text-gray-400">N/A</span>
-                          )}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-right font-medium">
-                          {formatCurrency(session.start_cash_cents)}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-right">
-                          {formatCurrency(session.collected_cash_cents)}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-right">
-                          {formatCurrency(session.beverages_cash_cents)}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-right font-medium">
-                          {formatCurrency(session.end_cash_cents)}
-                        </td>
-                        <td className={`px-6 py-4 whitespace-nowrap text-sm font-bold text-right ${getDeltaColor(session.delta_cents)}`}>
-                          <div className="flex items-center justify-end gap-2">
-                            <span className={`px-2 py-1 rounded text-xs font-semibold ${
-                              session.delta_cents && session.delta_cents > 0 
-                                ? 'bg-green-100 text-green-800' 
-                                : session.delta_cents && session.delta_cents < 0
-                                ? 'bg-red-100 text-red-800'
-                                : 'bg-gray-100 text-gray-800'
-                            }`}>
-                              {getDeltaLabel(session.delta_cents)}
-                            </span>
-                            <span>{formatCurrency(session.delta_cents)}</span>
-                          </div>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-center">
-                          <span className={`px-2 py-1 rounded-full text-xs font-semibold ${getStatusBadge(session.status)}`}>
-                            {session.status.replace('_', ' ')}
-                          </span>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-center">
-                          <div className="flex gap-2 justify-center">
-                            <button
-                              onClick={() => handleEdit(session)}
-                              className="text-blue-600 hover:text-blue-700 font-medium"
-                            >
-                              Edit
-                            </button>
-                            {session.status === 'REVIEW_NEEDED' && (
-                              <button
-                                onClick={() => handleReview(session)}
-                                className="text-green-600 hover:text-green-700 font-medium"
-                              >
-                                Review
-                              </button>
+                      <td className="px-3 py-2 text-xs text-gray-600">
+                        {session.clock_in_at ? (
+                          <>
+                            {format(new Date(session.clock_in_at), 'h:mma')}
+                            {session.clock_out_at ? (
+                              <span className="text-gray-400"> - {format(new Date(session.clock_out_at), 'h:mma')}</span>
+                            ) : (
+                              <span className="text-yellow-600"> (open)</span>
                             )}
-                          </div>
-                        </td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
+                          </>
+                        ) : '-'}
+                      </td>
+                      <td className="px-3 py-2 text-sm text-gray-900 text-right">
+                        {formatCurrency(session.start_cash_cents)}
+                      </td>
+                      <td className="px-3 py-2 text-sm text-gray-900 text-right">
+                        {formatCurrency(session.end_cash_cents)}
+                      </td>
+                      <td className={`px-3 py-2 text-sm font-medium text-right ${getDeltaColor(session.delta_cents)}`}>
+                        {session.delta_cents !== null ? (
+                          session.delta_cents > 0 ? `+${formatCurrency(session.delta_cents)}` : formatCurrency(session.delta_cents)
+                        ) : '-'}
+                      </td>
+                      <td className="px-3 py-2 text-center">
+                        <span className={`px-2 py-0.5 rounded text-xs font-medium ${getStatusBadge(session.status)}`}>
+                          {session.status === 'REVIEW_NEEDED' ? 'Review' : session.status}
+                        </span>
+                      </td>
+                      <td className="px-3 py-2 text-center">
+                        <div className="flex gap-1 justify-center">
+                          <button
+                            onClick={() => handleEdit(session)}
+                            className="p-1 text-blue-600 hover:bg-blue-50 rounded"
+                            title="Edit"
+                          >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                            </svg>
+                          </button>
+                          {session.status === 'REVIEW_NEEDED' && (
+                            <button
+                              onClick={() => handleReview(session)}
+                              className="p-1 text-green-600 hover:bg-green-50 rounded"
+                              title="Review"
+                            >
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                              </svg>
+                            </button>
+                          )}
+                          <button
+                            onClick={() => handleDelete(session)}
+                            className="p-1 text-red-600 hover:bg-red-50 rounded"
+                            title="Delete"
+                          >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                            </svg>
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
           </div>
 
           {/* Edit Dialog */}
@@ -475,6 +504,22 @@ export default function AdminCashDrawerPage() {
               </div>
             </div>
           )}
+
+          {/* Delete Confirmation Dialog */}
+          <ConfirmationDialog
+            isOpen={showDeleteDialog}
+            onClose={() => {
+              setShowDeleteDialog(false)
+              setSelectedSession(null)
+            }}
+            onConfirm={onSubmitDelete}
+            title="Delete Cash Drawer Session"
+            message={`Are you sure you want to delete this cash drawer session? This action cannot be undone.`}
+            confirmText="Delete"
+            cancelText="Cancel"
+            confirmButtonClassName="bg-red-600 hover:bg-red-700"
+            isLoading={deleting}
+          />
 
           {/* Review Dialog */}
           {showReviewDialog && selectedSession && (

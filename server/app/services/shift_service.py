@@ -134,13 +134,13 @@ async def create_shift(
     created_by: Optional[UUID] = None,
 ) -> Tuple[Shift, List[ShiftConflict]]:
     """Create a new shift with conflict detection."""
-    # Verify employee exists and belongs to company
+    # Verify employee exists and belongs to company (any role except ADMIN/DEVELOPER)
     result = await db.execute(
         select(User).where(
             and_(
                 User.id == data.employee_id,
                 User.company_id == company_id,
-                User.role == UserRole.EMPLOYEE,
+                User.role.in_([UserRole.MAINTENANCE, UserRole.FRONTDESK, UserRole.HOUSEKEEPING]),
             )
         )
     )

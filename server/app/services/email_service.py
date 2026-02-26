@@ -515,7 +515,7 @@ ClockIn Pro"""
         except Exception as e:
             logger.error(f"Unexpected error sending leave response: {e}")
             return False
-    
+
     async def send_password_setup_email(self, to_email: str, employee_name: str, setup_link: str) -> bool:
         """
         Send password setup email to new employee.
@@ -588,6 +588,61 @@ ClockIn Pro"""
             return False
         except Exception as e:
             logger.error(f"Unexpected error sending password setup email: {e}")
+            return False
+
+    async def send_password_reset_otp(self, to_email: str, otp: str) -> bool:
+        """
+        Send 6-digit OTP for password reset (forgot password flow).
+
+        Args:
+            to_email: Recipient email address
+            otp: 6-digit OTP code
+
+        Returns:
+            True if email sent successfully, False otherwise
+        """
+        if not self._refresh_token_if_needed():
+            logger.error("Gmail service not initialized or token refresh failed. Cannot send email.")
+            return False
+
+        if not self.service:
+            logger.error("Gmail service not initialized. Cannot send email.")
+            return False
+
+        try:
+            subject = "Reset Your Password — ClockIn Pro"
+            body = f"""You requested to reset your password.
+
+Your 6-digit verification code is:
+
+{otp}
+
+This code expires in 15 minutes.
+
+If you didn't request a password reset, please ignore this email and your password will remain unchanged.
+
+ClockIn Pro"""
+            message = self._create_message(to_email, subject, body)
+            result = self.service.users().messages().send(
+                userId='me',
+                body=message
+            ).execute()
+            logger.info(f"Password reset OTP email sent to {to_email}. Message ID: {result.get('id')}")
+            return True
+        except HttpError as error:
+            if error.resp.status == 401 and self._refresh_token_if_needed():
+                try:
+                    msg = self._create_message(to_email, "Reset Your Password — ClockIn Pro",
+                        f"Your 6-digit code: {otp}. Expires in 15 minutes.")
+                    result = self.service.users().messages().send(userId='me', body=msg).execute()
+                    logger.info(f"Password reset OTP sent to {to_email} after token refresh.")
+                    return True
+                except Exception:
+                    return False
+            logger.error(f"Gmail API error sending password reset OTP: {error}")
+            return False
+        except Exception as e:
+            logger.error(f"Unexpected error sending password reset OTP: {e}")
             return False
 
 

@@ -91,7 +91,6 @@ async def create_employee_endpoint(
         role=employee.role,
         status=employee.status,
         has_pin=employee.pin_hash is not None,
-        job_role=employee.job_role,
         pay_rate=float(employee.pay_rate) if employee.pay_rate is not None else None,
         created_at=employee.created_at,
         last_login_at=employee.last_login_at,
@@ -160,7 +159,6 @@ async def list_employees_endpoint(
             role=emp.role,
             status=emp.status,
             has_pin=emp.pin_hash is not None,
-            job_role=emp.job_role,
             pay_rate=float(emp.pay_rate) if emp.pay_rate is not None else None,
             created_at=emp.created_at,
             last_login_at=emp.last_login_at,
@@ -191,10 +189,11 @@ async def get_employee_endpoint(
             detail="Employee not found",
         )
     
-    if employee.role != UserRole.EMPLOYEE:
+    # Allow all non-admin, non-developer roles (MAINTENANCE, FRONTDESK, HOUSEKEEPING)
+    if employee.role in [UserRole.ADMIN, UserRole.DEVELOPER]:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="User is not an employee",
+            detail="Cannot view admin or developer accounts through this endpoint",
         )
     
     # Get last punch time and clock status
@@ -242,7 +241,6 @@ async def get_employee_endpoint(
         role=employee.role,
         status=employee.status,
         has_pin=employee.pin_hash is not None,
-        job_role=employee.job_role,
         pay_rate=float(employee.pay_rate) if employee.pay_rate is not None else None,
         created_at=employee.created_at,
         last_login_at=employee.last_login_at,
@@ -264,7 +262,7 @@ async def update_employee_endpoint(
     
     employee = await update_employee(db, emp_id, current_user.company_id, data, actor_user_id=current_user.id)
     
-    # Create general audit log for other changes (name, job_role, pay_rate)
+    # Create general audit log for other changes (name, pay_rate)
     changes = data.dict(exclude_unset=True)
     # Remove status and pin from general log as they're logged separately
     general_changes = {k: v for k, v in changes.items() if k not in ['status', 'pin']}
@@ -289,7 +287,6 @@ async def update_employee_endpoint(
         role=employee.role,
         status=employee.status,
         has_pin=employee.pin_hash is not None,
-        job_role=employee.job_role,
         pay_rate=float(employee.pay_rate) if employee.pay_rate is not None else None,
         created_at=employee.created_at,
         last_login_at=employee.last_login_at,

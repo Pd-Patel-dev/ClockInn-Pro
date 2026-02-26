@@ -21,6 +21,8 @@ class TimeEntryCreate(BaseModel):
     cash_end_cents: Optional[int] = Field(None, ge=0, description="Ending cash in cents (required on clock-out if cash drawer session exists)")
     collected_cash_cents: Optional[int] = Field(None, ge=0, description="Total cash collected from customers (for punch-out)")
     beverages_cash_cents: Optional[int] = Field(None, ge=0, description="Cash from beverage sales (for punch-out)")
+    latitude: Optional[str] = Field(None, description="GPS latitude coordinate")
+    longitude: Optional[str] = Field(None, description="GPS longitude coordinate")
 
 
 class TimeEntryPunchMe(BaseModel):
@@ -29,6 +31,8 @@ class TimeEntryPunchMe(BaseModel):
     cash_end_cents: Optional[int] = Field(None, ge=0, description="Ending cash in cents (required on clock-out if cash drawer session exists)")
     collected_cash_cents: Optional[int] = Field(None, ge=0, description="Total cash collected from customers (for punch-out)")
     beverages_cash_cents: Optional[int] = Field(None, ge=0, description="Cash from beverage sales (for punch-out)")
+    latitude: Optional[str] = Field(None, description="GPS latitude coordinate")
+    longitude: Optional[str] = Field(None, description="GPS longitude coordinate")
 
 
 class TimeEntryPunchByPin(BaseModel):
@@ -69,6 +73,18 @@ class TimeEntryResponse(BaseModel):
     clock_in_at_local: Optional[str] = None
     clock_out_at_local: Optional[str] = None
     company_timezone: Optional[str] = None
+    # IP address and user agent metadata
+    ip_address: Optional[str] = None
+    user_agent: Optional[str] = None
+    clock_out_ip_address: Optional[str] = None
+    clock_out_user_agent: Optional[str] = None
+    # Location metadata
+    clock_in_latitude: Optional[str] = None
+    clock_in_longitude: Optional[str] = None
+    clock_out_latitude: Optional[str] = None
+    clock_out_longitude: Optional[str] = None
+    # Edited by info
+    edited_by_name: Optional[str] = None
 
     class Config:
         from_attributes = True

@@ -20,8 +20,8 @@ import ConfirmationDialog from '@/components/ConfirmationDialog'
 const employeeSchema = z.object({
   name: z.string().min(1, 'Name is required'),
   email: z.string().email('Invalid email address'),
+  role: z.enum(['MAINTENANCE', 'FRONTDESK', 'HOUSEKEEPING']).default('FRONTDESK'),
   pin: z.string().length(4, 'PIN must be 4 digits').optional(),
-  job_role: z.string().optional(),
   pay_rate: z.string().optional().transform((val) => {
     if (!val || val === '') return undefined
     const num = parseFloat(val)
@@ -32,8 +32,8 @@ const employeeSchema = z.object({
 const editEmployeeSchema = z.object({
   name: z.string().min(1, 'Name is required'),
   status: z.enum(['active', 'inactive']),
+  role: z.enum(['MAINTENANCE', 'FRONTDESK', 'HOUSEKEEPING', 'ADMIN']).optional(),
   pin: z.string().length(4, 'PIN must be 4 digits').optional().or(z.literal('')),
-  job_role: z.string().optional(),
   pay_rate: z.string().optional(),
 })
 
@@ -44,9 +44,9 @@ interface Employee {
   id: string
   name: string
   email: string
+  role: string
   status: 'active' | 'inactive'
   has_pin: boolean
-  job_role: string | null
   pay_rate: number | null
   created_at: string
   last_login_at: string | null
@@ -175,8 +175,8 @@ export default function AdminEmployeesPage() {
     resetEdit({
       name: employee.name,
       status: employee.status,
+      role: employee.role as 'MAINTENANCE' | 'FRONTDESK' | 'HOUSEKEEPING' | 'ADMIN',
       pin: '', // Don't pre-fill PIN for security
-      job_role: employee.job_role || '',
       pay_rate: employee.pay_rate?.toString() || '',
     })
   }
@@ -196,15 +196,16 @@ export default function AdminEmployeesPage() {
         status: data.status,
       }
       
+      // Always include role if provided (role is always set in the form)
+      if (data.role !== undefined) {
+        updateData.role = data.role
+      }
+      
       // Only include PIN if it was provided
       if (data.pin && data.pin.length === 4) {
         updateData.pin = data.pin
       }
       
-      // Include job_role and pay_rate
-      if (data.job_role !== undefined) {
-        updateData.job_role = data.job_role || null
-      }
       if (data.pay_rate !== undefined) {
         updateData.pay_rate = data.pay_rate || null
       }
@@ -232,8 +233,7 @@ export default function AdminEmployeesPage() {
         const query = debouncedSearchQuery.toLowerCase()
         return (
           emp.name.toLowerCase().includes(query) ||
-          emp.email.toLowerCase().includes(query) ||
-          (emp.job_role && emp.job_role.toLowerCase().includes(query))
+          emp.email.toLowerCase().includes(query)
         )
       }
       
@@ -316,6 +316,9 @@ export default function AdminEmployeesPage() {
                     Email
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Role
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Status
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -323,9 +326,6 @@ export default function AdminEmployeesPage() {
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Has PIN
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Job Role
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Pay Rate
@@ -344,7 +344,7 @@ export default function AdminEmployeesPage() {
               <tbody className="bg-white divide-y divide-gray-200">
                 {filteredEmployees.length === 0 ? (
                   <tr>
-                    <td colSpan={10} className="px-6 py-4 text-center text-gray-500">
+                    <td colSpan={11} className="px-6 py-4 text-center text-gray-500">
                       No employees found
                     </td>
                   </tr>
@@ -387,6 +387,14 @@ export default function AdminEmployeesPage() {
                   <Input {...register('email')} type="email" error={!!errors.email} />
                 </FormField>
                 
+                <FormField label="Role" error={errors.role?.message} required>
+                  <Select {...register('role')} error={!!errors.role}>
+                    <option value="FRONTDESK">Front Desk</option>
+                    <option value="MAINTENANCE">Maintenance</option>
+                    <option value="HOUSEKEEPING">Housekeeping</option>
+                  </Select>
+                </FormField>
+                
                 <div className="bg-blue-50 border border-blue-200 rounded-md p-3 text-sm text-blue-800">
                   <p className="font-medium mb-1">Password Setup</p>
                   <p>The employee will receive an email with a link to set their password.</p>
@@ -394,10 +402,6 @@ export default function AdminEmployeesPage() {
                 
                 <FormField label="PIN" error={errors.pin?.message} hint="4-digit PIN for kiosk access (optional)">
                   <Input {...register('pin')} type="text" maxLength={4} error={!!errors.pin} />
-                </FormField>
-                
-                <FormField label="Job Role" error={errors.job_role?.message} hint="e.g., Manager, Developer, Sales">
-                  <Input {...register('job_role')} type="text" error={!!errors.job_role} />
                 </FormField>
                 
                 <FormField label="Pay Rate" error={errors.pay_rate?.message} hint="Hourly rate in dollars (optional)">
@@ -474,6 +478,15 @@ export default function AdminEmployeesPage() {
                     <option value="inactive">Inactive</option>
                   </Select>
                 </FormField>
+                
+                <FormField label="Role" error={editErrors.role?.message}>
+                  <Select {...registerEdit('role')} error={!!editErrors.role}>
+                    <option value="FRONTDESK">Front Desk</option>
+                    <option value="MAINTENANCE">Maintenance</option>
+                    <option value="HOUSEKEEPING">Housekeeping</option>
+                    <option value="ADMIN">Admin</option>
+                  </Select>
+                </FormField>
                   </div>
                 </div>
 
@@ -495,10 +508,6 @@ export default function AdminEmployeesPage() {
                     error={!!editErrors.pin}
                     placeholder="Enter new 4-digit PIN"
                   />
-                </FormField>
-                
-                <FormField label="Job Role" error={editErrors.job_role?.message} hint="e.g., Manager, Developer, Sales">
-                  <Input {...registerEdit('job_role')} type="text" error={!!editErrors.job_role} />
                 </FormField>
                 
                 <FormField label="Pay Rate" error={editErrors.pay_rate?.message} hint="Hourly rate in dollars">

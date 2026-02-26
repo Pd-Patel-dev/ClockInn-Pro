@@ -1,4 +1,4 @@
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, model_validator
 from typing import Optional
 from datetime import datetime
 
@@ -41,4 +41,21 @@ class VerifyEmailRequest(BaseModel):
 class SetPasswordRequest(BaseModel):
     token: str
     password: str = Field(..., min_length=8, max_length=255)
+
+
+class ForgotPasswordRequest(BaseModel):
+    email: EmailStr
+
+
+class ResetPasswordRequest(BaseModel):
+    email: EmailStr
+    otp: str = Field(..., min_length=6, max_length=6, pattern="^[0-9]{6}$")
+    new_password: str = Field(..., min_length=8, max_length=255)
+    confirm_password: str = Field(..., min_length=8, max_length=255)
+
+    @model_validator(mode="after")
+    def passwords_match(self):
+        if self.new_password != self.confirm_password:
+            raise ValueError("Passwords do not match")
+        return self
 

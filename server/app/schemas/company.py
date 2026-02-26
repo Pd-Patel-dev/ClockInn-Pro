@@ -63,7 +63,7 @@ class CompanySettingsUpdate(BaseModel):
     # Cash drawer settings
     cash_drawer_enabled: Optional[bool] = Field(None, description="Enable cash drawer management")
     cash_drawer_required_for_all: Optional[bool] = Field(None, description="Require cash drawer for all employees")
-    cash_drawer_required_roles: Optional[list[str]] = Field(None, description="Roles that require cash drawer (e.g., ['EMPLOYEE'])")
+    cash_drawer_required_roles: Optional[list[str]] = Field(None, description="Roles that require cash drawer (e.g., ['FRONTDESK', 'HOUSEKEEPING'])")
     cash_drawer_currency: Optional[str] = Field(None, max_length=10, description="Currency code (e.g., USD)")
     cash_drawer_starting_amount_cents: Optional[int] = Field(None, ge=0, description="Default starting cash amount in cents (e.g., 10000 = $100.00)")
     cash_drawer_variance_threshold_cents: Optional[int] = Field(None, ge=0, description="Variance threshold in cents (e.g., 2000 = $20.00)")

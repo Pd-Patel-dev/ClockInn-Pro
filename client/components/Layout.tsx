@@ -152,7 +152,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   }
 
   const isAdmin = user.role === 'ADMIN'
-  const isEmployee = user.role === 'EMPLOYEE'
+  const isEmployee = ['MAINTENANCE', 'FRONTDESK', 'HOUSEKEEPING'].includes(user.role)
   const isDeveloper = user.role === 'DEVELOPER'
 
   const employeeLinks = [
@@ -175,6 +175,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       items: [
     { href: '/employees', label: 'Employees' },
         { href: '/leave-requests', label: 'Leave Requests' },
+        { href: '/roles', label: 'Roles & Permissions' },
       ]
     },
     {

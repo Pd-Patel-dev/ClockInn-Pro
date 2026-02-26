@@ -94,8 +94,8 @@ async def list_shifts_endpoint(
     """List shifts. Employees can only see their own shifts."""
     company_id = current_user.company_id
     
-    # Employees can only see their own shifts
-    if current_user.role.value == "EMPLOYEE":
+    # Non-admin employees can only see their own shifts
+    if current_user.role in [UserRole.MAINTENANCE, UserRole.FRONTDESK, UserRole.HOUSEKEEPING]:
         employee_id = str(current_user.id)
     
     parsed_employee_id = parse_uuid(employee_id, "Employee ID") if employee_id else None
@@ -200,8 +200,8 @@ async def get_shift_endpoint(
             detail="Shift not found",
         )
     
-    # Employees can only see their own shifts
-    if current_user.role.value == "EMPLOYEE" and shift.employee_id != current_user.id:
+    # Non-admin employees can only see their own shifts
+    if current_user.role in [UserRole.MAINTENANCE, UserRole.FRONTDESK, UserRole.HOUSEKEEPING] and shift.employee_id != current_user.id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="You can only view your own shifts",

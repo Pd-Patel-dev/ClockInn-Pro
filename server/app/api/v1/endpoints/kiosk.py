@@ -1,7 +1,7 @@
 """
 Kiosk endpoint for company-specific clock-in/out using slug.
 """
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_
 from pydantic import BaseModel, Field
@@ -109,12 +109,12 @@ async def check_kiosk_pin(
     if not company.kiosk_enabled:
         return KioskPinCheckResponse(valid=False)
     
-    # Find active employees with PINs in this company
+    # Find active employees with PINs in this company (any role except ADMIN/DEVELOPER)
     result = await db.execute(
         select(User).where(
             and_(
                 User.company_id == company.id,
-                User.role == UserRole.EMPLOYEE,
+                User.role.in_([UserRole.MAINTENANCE, UserRole.FRONTDESK, UserRole.HOUSEKEEPING]),
                 User.status == UserStatus.ACTIVE,
                 User.pin_hash.isnot(None),
             )
@@ -190,12 +190,15 @@ class KioskClockRequest(BaseModel):
     cash_end_cents: Optional[int] = Field(None, ge=0, description="Ending cash in cents (required on clock-out if cash drawer session exists)")
     collected_cash_cents: Optional[int] = Field(None, ge=0, description="Total cash collected from customers (for punch-out)")
     beverages_cash_cents: Optional[int] = Field(None, ge=0, description="Cash from beverage sales (for punch-out)")
+    latitude: Optional[str] = Field(None, description="GPS latitude coordinate")
+    longitude: Optional[str] = Field(None, description="GPS longitude coordinate")
 
 
 @router.post("/clock", response_model=TimeEntryResponse, status_code=status.HTTP_201_CREATED)
 @handle_endpoint_errors(operation_name="kiosk_clock")
 async def kiosk_clock(
     data: KioskClockRequest,
+    request: Request,
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -221,12 +224,12 @@ async def kiosk_clock(
             detail="Kiosk is disabled for this company",
         )
     
-    # Find active employees with PINs in this company
+    # Find active employees with PINs in this company (any role except ADMIN/DEVELOPER)
     result = await db.execute(
         select(User).where(
             and_(
                 User.company_id == company.id,
-                User.role == UserRole.EMPLOYEE,
+                User.role.in_([UserRole.MAINTENANCE, UserRole.FRONTDESK, UserRole.HOUSEKEEPING]),
                 User.status == UserStatus.ACTIVE,
                 User.pin_hash.isnot(None),
             )
@@ -258,6 +261,13 @@ async def kiosk_clock(
             }
         )
     
+    # Get client IP address and user agent
+    client_ip = request.client.host if request.client else None
+    forwarded_for = request.headers.get("X-Forwarded-For")
+    if forwarded_for:
+        client_ip = forwarded_for.split(",")[0].strip()
+    user_agent = request.headers.get("User-Agent")
+    
     # Clock in/out (PIN already verified)
     entry = await punch(
         db,
@@ -271,40 +281,13 @@ async def kiosk_clock(
         cash_end_cents=data.cash_end_cents,
         collected_cash_cents=data.collected_cash_cents,
         beverages_cash_cents=data.beverages_cash_cents,
+        ip_address=client_ip,
+        user_agent=user_agent,
+        latitude=data.latitude,
+        longitude=data.longitude,
     )
     
-    # Calculate rounded hours
-    from app.services.time_entry_service import calculate_rounded_hours
-    rounded_hours, rounded_minutes = await calculate_rounded_hours(
-        db, entry, company.id
-    )
-    
-    # Get timezone-formatted times
-    from app.services.timezone_service import (
-        get_company_timezone,
-        format_datetime_for_company,
-    )
-    timezone_str = await get_company_timezone(db, company.id)
-    
-    clock_in_local = format_datetime_for_company(entry.clock_in_at, timezone_str) if entry.clock_in_at else None
-    clock_out_local = format_datetime_for_company(entry.clock_out_at, timezone_str) if entry.clock_out_at else None
-    
-    return TimeEntryResponse(
-        id=entry.id,
-        employee_id=entry.employee_id,
-        employee_name=matching_employee.name,
-        clock_in_at=entry.clock_in_at,
-        clock_out_at=entry.clock_out_at,
-        break_minutes=entry.break_minutes,
-        source=entry.source,
-        status=entry.status,
-        note=entry.note,
-        created_at=entry.created_at,
-        updated_at=entry.updated_at,
-        rounded_hours=rounded_hours,
-        rounded_minutes=rounded_minutes,
-        clock_in_at_local=clock_in_local,
-        clock_out_at_local=clock_out_local,
-        company_timezone=timezone_str,
-    )
+    # Use helper function from time endpoint
+    from app.api.v1.endpoints.time import build_time_entry_response
+    return await build_time_entry_response(db, entry, matching_employee.name, company.id)
 

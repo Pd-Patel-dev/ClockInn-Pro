@@ -56,11 +56,13 @@ async def list_employees(
     skip: int = 0,
     limit: int = 100,
 ) -> tuple[List[User], int]:
-    """List employees for a company."""
-    query = build_company_filtered_query(
-        User,
-        company_id,
-        additional_filters={"role": UserRole.EMPLOYEE}
+    """List employees for a company (all non-developer users)."""
+    # List all users except DEVELOPER role
+    query = select(User).where(
+        and_(
+            User.company_id == company_id,
+            User.role.notin_([UserRole.DEVELOPER])
+        )
     )
     
     return await get_paginated_results(db, query, skip=skip, limit=limit)
@@ -111,6 +113,7 @@ async def create_employee(
         )
     
     # Check if PIN is unique within the company (if PIN is provided)
+    # PINs are used by non-admin roles (MAINTENANCE, FRONTDESK, HOUSEKEEPING)
     if data.pin:
         pin_hash = get_pin_hash(data.pin)
         result = await db.execute(
@@ -118,7 +121,11 @@ async def create_employee(
                 and_(
                     User.company_id == company_id,
                     User.pin_hash == pin_hash,
-                    User.role == UserRole.EMPLOYEE,
+                    User.role.in_([
+                        UserRole.MAINTENANCE,
+                        UserRole.FRONTDESK,
+                        UserRole.HOUSEKEEPING,
+                    ]),
                 )
             )
         )
@@ -126,22 +133,24 @@ async def create_employee(
         if existing_pin_user:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="This PIN is already in use by another employee in your company. Please choose a different PIN.",
+                detail="This PIN is already in use by another user in your company. Please choose a different PIN.",
             )
     else:
         pin_hash = None
     
     # Create user
+    # Use the role from data, defaulting to FRONTDESK if not provided
+    user_role = data.role if data.role else UserRole.FRONTDESK
+    
     user = User(
         id=uuid.uuid4(),
         company_id=company_id,
-        role=UserRole.EMPLOYEE,
+        role=user_role,
         name=data.name,
         email=normalized_email,
         password_hash=password_hash,
         pin_hash=pin_hash,
         status=UserStatus.ACTIVE,
-        job_role=data.job_role,
         pay_rate=data.pay_rate,
     )
     
@@ -197,26 +206,37 @@ async def update_employee(
             detail=f"Employee with ID {employee_id} not found in your company",
         )
     
-    if user.role != UserRole.EMPLOYEE:
+    # Don't allow updating DEVELOPER role through this endpoint
+    if user.role == UserRole.DEVELOPER:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"User {user.email} is not an employee. Only employees can be updated through this endpoint.",
+            detail="Developer accounts cannot be updated through this endpoint.",
         )
     
     # Track changes for audit logging
     old_status = user.status
     had_pin = user.pin_hash is not None
+    old_role = user.role
     
     if data.name is not None:
         user.name = data.name
     if data.status is not None:
         # Ensure status is set correctly using enum value
         user.status = UserStatus(data.status.value) if isinstance(data.status, UserStatus) else data.status
+    if data.role is not None:
+        # Don't allow changing to DEVELOPER role
+        if data.role == UserRole.DEVELOPER:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Cannot assign DEVELOPER role through this endpoint.",
+            )
+        user.role = data.role
     if data.pin is not None:
         if data.pin == "":
             user.pin_hash = None
         else:
             # Check if PIN is unique within the company (excluding current employee)
+            # PINs are used by non-admin roles (MAINTENANCE, FRONTDESK, HOUSEKEEPING)
             new_pin_hash = get_pin_hash(data.pin)
             result = await db.execute(
                 select(User).where(
@@ -224,7 +244,11 @@ async def update_employee(
                         User.company_id == company_id,
                         User.pin_hash == new_pin_hash,
                         User.id != employee_id,  # Exclude current employee
-                        User.role == UserRole.EMPLOYEE,
+                        User.role.in_([
+                            UserRole.MAINTENANCE,
+                            UserRole.FRONTDESK,
+                            UserRole.HOUSEKEEPING,
+                        ]),
                     )
                 )
             )
@@ -235,8 +259,6 @@ async def update_employee(
                     detail="This PIN is already in use by another employee in your company. Please choose a different PIN.",
                 )
             user.pin_hash = new_pin_hash
-    if data.job_role is not None:
-        user.job_role = data.job_role
     if data.pay_rate is not None:
         user.pay_rate = data.pay_rate
     
@@ -373,10 +395,11 @@ async def delete_employee(
             detail="Employee not found",
         )
     
-    if user.role != UserRole.EMPLOYEE:
+    # Only allow deletion of non-admin/non-developer users
+    if user.role in [UserRole.ADMIN, UserRole.DEVELOPER]:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="User is not an employee",
+            detail="Cannot delete admin or developer users through this endpoint",
         )
     
     # Delete related records

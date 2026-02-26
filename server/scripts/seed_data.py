@@ -99,7 +99,7 @@ async def seed_data():
             employee = User(
                 id=uuid.uuid4(),
                 company_id=company.id,
-                role=UserRole.EMPLOYEE,
+                role=UserRole.FRONTDESK,
                 name=emp_data["name"],
                 email=emp_data["email"],
                 password_hash=get_password_hash(emp_data["password"]),

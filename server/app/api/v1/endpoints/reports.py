@@ -28,7 +28,7 @@ async def export_report(
         result = await db.execute(
             select(User).where(
                 User.company_id == current_user.company_id,
-                User.role == UserRole.EMPLOYEE,
+                User.role.in_([UserRole.MAINTENANCE, UserRole.FRONTDESK, UserRole.HOUSEKEEPING]),
             )
         )
         employees = result.scalars().all()

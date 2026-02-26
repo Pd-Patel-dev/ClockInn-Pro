@@ -384,11 +384,11 @@ async def generate_payroll_run(
                 detail=f"Payroll run already exists for period {period_start} to {period_end}",
             )
     
-    # Get employees
+    # Get employees (any role except ADMIN/DEVELOPER)
     query = select(User).where(
         and_(
             User.company_id == company_id,
-            User.role == UserRole.EMPLOYEE,
+            User.role.in_([UserRole.MAINTENANCE, UserRole.FRONTDESK, UserRole.HOUSEKEEPING]),
         )
     )
     
