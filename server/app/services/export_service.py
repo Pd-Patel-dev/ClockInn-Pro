@@ -116,7 +116,7 @@ async def generate_pdf_report(
             clock_in_local = convert_to_company_timezone(entry.clock_in_at, timezone_str)
             clock_out_local = convert_to_company_timezone(entry.clock_out_at, timezone_str) if entry.clock_out_at else None
             
-            date_str = clock_in_local.strftime("%m/%d/%Y")
+            date_str = clock_in_local.strftime("%a, %m/%d/%Y")
             clock_in = clock_in_local.strftime("%I:%M %p")
             clock_out = clock_out_local.strftime("%I:%M %p") if clock_out_local else "Open"
             
@@ -300,7 +300,7 @@ async def generate_excel_report(
             # Add to detailed sheet (use rounded hours)
             detail_ws.append([
                 employee.name,
-                clock_in_local.strftime("%Y-%m-%d"),
+                clock_in_local.strftime("%a, %Y-%m-%d"),
                 clock_in_local.strftime("%H:%M"),
                 clock_out_local.strftime("%H:%M") if clock_out_local else "Open",
                 f"{hours:.2f}" if entry.clock_out_at else "0.00",
