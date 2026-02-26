@@ -71,8 +71,11 @@ async def generate_pdf_report(
         timezone_str = "America/Chicago"
     
     # Import timezone conversion functions
-    from app.services.timezone_service import convert_to_company_timezone
-    
+    from app.services.timezone_service import convert_to_company_timezone, get_utc_range_for_company_date_range
+
+    # UTC bounds for the date range in company timezone (so export includes correct days)
+    start_utc, end_utc = get_utc_range_for_company_date_range(timezone_str, start_date, end_date)
+
     # Get employees
     result = await db.execute(
         select(User).where(
@@ -88,14 +91,14 @@ async def generate_pdf_report(
     employees_data = []
     
     for employee in employees:
-        # Get time entries
+        # Get time entries (filter by UTC range for company date range)
         result = await db.execute(
             select(TimeEntry).where(
                 and_(
                     TimeEntry.employee_id == employee.id,
                     TimeEntry.company_id == company_id,
-                    TimeEntry.clock_in_at >= datetime.combine(start_date, datetime.min.time()),
-                    TimeEntry.clock_in_at <= datetime.combine(end_date, datetime.max.time()),
+                    TimeEntry.clock_in_at >= start_utc,
+                    TimeEntry.clock_in_at <= end_utc,
                 )
             ).order_by(TimeEntry.clock_in_at)
         )
@@ -180,8 +183,8 @@ async def generate_excel_report(
     """Generate Excel report for time entries."""
     from app.models.company import Company
     from app.services.company_service import get_company_settings
-    from app.services.timezone_service import convert_to_company_timezone
-    
+    from app.services.timezone_service import convert_to_company_timezone, get_utc_range_for_company_date_range
+
     # Get company timezone
     result = await db.execute(select(Company).where(Company.id == company_id))
     company = result.scalar_one_or_none()
@@ -190,6 +193,9 @@ async def generate_excel_report(
         timezone_str = company_settings.get("timezone", "America/Chicago")
     else:
         timezone_str = "America/Chicago"
+
+    # UTC bounds for the date range in company timezone
+    start_utc, end_utc = get_utc_range_for_company_date_range(timezone_str, start_date, end_date)
     
     wb = Workbook()
     wb.remove(wb.active)  # Remove default sheet
@@ -218,6 +224,9 @@ async def generate_excel_report(
         cell.font = header_font
         cell.alignment = Alignment(horizontal="center")
     
+    # UTC bounds for the date range in company timezone
+    start_utc, end_utc = get_utc_range_for_company_date_range(timezone_str, start_date, end_date)
+
     # Get employees
     result = await db.execute(
         select(User).where(
@@ -230,14 +239,14 @@ async def generate_excel_report(
     employees = result.scalars().all()
     
     for employee in employees:
-        # Get time entries
+        # Get time entries (filter by UTC range for company date range)
         result = await db.execute(
             select(TimeEntry).where(
                 and_(
                     TimeEntry.employee_id == employee.id,
                     TimeEntry.company_id == company_id,
-                    TimeEntry.clock_in_at >= datetime.combine(start_date, datetime.min.time()),
-                    TimeEntry.clock_in_at <= datetime.combine(end_date, datetime.max.time()),
+                    TimeEntry.clock_in_at >= start_utc,
+                    TimeEntry.clock_in_at <= end_utc,
                 )
             ).order_by(TimeEntry.clock_in_at)
         )

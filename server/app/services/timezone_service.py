@@ -1,7 +1,7 @@
 """
 Service for timezone conversions and date formatting using company settings.
 """
-from typing import Optional
+from typing import Optional, Tuple
 from uuid import UUID
 from datetime import datetime, date
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -31,11 +31,13 @@ async def get_company_timezone(
 
 
 def convert_to_company_timezone(
-    utc_datetime: datetime,
+    utc_datetime: Optional[datetime],
     timezone_str: str,
-) -> datetime:
-    """Convert UTC datetime to company timezone."""
+) -> Optional[datetime]:
+    """Convert UTC datetime to company timezone. Returns None if utc_datetime is None."""
     try:
+        if utc_datetime is None:
+            return None
         tz = pytz.timezone(timezone_str)
         # If datetime is naive, assume it's UTC
         if utc_datetime.tzinfo is None:
@@ -45,6 +47,29 @@ def convert_to_company_timezone(
     except Exception:
         # Fallback to UTC if timezone is invalid
         return utc_datetime
+
+
+def get_utc_range_for_company_date_range(
+    timezone_str: str,
+    start_date: date,
+    end_date: date,
+) -> Tuple[datetime, datetime]:
+    """
+    Return (start_utc, end_utc) for the given date range in company timezone.
+    Use these for filtering time_entries: clock_in_at >= start_utc AND clock_in_at <= end_utc.
+    """
+    try:
+        tz = pytz.timezone(timezone_str)
+        start_local = tz.localize(datetime.combine(start_date, datetime.min.time()))
+        end_local = tz.localize(datetime.combine(end_date, datetime.max.time()))
+        start_utc = start_local.astimezone(pytz.UTC)
+        end_utc = end_local.astimezone(pytz.UTC)
+        return start_utc, end_utc
+    except Exception:
+        # Fallback: treat dates as UTC (wrong but safe)
+        start_utc = datetime.combine(start_date, datetime.min.time()).replace(tzinfo=pytz.UTC)
+        end_utc = datetime.combine(end_date, datetime.max.time()).replace(tzinfo=pytz.UTC)
+        return start_utc, end_utc
 
 
 def format_datetime_for_company(
