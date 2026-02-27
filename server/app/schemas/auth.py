@@ -30,7 +30,8 @@ class LogoutRequest(BaseModel):
 
 
 class SendVerificationPinRequest(BaseModel):
-    email: EmailStr
+    """Optional; when authenticated, PIN is always sent to the registered email only."""
+    email: Optional[EmailStr] = None
 
 
 class VerifyEmailRequest(BaseModel):

@@ -122,7 +122,10 @@ function VerifyCodeContent() {
           <div className="bg-white rounded-2xl shadow-xl p-8 sm:p-10">
             <h2 className="text-3xl font-bold text-gray-900 mb-2">Enter verification code</h2>
             <p className="text-gray-600 mb-6">
-              We sent a 6-digit code to <strong className="text-gray-700">{email}</strong>. Enter it below.
+              We sent a 6-digit code to your registered email only.
+            </p>
+            <p className="text-sm text-gray-600 mb-6">
+              Code sent to <strong className="text-gray-700">{email}</strong>
             </p>
 
             {error && (
@@ -176,11 +179,6 @@ function VerifyCodeContent() {
             </div>
 
             <div className="mt-6 text-center">
-              <Link href="/forgot-password" className="text-sm font-medium text-blue-600 hover:text-blue-500">
-                Use a different email
-              </Link>
-            </div>
-            <div className="mt-2 text-center">
               <Link href="/login" className="text-sm text-gray-500 hover:text-gray-700">
                 Back to login
               </Link>

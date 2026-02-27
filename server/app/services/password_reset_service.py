@@ -1,6 +1,9 @@
 """
 Password reset service: send OTP and verify OTP + set new password.
+Security: user lookup uses parameterized queries (no SQL injection);
+responses are generic to prevent user enumeration; constant-time when user not found.
 """
+import asyncio
 import secrets
 import logging
 from datetime import datetime, timedelta, timezone
@@ -17,6 +20,8 @@ logger = logging.getLogger(__name__)
 PASSWORD_RESET_OTP_EXPIRY_MINUTES = 15
 PASSWORD_RESET_RESEND_COOLDOWN_SECONDS = 60
 MAX_PASSWORD_RESET_ATTEMPTS = 5
+# Minimize timing difference between "user not found" and "user found" paths
+CONSTANT_TIME_DELAY_SECONDS = 0.3
 
 
 def _generate_otp() -> str:
@@ -26,12 +31,14 @@ def _generate_otp() -> str:
 
 async def send_password_reset_otp(db: AsyncSession, email_normalized: str) -> Tuple[bool, Optional[str]]:
     """
-    Find user by email, generate 6-digit OTP, store hash, send email.
-    Returns (success, error_message). Generic message if user not found (no email enumeration).
+    Find user by email (parameterized query), generate 6-digit OTP, store hash, send email.
+    Returns (success, error_message). Caller must not expose error_message to clients
+    to avoid user enumeration. When user not found, we delay to reduce timing leakage.
     """
     result = await db.execute(select(User).where(User.email == email_normalized))
     user = result.scalar_one_or_none()
     if not user:
+        await asyncio.sleep(CONSTANT_TIME_DELAY_SECONDS)
         return True, None  # Don't reveal whether email exists
 
     now = datetime.now(timezone.utc)
@@ -44,23 +51,22 @@ async def send_password_reset_otp(db: AsyncSession, email_normalized: str) -> Tu
         logger.error(f"Failed to lock user for password reset OTP: {e}")
         return False, "Please try again in a moment."
 
-    # Cooldown
+    # Cooldown: do not expose to client (would leak user existence)
     if user.last_password_reset_sent_at:
         last = user.last_password_reset_sent_at
         if last.tzinfo is None:
             last = last.replace(tzinfo=timezone.utc)
         if (now - last).total_seconds() < PASSWORD_RESET_RESEND_COOLDOWN_SECONDS:
-            remaining = int(PASSWORD_RESET_RESEND_COOLDOWN_SECONDS - (now - last).total_seconds())
-            return False, f"Please wait {remaining} seconds before requesting a new code."
+            return True, None  # Same as "user not found" - generic success
 
-    # Max attempts
+    # Max attempts: do not expose to client
     if user.password_reset_attempts >= MAX_PASSWORD_RESET_ATTEMPTS:
         user.password_reset_otp_hash = None
         user.password_reset_otp_expires_at = None
         user.password_reset_attempts = 0
         db.add(user)
         await db.commit()
-        return False, "Too many attempts. Please try again later."
+        return True, None  # Generic success, no leak
 
     # Clear any existing valid OTP before generating new one
     if user.password_reset_otp_hash and user.password_reset_otp_expires_at:
@@ -90,7 +96,9 @@ async def send_password_reset_otp(db: AsyncSession, email_normalized: str) -> Tu
         user.password_reset_attempts = 0
         db.add(user)
         await db.commit()
-        return False, "Could not send verification code. Please try again."
+        logger.warning("Password reset email send failed for user_id=%s", user.id)
+        # Return success anyway so we don't leak that the account exists
+        return True, None
 
     return True, None
 
@@ -112,7 +120,7 @@ async def verify_otp_and_reset_password(
     now = datetime.now(timezone.utc)
 
     if not user.password_reset_otp_hash:
-        return False, "No verification code found. Please request a new code."
+        return False, "Invalid email or verification code."
 
     exp = user.password_reset_otp_expires_at
     if exp and exp.tzinfo is None:

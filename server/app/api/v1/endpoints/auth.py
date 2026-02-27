@@ -12,11 +12,13 @@ from app.schemas.auth import (
     RefreshTokenRequest,
     LogoutRequest,
     SetPasswordRequest,
+    VerifyEmailRequest,
+    ForgotPasswordRequest,
+    ResetPasswordRequest,
 )
 from app.services.auth_service import register_company, login, refresh_access_token, logout
 from app.services.verification_service import send_verification_pin, verify_email_pin
 from app.models.user import User
-from app.schemas.auth import SendVerificationPinRequest, VerifyEmailRequest, ForgotPasswordRequest, ResetPasswordRequest
 from app.services.password_reset_service import send_password_reset_otp, verify_otp_and_reset_password
 from app.core.security import normalize_email
 
@@ -93,38 +95,18 @@ async def logout_endpoint(
 @router.post("/send-verification-pin")
 @handle_endpoint_errors(operation_name="send_verification_pin")
 async def send_verification_pin_endpoint(
-    request: SendVerificationPinRequest,
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Send verification PIN to user's email."""
-    from sqlalchemy import select
-    from app.core.security import normalize_email
-    
-    normalized_email = normalize_email(request.email)
-    
-    # Find user by email
-    result = await db.execute(
-        select(User).where(User.email == normalized_email)
-    )
-    user = result.scalar_one_or_none()
-    
-    # Always return success to prevent email enumeration
-    if not user:
-        return {"message": "If the email exists, a verification code has been sent."}
-    
-    # Check if user is already verified and doesn't need re-verification
+    """Send verification PIN to the registered email only (current user's email)."""
     from app.services.verification_service import check_verification_required
-    if not check_verification_required(user):
-        # User is already verified and within 30-day window
+
+    if not check_verification_required(current_user):
         return {"message": "Email is already verified."}
-    
-    # Send verification PIN
-    success, error_msg = await send_verification_pin(db, user)
-    
+
+    success, error_msg = await send_verification_pin(db, current_user)
     if not success:
-        # Don't reveal if email exists - return generic message
         return {"message": "If the email exists, a verification code has been sent."}
-    
     return {"message": "Verification code sent to your email."}
 
 
@@ -132,36 +114,25 @@ async def send_verification_pin_endpoint(
 @handle_endpoint_errors(operation_name="verify_email")
 async def verify_email_endpoint(
     request: VerifyEmailRequest,
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Verify email with 6-digit PIN."""
-    from sqlalchemy import select
+    """Verify email with 6-digit PIN. Only the registered (current user) email can be verified."""
     from app.core.security import normalize_email
-    
-    normalized_email = normalize_email(request.email)
-    
-    # Find user by email
-    result = await db.execute(
-        select(User).where(User.email == normalized_email)
-    )
-    user = result.scalar_one_or_none()
-    
-    # Always return generic error to prevent email enumeration
-    if not user:
+
+    normalized_request_email = normalize_email(request.email)
+    if normalized_request_email != normalize_email(current_user.email):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid email or verification code."
+            detail="Invalid email or verification code.",
         )
-    
-    # Verify PIN
-    success, error_msg = await verify_email_pin(db, user, request.pin)
-    
+
+    success, error_msg = await verify_email_pin(db, current_user, request.pin)
     if not success:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=error_msg or "Invalid email or verification code."
+            detail=error_msg or "Invalid email or verification code.",
         )
-    
     return {"message": "Email verified successfully."}
 
 
@@ -171,11 +142,11 @@ async def forgot_password_endpoint(
     request: ForgotPasswordRequest,
     db: AsyncSession = Depends(get_db),
 ):
-    """Request a 6-digit OTP to be sent to the given email for password reset."""
+    """Request a 6-digit OTP to be sent to the given email for password reset.
+    Always returns the same response to prevent user enumeration."""
     normalized_email = normalize_email(request.email)
-    success, error_msg = await send_password_reset_otp(db, normalized_email)
-    if not success and error_msg:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=error_msg)
+    await send_password_reset_otp(db, normalized_email)
+    # Never return 400 or different messages so attackers cannot infer if email exists
     return {"message": "If an account exists with this email, a verification code has been sent."}
 
 

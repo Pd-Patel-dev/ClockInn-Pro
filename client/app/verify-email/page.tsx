@@ -1,14 +1,13 @@
 'use client'
 
 import { useState, useEffect, useRef, useCallback, Suspense } from 'react'
-import { useRouter, useSearchParams } from 'next/navigation'
+import { useRouter } from 'next/navigation'
 import api from '@/lib/api'
 import logger from '@/lib/logger'
 import { getCurrentUser } from '@/lib/auth'
 
 function VerifyEmailContent() {
   const router = useRouter()
-  const searchParams = useSearchParams()
   const [email, setEmail] = useState<string>('')
   const [pin, setPin] = useState(['', '', '', '', '', ''])
   const [loading, setLoading] = useState(false)
@@ -22,28 +21,19 @@ function VerifyEmailContent() {
   const initializationRef = useRef<string | null>(null) // Track what we've already initialized
   const resendCooldownRef = useRef(0) // Ref to track latest cooldown value (avoids stale closures)
 
-  const handleSendPin = useCallback(async (emailToUse?: string) => {
-    const emailAddress = emailToUse || email
-    if (!emailAddress) return
-    
-    // Check cooldown using ref (always current, avoids stale closure)
-    // Server-side validation is the source of truth, but this prevents unnecessary API calls
+  const handleSendPin = useCallback(async () => {
     const currentCooldown = resendCooldownRef.current
     if (currentCooldown > 0) {
       setError(`Please wait ${currentCooldown} seconds before requesting a new code.`)
       return
     }
-    
     setSending(true)
     setError(null)
     try {
-      const response = await api.post('/auth/send-verification-pin', { email: emailAddress })
-      // Update cooldown from server response (source of truth)
+      const response = await api.post<{ message?: string }>('/auth/send-verification-pin')
       setResendCooldown(60)
       resendCooldownRef.current = 60
       logger.info('Verification PIN sent')
-      
-      // Check if already verified
       if (response.data?.message?.includes('already verified')) {
         setError('Email is already verified. Redirecting...')
         setTimeout(async () => {
@@ -87,75 +77,42 @@ function VerifyEmailContent() {
     } finally {
       setSending(false)
     }
-  }, [email, router])
+  }, [router])
 
-  // Get email from query params or fetch user
+  // Get email from logged-in user only (registered email); no changing email
   useEffect(() => {
     const checkUserAndEmail = async () => {
-      // Create a unique key for this initialization attempt
-      const emailParam = searchParams.get('email')
-      const initKey = emailParam || 'user'
-      
-      // Skip if we've already initialized with this key
-      if (initializationRef.current === initKey) return
-      
+      if (initializationRef.current === 'done') return
+
       try {
-        // Always try to get current user to check verification status
         let user = null
         try {
           user = await getCurrentUser()
-        } catch (err) {
-          // User might not be logged in, that's okay - we'll handle it below
+        } catch {
+          // Not logged in
         }
 
-        if (emailParam) {
-          // Email provided via query parameter
-          if (user) {
-            // Check if this is the logged-in user and if they're already verified
-            if (user.email === emailParam && user.email_verified && !user.verification_required) {
-              // Already verified, redirect based on role
-              if (user.role === 'DEVELOPER') {
-                router.push('/developer')
-              } else {
-                router.push('/dashboard')
-              }
-              return
-            }
-          }
-          setEmail(emailParam)
-          setCheckingUser(false)
-          initializationRef.current = initKey
-          // Auto-send PIN if email is provided
-          handleSendPin(emailParam)
-        } else {
-          // No email param - use logged-in user's email
-          if (user) {
-            // Check if user is already verified
-            if (user.email_verified && !user.verification_required) {
-              // Already verified, redirect based on role
-              if (user.role === 'DEVELOPER') {
-                router.push('/developer')
-              } else {
-                router.push('/dashboard')
-              }
-              return
-            }
-            setEmail(user.email)
-            setCheckingUser(false)
-            initializationRef.current = initKey
-            // Auto-send PIN
-            handleSendPin(user.email)
-          } else {
-            // No user found, redirect to login
-            router.push('/login')
-          }
+        if (!user) {
+          router.push('/login')
+          return
         }
-      } catch (err) {
+
+        if (user.email_verified && !user.verification_required) {
+          if (user.role === 'DEVELOPER') router.push('/developer')
+          else router.push('/dashboard')
+          return
+        }
+
+        setEmail(user.email)
+        setCheckingUser(false)
+        initializationRef.current = 'done'
+        handleSendPin()
+      } catch {
         router.push('/login')
       }
     }
     checkUserAndEmail()
-  }, [searchParams, router, handleSendPin])
+  }, [router, handleSendPin])
 
   // Keep ref in sync with state
   useEffect(() => {
@@ -342,8 +299,11 @@ function VerifyEmailContent() {
             <p className="text-gray-600">
               For your security, please verify your email to continue.
             </p>
+            <p className="text-sm text-gray-500 mt-2">
+              We send the verification code to your <strong className="text-gray-700">registered email</strong> only.
+            </p>
             {email && (
-              <p className="text-sm text-gray-500 mt-2">
+              <p className="text-sm text-gray-500 mt-1">
                 A 6-digit code has been sent to <strong className="text-gray-700">{email}</strong>
               </p>
             )}
@@ -392,7 +352,7 @@ function VerifyEmailContent() {
             <div className="text-center">
               <button
                 onClick={() => handleSendPin()}
-                disabled={resendCooldown > 0 || sending || !email}
+                disabled={resendCooldown > 0 || sending}
                 className="text-sm text-teal-600 hover:text-teal-700 disabled:text-gray-400 disabled:cursor-not-allowed font-medium"
               >
                 {sending ? 'Sending...' : resendCooldown > 0 ? `Resend code in ${resendCooldown}s` : 'Resend code'}

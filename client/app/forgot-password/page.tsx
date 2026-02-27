@@ -54,7 +54,7 @@ function ForgotPasswordContent() {
           <div className="bg-white rounded-2xl shadow-xl p-8 sm:p-10">
             <h2 className="text-3xl font-bold text-gray-900 mb-2">Forgot password</h2>
             <p className="text-gray-600 mb-6">
-              Enter your email and we&apos;ll send you a 6-digit code to reset your password.
+              Enter your <strong>registered email</strong> and we&apos;ll send a 6-digit code there. We only send the code to the email on your account.
             </p>
 
             {error && (

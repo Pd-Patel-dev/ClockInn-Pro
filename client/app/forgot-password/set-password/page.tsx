@@ -61,12 +61,18 @@ function SetPasswordContent() {
       setError('Session expired. Please start over from the forgot password page.')
       return
     }
+    const trimmedEmail = email.trim()
+    const trimmedOtp = otp.trim()
+    if (!trimmedEmail || trimmedOtp.length !== 6) {
+      setError('Session expired or invalid code. Please start over from the forgot password page.')
+      return
+    }
     setLoading(true)
     setError(null)
     try {
       await api.post('/auth/reset-password', {
-        email,
-        otp,
+        email: trimmedEmail,
+        otp: trimmedOtp,
         new_password: data.new_password,
         confirm_password: data.confirm_password,
       })
@@ -74,8 +80,17 @@ function SetPasswordContent() {
       setSuccess(true)
       setTimeout(() => router.push('/login'), 2000)
     } catch (err: unknown) {
-      const ax = err as { response?: { data?: { detail?: string } } }
-      setError(ax.response?.data?.detail || 'Failed to reset password. Please try again.')
+      const ax = err as { response?: { data?: { detail?: string | Array<{ msg?: string; loc?: string[] }> } } }
+      const detail = ax.response?.data?.detail
+      let message = 'Failed to reset password. Please try again.'
+      if (typeof detail === 'string') {
+        message = detail
+      } else if (Array.isArray(detail) && detail.length > 0 && detail[0]?.msg) {
+        message = detail[0].msg
+      } else if (Array.isArray(detail) && detail.length > 0 && typeof detail[0] === 'object' && 'msg' in detail[0]) {
+        message = (detail[0] as { msg?: string }).msg || message
+      }
+      setError(message)
     } finally {
       setLoading(false)
     }
@@ -124,7 +139,10 @@ function SetPasswordContent() {
           <div className="bg-white rounded-2xl shadow-xl p-8 sm:p-10">
             <h2 className="text-3xl font-bold text-gray-900 mb-2">Set new password</h2>
             <p className="text-gray-600 mb-6">
-              Enter your new password for <strong className="text-gray-700">{email}</strong>.
+              Enter your new password for your account. Code was sent to your registered email only.
+            </p>
+            <p className="text-sm text-gray-600 mb-6">
+              Account: <strong className="text-gray-700">{email}</strong>
             </p>
 
             {error && (
@@ -177,14 +195,6 @@ function SetPasswordContent() {
             </form>
 
             <div className="mt-6 text-center">
-              <Link
-                href={email ? `/forgot-password/verify?email=${encodeURIComponent(email)}` : '/forgot-password'}
-                className="text-sm font-medium text-blue-600 hover:text-blue-500"
-              >
-                Use a different code
-              </Link>
-            </div>
-            <div className="mt-2 text-center">
               <Link href="/login" className="text-sm text-gray-500 hover:text-gray-700">
                 Back to login
               </Link>
