@@ -85,13 +85,13 @@ function LoginContent() {
         const responseData = err.response?.data as Record<string, unknown> | undefined
         const detail = responseData?.detail
         const detailObj = typeof detail === 'object' && detail !== null ? detail as Record<string, unknown> : null
+        const bodyStr = responseData != null ? JSON.stringify(responseData) : ''
         const isVerificationRequired =
           (err as { isVerificationRequired?: boolean }).isVerificationRequired === true ||
           detailObj?.error === 'EMAIL_VERIFICATION_REQUIRED' ||
           detail === 'EMAIL_VERIFICATION_REQUIRED' ||
           responseData?.error === 'EMAIL_VERIFICATION_REQUIRED' ||
-          (typeof responseData === 'string' && responseData.includes('EMAIL_VERIFICATION_REQUIRED')) ||
-          (responseData && JSON.stringify(responseData).includes('EMAIL_VERIFICATION_REQUIRED'))
+          bodyStr.includes('EMAIL_VERIFICATION_REQUIRED')
 
         if (isVerificationRequired) {
           const email =
