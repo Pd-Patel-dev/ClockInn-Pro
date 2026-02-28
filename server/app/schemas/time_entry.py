@@ -20,6 +20,7 @@ class TimeEntryCreate(BaseModel):
     cash_start_cents: Optional[int] = Field(None, ge=0, description="Starting cash in cents (required on clock-in if cash drawer enabled)")
     cash_end_cents: Optional[int] = Field(None, ge=0, description="Ending cash in cents (required on clock-out if cash drawer session exists)")
     collected_cash_cents: Optional[int] = Field(None, ge=0, description="Total cash collected from customers (for punch-out)")
+    drop_amount_cents: Optional[int] = Field(None, ge=0, description="Cash dropped from drawer during shift (for punch-out)")
     beverages_cash_cents: Optional[int] = Field(None, ge=0, description="Cash from beverage sales (for punch-out)")
     latitude: Optional[str] = Field(None, description="GPS latitude coordinate")
     longitude: Optional[str] = Field(None, description="GPS longitude coordinate")
@@ -30,6 +31,7 @@ class TimeEntryPunchMe(BaseModel):
     cash_start_cents: Optional[int] = Field(None, ge=0, description="Starting cash in cents (required on clock-in if cash drawer enabled)")
     cash_end_cents: Optional[int] = Field(None, ge=0, description="Ending cash in cents (required on clock-out if cash drawer session exists)")
     collected_cash_cents: Optional[int] = Field(None, ge=0, description="Total cash collected from customers (for punch-out)")
+    drop_amount_cents: Optional[int] = Field(None, ge=0, description="Cash dropped from drawer during shift (for punch-out)")
     beverages_cash_cents: Optional[int] = Field(None, ge=0, description="Cash from beverage sales (for punch-out)")
     latitude: Optional[str] = Field(None, description="GPS latitude coordinate")
     longitude: Optional[str] = Field(None, description="GPS longitude coordinate")
@@ -37,6 +39,17 @@ class TimeEntryPunchMe(BaseModel):
 
 class TimeEntryPunchByPin(BaseModel):
     pin: str = Field(..., min_length=4, max_length=4, pattern="^[0-9]{4}$")
+
+
+class TimeEntryPunchMeSimple(BaseModel):
+    """Punch in/out for authenticated user without PIN (one-tap)."""
+    cash_start_cents: Optional[int] = Field(None, ge=0)
+    cash_end_cents: Optional[int] = Field(None, ge=0)
+    collected_cash_cents: Optional[int] = Field(None, ge=0)
+    drop_amount_cents: Optional[int] = Field(None, ge=0)
+    beverages_cash_cents: Optional[int] = Field(None, ge=0)
+    latitude: Optional[str] = None
+    longitude: Optional[str] = None
 
 
 class TimeEntryManualCreate(BaseModel):

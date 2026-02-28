@@ -416,7 +416,15 @@ api.interceptors.response.use(
     }
     
     // Only handle 401 for non-auth endpoints (prevent infinite loop on refresh endpoint)
-    if (error.response?.status === 401 && !originalRequest._retry && !originalRequest.url?.includes('/auth/refresh')) {
+    // Do NOT run refresh/redirect for login or register - let the page show the error
+    const isAuthEndpoint = originalRequest.url?.includes('/auth/login') ||
+      originalRequest.url?.includes('/auth/register')
+    if (
+      error.response?.status === 401 &&
+      !originalRequest._retry &&
+      !originalRequest.url?.includes('/auth/refresh') &&
+      !isAuthEndpoint
+    ) {
       if (process.env.NODE_ENV === 'development' && originalRequest.url?.includes('/shifts')) {
         console.log('=== HANDLING 401 FOR SHIFT CREATE ===')
         console.log('Already Refreshing:', isRefreshing)

@@ -80,24 +80,26 @@ function LoginContent() {
         return
       }
       
-      // Handle email verification required - redirect to verify-email page
-      if (err.isVerificationRequired || err.response?.status === 403) {
+      // Handle email verification required (403) - only redirect in this case
+      if (err.response?.status === 403) {
         const detail = err.response?.data?.detail
-        const isVerificationRequired = 
+        const isVerificationRequired =
+          err.isVerificationRequired ||
           (typeof detail === 'object' && detail?.error === 'EMAIL_VERIFICATION_REQUIRED') ||
           detail === 'EMAIL_VERIFICATION_REQUIRED' ||
           err.response?.data?.error === 'EMAIL_VERIFICATION_REQUIRED'
-        
+
         if (isVerificationRequired) {
-          const email = (typeof detail === 'object' && detail?.email) 
-            ? detail.email 
-            : err.verificationEmail || data.email
+          const email =
+            (typeof detail === 'object' && detail?.email)
+              ? detail.email
+              : err.verificationEmail || data.email
           router.push(`/verify-email?email=${encodeURIComponent(email)}`)
           return
         }
       }
-      
-      // Extract error message from detail (handle both string and object)
+
+      // For 401, 403 (non-verification), 400, etc.: stay on login page and show error
       let errorMessage = 'Login failed. Please try again.'
       const responseData = err.response?.data
       const detail = responseData?.detail

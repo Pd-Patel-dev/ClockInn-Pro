@@ -109,9 +109,12 @@ async def close_cash_drawer_session(
     end_cash_cents: int,
     source: CashCountSource = CashCountSource.KIOSK,
     collected_cash_cents: Optional[int] = None,
+    drop_amount_cents: Optional[int] = None,
     beverages_cash_cents: Optional[int] = None,
 ) -> CashDrawerSession:
-    """Close a cash drawer session for clock-out."""
+    """Close a cash drawer session for clock-out.
+    Balance (expected) = start_cash + collected_cash - drop_amount. Beverages sold are not included in balance.
+    """
     if end_cash_cents < 0:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -165,9 +168,17 @@ async def close_cash_drawer_session(
         if beverages_cash_cents < 0:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Beverages cash amount cannot be negative",
+                detail="Beverages sold amount cannot be negative",
             )
         session.beverages_cash_cents = beverages_cash_cents
+    
+    if drop_amount_cents is not None:
+        if drop_amount_cents < 0:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Drop amount cannot be negative",
+            )
+        session.drop_amount_cents = drop_amount_cents
     
     # Calculate delta
     session.delta_cents = end_cash_cents - session.start_cash_cents

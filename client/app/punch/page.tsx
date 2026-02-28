@@ -16,6 +16,9 @@ export default function MyPunchPage() {
   const [loadingStatus, setLoadingStatus] = useState(true)
   const [cashDrawerRequired, setCashDrawerRequired] = useState(false)
   const [cashAmount, setCashAmount] = useState('')
+  const [collectedCash, setCollectedCash] = useState('')
+  const [dropAmount, setDropAmount] = useState('')
+  const [beveragesCash, setBeveragesCash] = useState('')
   const [cashError, setCashError] = useState<string | null>(null)
   const [showCashDialog, setShowCashDialog] = useState(false)
   const [pendingPunch, setPendingPunch] = useState(false)
@@ -130,6 +133,9 @@ export default function MyPunchPage() {
       setPendingPunch(true)
       setShowCashDialog(true)
       setCashAmount('')
+      setCollectedCash('')
+      setDropAmount('')
+      setBeveragesCash('')
       setCashError(null)
       return
     }
@@ -178,11 +184,20 @@ export default function MyPunchPage() {
         }
       }
 
-      const cashStartCents = cashDrawerRequired && currentStatus === 'out' 
-        ? Math.round(parseFloat(cashAmount) * 100) 
+      const cashStartCents = cashDrawerRequired && currentStatus === 'out'
+        ? Math.round(parseFloat(cashAmount) * 100)
         : undefined
       const cashEndCents = cashDrawerRequired && currentStatus === 'in'
         ? Math.round(parseFloat(cashAmount) * 100)
+        : undefined
+      const collectedCashCents = cashDrawerRequired && currentStatus === 'in'
+        ? Math.round(parseFloat(collectedCash || '0') * 100)
+        : undefined
+      const dropAmountCents = cashDrawerRequired && currentStatus === 'in'
+        ? Math.round(parseFloat(dropAmount || '0') * 100)
+        : undefined
+      const beveragesCashCents = cashDrawerRequired && currentStatus === 'in'
+        ? Math.round(parseFloat(beveragesCash || '0') * 100)
         : undefined
 
       console.log('Punching with location:', currentLocation)
@@ -191,6 +206,9 @@ export default function MyPunchPage() {
         pin: pinDisplay,
         cash_start_cents: cashStartCents,
         cash_end_cents: cashEndCents,
+        collected_cash_cents: collectedCashCents,
+        drop_amount_cents: dropAmountCents,
+        beverages_cash_cents: beveragesCashCents,
         latitude: currentLocation?.latitude,
         longitude: currentLocation?.longitude,
       })
@@ -205,6 +223,9 @@ export default function MyPunchPage() {
       }
       clearPin()
       setCashAmount('')
+      setCollectedCash('')
+      setDropAmount('')
+      setBeveragesCash('')
       setCashError(null)
       setPendingPunch(false)
       setTimeout(() => setMessage(null), 5000)
@@ -230,6 +251,9 @@ export default function MyPunchPage() {
         setPendingPunch(true)
         setShowCashDialog(true)
         setCashAmount('')
+        setCollectedCash('')
+        setDropAmount('')
+        setBeveragesCash('')
         setCashError(null)
         setMessage(null) // Clear error message since we're showing dialog
       } else {
@@ -244,11 +268,28 @@ export default function MyPunchPage() {
   }
 
   const handleCashDialogSubmit = () => {
-    // Validate cash amount
     const cashValue = parseFloat(cashAmount)
     if (isNaN(cashValue) || cashValue < 0) {
       setCashError('Please enter a valid cash amount')
       return
+    }
+    // On clock-out, also validate collected, drop, beverages
+    if (currentStatus === 'in') {
+      const collectedValue = parseFloat(collectedCash)
+      const dropValue = parseFloat(dropAmount)
+      const beveragesValue = parseFloat(beveragesCash)
+      if (isNaN(collectedValue) || collectedValue < 0) {
+        setCashError('Please enter a valid collected cash amount')
+        return
+      }
+      if (isNaN(dropValue) || dropValue < 0) {
+        setCashError('Please enter a valid drop amount')
+        return
+      }
+      if (isNaN(beveragesValue) || beveragesValue < 0) {
+        setCashError('Please enter a valid beverages sold amount')
+        return
+      }
     }
     setCashError(null)
     executePunch()
@@ -258,6 +299,9 @@ export default function MyPunchPage() {
     setShowCashDialog(false)
     setPendingPunch(false)
     setCashAmount('')
+    setCollectedCash('')
+    setDropAmount('')
+    setBeveragesCash('')
     setCashError(null)
     clearPin()
   }
@@ -445,57 +489,148 @@ export default function MyPunchPage() {
 
                 {/* Content */}
                 <div className="p-8">
-                  <div className="mb-8">
-                    <label className="block text-sm font-semibold text-gray-700 mb-4 text-center">
-                      Cash Amount <span className="text-red-500">*</span>
-                    </label>
-                    <div className="relative group">
-                      <div className="absolute inset-y-0 left-0 pl-5 flex items-center pointer-events-none">
-                        <span className="text-gray-400 text-2xl font-medium">$</span>
+                  {currentStatus === 'out' ? (
+                    /* Clock-in: only starting cash */
+                    <div className="mb-8">
+                      <label className="block text-sm font-semibold text-gray-700 mb-4 text-center">
+                        Cash Amount <span className="text-red-500">*</span>
+                      </label>
+                      <div className="relative group">
+                        <div className="absolute inset-y-0 left-0 pl-5 flex items-center pointer-events-none">
+                          <span className="text-gray-400 text-2xl font-medium">$</span>
+                        </div>
+                        <input
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          value={cashAmount}
+                          onChange={(e) => {
+                            setCashAmount(e.target.value)
+                            setCashError(null)
+                          }}
+                          onKeyPress={(e) => {
+                            if (e.key === 'Enter') {
+                              handleCashDialogSubmit()
+                            }
+                          }}
+                          autoFocus
+                          className={`block w-full pl-12 pr-5 py-5 border-2 rounded-xl text-center text-3xl font-bold tracking-wide focus:outline-none focus:ring-4 focus:ring-blue-100 transition-all ${
+                            cashError
+                              ? 'border-red-300 bg-red-50 focus:border-red-400 focus:ring-red-100'
+                              : 'border-gray-200 bg-gray-50 focus:border-blue-500 focus:bg-white'
+                          }`}
+                          placeholder="0.00"
+                          disabled={loading}
+                        />
                       </div>
-                      <input
-                        type="number"
-                        step="0.01"
-                        min="0"
-                        value={cashAmount}
-                        onChange={(e) => {
-                          setCashAmount(e.target.value)
-                          setCashError(null)
-                        }}
-                        onKeyPress={(e) => {
-                          if (e.key === 'Enter') {
-                            handleCashDialogSubmit()
-                          }
-                        }}
-                        autoFocus
-                        className={`block w-full pl-12 pr-5 py-5 border-2 rounded-xl text-center text-3xl font-bold tracking-wide focus:outline-none focus:ring-4 focus:ring-blue-100 transition-all ${
-                          cashError 
-                            ? 'border-red-300 bg-red-50 focus:border-red-400 focus:ring-red-100' 
-                            : 'border-gray-200 bg-gray-50 focus:border-blue-500 focus:bg-white'
-                        }`}
-                        placeholder="0.00"
-                        disabled={loading}
-                      />
+                      {cashError && (
+                        <div className="mt-3 flex items-center justify-center gap-2 text-sm text-red-600">
+                          <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                            <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                          </svg>
+                          <span>{cashError}</span>
+                        </div>
+                      )}
+                      <p className="mt-3 text-xs text-gray-500 text-center">
+                        Enter the amount in dollars (e.g., 100.50)
+                      </p>
                     </div>
-                    {cashError && (
-                      <div className="mt-3 flex items-center justify-center gap-2 text-sm text-red-600">
-                        <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                          <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
-                        </svg>
-                        <span>{cashError}</span>
+                  ) : (
+                    /* Clock-out: collected, drop, beverages, cash in drawer */
+                    <div className="space-y-4 mb-8">
+                      <div>
+                        <label className="block text-sm font-semibold text-gray-700 mb-2">Collected Cash <span className="text-red-500">*</span></label>
+                        <div className="relative">
+                          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">$</span>
+                          <input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            value={collectedCash}
+                            onChange={(e) => { setCollectedCash(e.target.value); setCashError(null) }}
+                            className={`block w-full pl-8 pr-4 py-3 border rounded-lg ${cashError ? 'border-red-300 bg-red-50' : 'border-gray-300'}`}
+                            placeholder="0.00"
+                            disabled={loading}
+                          />
+                        </div>
                       </div>
-                    )}
-                    <p className="mt-3 text-xs text-gray-500 text-center">
-                      Enter the amount in dollars (e.g., 100.50)
-                    </p>
-                  </div>
+                      <div>
+                        <label className="block text-sm font-semibold text-gray-700 mb-2">Drop Amount <span className="text-red-500">*</span></label>
+                        <div className="relative">
+                          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">$</span>
+                          <input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            value={dropAmount}
+                            onChange={(e) => { setDropAmount(e.target.value); setCashError(null) }}
+                            className={`block w-full pl-8 pr-4 py-3 border rounded-lg ${cashError ? 'border-red-300 bg-red-50' : 'border-gray-300'}`}
+                            placeholder="0.00"
+                            disabled={loading}
+                          />
+                        </div>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-semibold text-gray-700 mb-2">Beverages Sold (Total) <span className="text-red-500">*</span></label>
+                        <div className="relative">
+                          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">$</span>
+                          <input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            value={beveragesCash}
+                            onChange={(e) => { setBeveragesCash(e.target.value); setCashError(null) }}
+                            className={`block w-full pl-8 pr-4 py-3 border rounded-lg ${cashError ? 'border-red-300 bg-red-50' : 'border-gray-300'}`}
+                            placeholder="0.00"
+                            disabled={loading}
+                          />
+                        </div>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-semibold text-gray-700 mb-2">Cash in Drawer <span className="text-red-500">*</span></label>
+                        <div className="relative">
+                          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">$</span>
+                          <input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            value={cashAmount}
+                            onChange={(e) => {
+                              setCashAmount(e.target.value)
+                              setCashError(null)
+                            }}
+                            onKeyPress={(e) => { if (e.key === 'Enter') handleCashDialogSubmit() }}
+                            className={`block w-full pl-12 pr-5 py-5 border-2 rounded-xl text-center text-2xl font-bold ${cashError ? 'border-red-300 bg-red-50' : 'border-gray-200 bg-gray-50'}`}
+                            placeholder="0.00"
+                            disabled={loading}
+                          />
+                        </div>
+                      </div>
+                      {cashError && (
+                        <div className="flex items-center justify-center gap-2 text-sm text-red-600">
+                          <span>{cashError}</span>
+                        </div>
+                      )}
+                    </div>
+                  )}
 
                   {/* Action Buttons */}
                   <div className="flex gap-3">
                     <button
                       type="button"
                       onClick={handleCashDialogSubmit}
-                      disabled={loading || !cashAmount || parseFloat(cashAmount) < 0}
+                      disabled={
+                        loading ||
+                        !cashAmount ||
+                        parseFloat(cashAmount) < 0 ||
+                        (currentStatus === 'in' &&
+                          (!collectedCash ||
+                            parseFloat(collectedCash) < 0 ||
+                            !dropAmount ||
+                            parseFloat(dropAmount) < 0 ||
+                            !beveragesCash ||
+                            parseFloat(beveragesCash) < 0))
+                      }
                       className="flex-1 px-6 py-4 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-xl hover:from-blue-700 hover:to-indigo-700 font-semibold text-base disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 shadow-lg hover:shadow-xl transition-all transform hover:scale-[1.02] active:scale-[0.98]"
                     >
                       {loading ? (

@@ -189,6 +189,7 @@ class KioskClockRequest(BaseModel):
     cash_start_cents: Optional[int] = Field(None, ge=0, description="Starting cash in cents (required on clock-in if cash drawer enabled)")
     cash_end_cents: Optional[int] = Field(None, ge=0, description="Ending cash in cents (required on clock-out if cash drawer session exists)")
     collected_cash_cents: Optional[int] = Field(None, ge=0, description="Total cash collected from customers (for punch-out)")
+    drop_amount_cents: Optional[int] = Field(None, ge=0, description="Cash dropped from drawer during shift (for punch-out)")
     beverages_cash_cents: Optional[int] = Field(None, ge=0, description="Cash from beverage sales (for punch-out)")
     latitude: Optional[str] = Field(None, description="GPS latitude coordinate")
     longitude: Optional[str] = Field(None, description="GPS longitude coordinate")
@@ -280,6 +281,7 @@ async def kiosk_clock(
         cash_start_cents=data.cash_start_cents,
         cash_end_cents=data.cash_end_cents,
         collected_cash_cents=data.collected_cash_cents,
+        drop_amount_cents=data.drop_amount_cents,
         beverages_cash_cents=data.beverages_cash_cents,
         ip_address=client_ip,
         user_agent=user_agent,

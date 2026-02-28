@@ -17,6 +17,7 @@ from app.schemas.time_entry import (
     TimeEntryResponse,
     TimeEntryListResponse,
     TimeEntryPunchMe,
+    TimeEntryPunchMeSimple,
     TimeEntryPunchByPin,
     TimeEntryManualCreate,
 )
@@ -164,6 +165,7 @@ async def punch_endpoint(
         cash_start_cents=data.cash_start_cents,
         cash_end_cents=data.cash_end_cents,
         collected_cash_cents=data.collected_cash_cents,
+        drop_amount_cents=data.drop_amount_cents,
         beverages_cash_cents=data.beverages_cash_cents,
         ip_address=client_ip,
         user_agent=user_agent,
@@ -308,6 +310,7 @@ async def punch_me_endpoint(
         cash_start_cents=data.cash_start_cents,
         cash_end_cents=data.cash_end_cents,
         collected_cash_cents=data.collected_cash_cents,
+        drop_amount_cents=data.drop_amount_cents,
         beverages_cash_cents=data.beverages_cash_cents,
         ip_address=client_ip,
         user_agent=user_agent,
@@ -325,6 +328,82 @@ async def punch_me_endpoint(
         db, entry, current_user.company_id
     )
     
+    return TimeEntryResponse(
+        id=entry.id,
+        employee_id=entry.employee_id,
+        employee_name=current_user.name,
+        clock_in_at=entry.clock_in_at,
+        clock_out_at=entry.clock_out_at,
+        break_minutes=entry.break_minutes,
+        source=entry.source,
+        status=entry.status,
+        note=entry.note,
+        created_at=entry.created_at,
+        updated_at=entry.updated_at,
+        rounded_hours=rounded_hours,
+        rounded_minutes=rounded_minutes,
+        clock_in_at_local=clock_in_local,
+        clock_out_at_local=clock_out_local,
+        company_timezone=timezone_str,
+        ip_address=entry.ip_address,
+        user_agent=entry.user_agent,
+        clock_out_ip_address=entry.clock_out_ip_address,
+        clock_out_user_agent=entry.clock_out_user_agent,
+        clock_in_latitude=entry.clock_in_latitude,
+        clock_in_longitude=entry.clock_in_longitude,
+        clock_out_latitude=entry.clock_out_latitude,
+        clock_out_longitude=entry.clock_out_longitude,
+    )
+
+
+@router.post("/punch-me-simple", response_model=TimeEntryResponse, status_code=status.HTTP_201_CREATED)
+@handle_endpoint_errors(operation_name="punch_me_simple")
+async def punch_me_simple_endpoint(
+    request: Request,
+    data: TimeEntryPunchMeSimple,
+    current_user: User = Depends(get_current_verified_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Punch in/out for authenticated user without PIN (one-tap)."""
+    from app.models.time_entry import TimeEntrySource
+
+    client_ip = request.headers.get("X-Forwarded-For", request.client.host if request.client else None)
+    if client_ip and "," in client_ip:
+        client_ip = client_ip.split(",")[0].strip()
+    user_agent = request.headers.get("User-Agent")
+
+    if current_user.role not in [UserRole.MAINTENANCE, UserRole.FRONTDESK, UserRole.HOUSEKEEPING]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only employees can punch in/out",
+        )
+
+    entry = await punch(
+        db,
+        current_user.company_id,
+        current_user.id,
+        None,
+        "",  # No PIN
+        TimeEntrySource.WEB,
+        skip_pin_verification=True,
+        cash_start_cents=data.cash_start_cents,
+        cash_end_cents=data.cash_end_cents,
+        collected_cash_cents=data.collected_cash_cents,
+        drop_amount_cents=data.drop_amount_cents,
+        beverages_cash_cents=data.beverages_cash_cents,
+        ip_address=client_ip,
+        user_agent=user_agent,
+        latitude=data.latitude,
+        longitude=data.longitude,
+    )
+
+    rounded_hours, rounded_minutes = await get_rounded_hours_for_entry(
+        db, entry, current_user.company_id
+    )
+    clock_in_local, clock_out_local, timezone_str = await get_timezone_formatted_times(
+        db, entry, current_user.company_id
+    )
+
     return TimeEntryResponse(
         id=entry.id,
         employee_id=entry.employee_id,

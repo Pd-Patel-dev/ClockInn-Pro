@@ -42,7 +42,9 @@ class CashDrawerSessionResponse(BaseModel):
     end_counted_at: Optional[datetime]
     end_count_source: Optional[str]
     collected_cash_cents: Optional[int] = None
+    drop_amount_cents: Optional[int] = None
     beverages_cash_cents: Optional[int] = None
+    expected_balance_cents: Optional[int] = None  # start + collected - drop (beverages not included)
     delta_cents: Optional[int]
     status: str
     reviewed_by: Optional[UUID]

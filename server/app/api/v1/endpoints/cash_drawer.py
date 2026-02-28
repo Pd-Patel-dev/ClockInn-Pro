@@ -98,7 +98,13 @@ async def list_cash_drawer_sessions(
             end_counted_at=session.end_counted_at,
             end_count_source=session.end_count_source.value if session.end_count_source else None,
             collected_cash_cents=session.collected_cash_cents,
+            drop_amount_cents=session.drop_amount_cents,
             beverages_cash_cents=session.beverages_cash_cents,
+            expected_balance_cents=(
+                session.start_cash_cents
+                + (session.collected_cash_cents or 0)
+                - (session.drop_amount_cents or 0)
+            ) if session.end_cash_cents is not None else None,
             delta_cents=session.delta_cents,
             status=session.status.value,
             reviewed_by=session.reviewed_by,
@@ -298,6 +304,14 @@ async def get_cash_drawer_session_endpoint(
         end_cash_cents=session.end_cash_cents,
         end_counted_at=session.end_counted_at,
         end_count_source=session.end_count_source.value if session.end_count_source else None,
+        collected_cash_cents=session.collected_cash_cents,
+        drop_amount_cents=session.drop_amount_cents,
+        beverages_cash_cents=session.beverages_cash_cents,
+        expected_balance_cents=(
+            session.start_cash_cents
+            + (session.collected_cash_cents or 0)
+            - (session.drop_amount_cents or 0)
+        ) if session.end_cash_cents is not None else None,
         delta_cents=session.delta_cents,
         status=session.status.value,
         reviewed_by=session.reviewed_by,
@@ -353,7 +367,13 @@ async def edit_cash_drawer_session_endpoint(
         end_counted_at=session.end_counted_at,
         end_count_source=session.end_count_source.value if session.end_count_source else None,
         collected_cash_cents=session.collected_cash_cents,
+        drop_amount_cents=session.drop_amount_cents,
         beverages_cash_cents=session.beverages_cash_cents,
+        expected_balance_cents=(
+            session.start_cash_cents
+            + (session.collected_cash_cents or 0)
+            - (session.drop_amount_cents or 0)
+        ) if session.end_cash_cents is not None else None,
         delta_cents=session.delta_cents,
         status=session.status.value,
         reviewed_by=session.reviewed_by,
@@ -414,7 +434,13 @@ async def review_cash_drawer_session_endpoint(
         end_counted_at=session.end_counted_at,
         end_count_source=session.end_count_source.value if session.end_count_source else None,
         collected_cash_cents=session.collected_cash_cents,
+        drop_amount_cents=session.drop_amount_cents,
         beverages_cash_cents=session.beverages_cash_cents,
+        expected_balance_cents=(
+            session.start_cash_cents
+            + (session.collected_cash_cents or 0)
+            - (session.drop_amount_cents or 0)
+        ) if session.end_cash_cents is not None else None,
         delta_cents=session.delta_cents,
         status=session.status.value,
         reviewed_by=session.reviewed_by,

@@ -32,6 +32,7 @@ export default function KioskSlugPage() {
   const [showCashDialog, setShowCashDialog] = useState(false)
   const [cashAmount, setCashAmount] = useState('')
   const [collectedCash, setCollectedCash] = useState('')
+  const [dropAmount, setDropAmount] = useState('')
   const [beveragesCash, setBeveragesCash] = useState('')
   const [cashError, setCashError] = useState<string | null>(null)
   const [pendingPunch, setPendingPunch] = useState(false)
@@ -134,6 +135,7 @@ export default function KioskSlugPage() {
     cashStartCents?: number,
     cashEndCents?: number,
     collectedCashCents?: number,
+    dropAmountCents?: number,
     beveragesCashCents?: number
   ) => {
     if (!slug) {
@@ -165,6 +167,7 @@ export default function KioskSlugPage() {
         cash_start_cents: cashStartCents,
         cash_end_cents: cashEndCents,
         collected_cash_cents: collectedCashCents,
+        drop_amount_cents: dropAmountCents,
         beverages_cash_cents: beveragesCashCents,
         latitude: currentLocation?.latitude,
         longitude: currentLocation?.longitude,
@@ -179,6 +182,7 @@ export default function KioskSlugPage() {
       setPinDisplay('')
       setCashAmount('')
       setCollectedCash('')
+      setDropAmount('')
       setBeveragesCash('')
       setCashError(null)
       setPendingPunch(false)
@@ -224,6 +228,7 @@ export default function KioskSlugPage() {
           setShowCashDialog(true)
           setCashAmount('')
           setCollectedCash('')
+          setDropAmount('')
           setBeveragesCash('')
           setCashError(null)
           setMessage(null) // Clear error message since we're showing dialog
@@ -301,6 +306,7 @@ export default function KioskSlugPage() {
           setShowCashDialog(true)
           setCashAmount('')
           setCollectedCash('')
+          setDropAmount('')
           setBeveragesCash('')
           setCashError(null)
           // Keep PIN visible but don't clear it yet
@@ -316,6 +322,7 @@ export default function KioskSlugPage() {
           setShowCashDialog(true)
           setCashAmount('')
           setCollectedCash('')
+          setDropAmount('')
           setBeveragesCash('')
           setCashError(null)
           // Keep PIN visible but don't clear it yet
@@ -366,6 +373,7 @@ export default function KioskSlugPage() {
     // For clock-out, validate and collect additional cash fields
     if (!isClockIn) {
       const collectedValue = parseFloat(collectedCash)
+      const dropValue = parseFloat(dropAmount)
       const beveragesValue = parseFloat(beveragesCash)
       
       if (isNaN(collectedValue) || collectedValue < 0) {
@@ -373,12 +381,18 @@ export default function KioskSlugPage() {
         return
       }
       
+      if (isNaN(dropValue) || dropValue < 0) {
+        setCashError('Please enter a valid drop amount')
+        return
+      }
+      
       if (isNaN(beveragesValue) || beveragesValue < 0) {
-        setCashError('Please enter a valid beverages cash amount')
+        setCashError('Please enter a valid beverages sold amount')
         return
       }
       
       collectedCents = Math.round(collectedValue * 100)
+      const dropCents = Math.round(dropValue * 100)
       beveragesCents = Math.round(beveragesValue * 100)
     }
     
@@ -393,12 +407,13 @@ export default function KioskSlugPage() {
     // Try with start cash first (assuming clock-in)
     // If backend says we need end cash, it will return an error and we'll adjust
     if (isClockIn) {
-      await executePunch(pinToUse, cashCents, undefined, undefined, undefined)
+      await executePunch(pinToUse, cashCents, undefined, undefined, undefined, undefined)
     } else {
-      // For clock-out, we need end cash, collected cash, and beverages cash
-      await executePunch(pinToUse, undefined, cashCents, collectedCents, beveragesCents)
+      // For clock-out, we need end cash, collected cash, drop amount, and beverages cash
+      const dropCents = Math.round(parseFloat(dropAmount || '0') * 100)
+      await executePunch(pinToUse, undefined, cashCents, collectedCents, dropCents, beveragesCents)
     }
-  }, [cashAmount, collectedCash, beveragesCash, pinDisplay, isClockIn, executePunch])
+  }, [cashAmount, collectedCash, dropAmount, beveragesCash, pinDisplay, isClockIn, executePunch])
 
   const handleCashDialogCancel = useCallback(() => {
     setShowCashDialog(false)
@@ -795,10 +810,42 @@ export default function KioskSlugPage() {
                   <div>
                     <label className="block text-sm font-semibold text-gray-700 mb-3">
                       <div className="flex items-center gap-2">
+                        <span>Drop Amount</span>
+                        <span className="text-red-500">*</span>
+                      </div>
+                    </label>
+                    <div className="relative group">
+                      <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                        <span className="text-gray-400 text-xl font-medium">$</span>
+                      </div>
+                      <input
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        value={dropAmount}
+                        onChange={(e) => {
+                          setDropAmount(e.target.value)
+                          setCashError(null)
+                        }}
+                        className={`block w-full pl-10 pr-4 py-4 border-2 rounded-xl text-lg font-semibold focus:outline-none focus:ring-4 focus:ring-teal-100 transition-all ${
+                          cashError 
+                            ? 'border-red-300 bg-red-50 focus:border-red-400 focus:ring-red-100' 
+                            : 'border-gray-200 bg-gray-50 focus:border-teal-500 focus:bg-white'
+                        }`}
+                        placeholder="0.00"
+                        disabled={loading}
+                      />
+                    </div>
+                    <p className="mt-2 text-xs text-gray-500">Cash removed/dropped from drawer during shift</p>
+                  </div>
+                  
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-3">
+                      <div className="flex items-center gap-2">
                         <svg className="w-4 h-4 text-teal-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                         </svg>
-                        <span>Beverages Sold in Cash</span>
+                        <span>Beverages Sold (Total)</span>
                         <span className="text-red-500">*</span>
                       </div>
                     </label>
@@ -824,7 +871,7 @@ export default function KioskSlugPage() {
                         disabled={loading}
                       />
                     </div>
-                    <p className="mt-2 text-xs text-gray-500">Cash from beverage sales</p>
+                    <p className="mt-2 text-xs text-gray-500">Total beverage sales during shift (all payment types)</p>
                   </div>
                   
                   <div>
@@ -887,7 +934,7 @@ export default function KioskSlugPage() {
                     loading || 
                     !cashAmount || 
                     parseFloat(cashAmount) < 0 ||
-                    (!isClockIn && (!collectedCash || parseFloat(collectedCash) < 0 || !beveragesCash || parseFloat(beveragesCash) < 0))
+                    (!isClockIn && (!collectedCash || parseFloat(collectedCash) < 0 || !dropAmount || parseFloat(dropAmount) < 0 || !beveragesCash || parseFloat(beveragesCash) < 0))
                   }
                   className="flex-1 px-6 py-4 bg-gradient-to-r from-teal-600 to-emerald-600 text-white rounded-xl hover:from-teal-700 hover:to-emerald-700 font-semibold text-base disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 shadow-lg hover:shadow-xl transition-all transform hover:scale-[1.02] active:scale-[0.98]"
                 >

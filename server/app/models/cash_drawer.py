@@ -38,7 +38,8 @@ class CashDrawerSession(Base):
     
     # Cash collection details (for punch-out)
     collected_cash_cents = Column(BigInteger, nullable=True)  # Total cash collected from customers
-    beverages_cash_cents = Column(BigInteger, nullable=True)  # Cash from beverage sales
+    drop_amount_cents = Column(BigInteger, nullable=True)  # Cash dropped/removed from drawer during shift
+    beverages_cash_cents = Column(BigInteger, nullable=True)  # Total beverage sales (all payment types)
     
     # Computed delta (end - start)
     delta_cents = Column(BigInteger, nullable=True)  # Computed in service layer

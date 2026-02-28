@@ -22,7 +22,9 @@ interface CashDrawerSession {
   end_cash_cents: number | null
   end_counted_at: string | null
   collected_cash_cents: number | null
+  drop_amount_cents: number | null
   beverages_cash_cents: number | null
+  expected_balance_cents: number | null
   delta_cents: number | null
   status: 'OPEN' | 'CLOSED' | 'REVIEW_NEEDED'
   reviewed_by: string | null
@@ -94,7 +96,7 @@ export default function AdminCashDrawerPage() {
       const response = await api.get(`/admin/cash-drawers?${params.toString()}`)
       setSessions(response.data || [])
     } catch (error: any) {
-      toast.error(error.response?.data?.detail || 'Failed to fetch cash drawer sessions')
+      toast.error(error.response?.data?.detail || 'Failed to fetch shift sessions')
     } finally {
       setLoadingSessions(false)
     }
@@ -138,7 +140,7 @@ export default function AdminCashDrawerPage() {
       setSelectedSession(null)
       fetchSessions()
     } catch (error: any) {
-      toast.error(error.response?.data?.detail || 'Failed to delete cash drawer session')
+      toast.error(error.response?.data?.detail || 'Failed to delete shift session')
     } finally {
       setDeleting(false)
     }
@@ -164,7 +166,7 @@ export default function AdminCashDrawerPage() {
       setSelectedSession(null)
       fetchSessions()
     } catch (error: any) {
-      toast.error(error.response?.data?.detail || 'Failed to update cash drawer session')
+      toast.error(error.response?.data?.detail || 'Failed to update shift session')
     }
   }
 
@@ -182,7 +184,7 @@ export default function AdminCashDrawerPage() {
       setReviewNote('')
       fetchSessions()
     } catch (error: any) {
-      toast.error(error.response?.data?.detail || 'Failed to review cash drawer session')
+      toast.error(error.response?.data?.detail || 'Failed to review shift session')
     }
   }
 
@@ -222,7 +224,7 @@ export default function AdminCashDrawerPage() {
       link.remove()
       toast.success(`Cash drawer report exported as ${format.toUpperCase()}`)
     } catch (error: any) {
-      toast.error(error.response?.data?.detail || 'Failed to export cash drawer report')
+      toast.error(error.response?.data?.detail || 'Failed to export shift report')
     } finally {
       setExporting(false)
     }
@@ -230,6 +232,12 @@ export default function AdminCashDrawerPage() {
 
   const formatCurrency = (cents: number | null) => {
     if (cents === null) return 'N/A'
+    return `$${(cents / 100).toFixed(2)}`
+  }
+
+  /** Format cents for optional fields (e.g. drop). Null/legacy shown as $0.00. */
+  const formatCurrencyOptional = (cents: number | null) => {
+    if (cents === null || cents === undefined) return '$0.00'
     return `$${(cents / 100).toFixed(2)}`
   }
 
@@ -271,8 +279,8 @@ export default function AdminCashDrawerPage() {
       <div className="px-4 py-8 sm:px-6 lg:px-8">
         <div className="max-w-6xl mx-auto">
           <div className="mb-6">
-            <h1 className="text-2xl font-semibold text-gray-900 mb-1">Cash Drawer Management</h1>
-            <p className="text-sm text-gray-600">View and manage cash drawer sessions</p>
+            <h1 className="text-2xl font-semibold text-gray-900 mb-1">Shift Log</h1>
+            <p className="text-sm text-gray-600">View and manage shift sessions</p>
           </div>
 
           {/* Filters */}
@@ -338,6 +346,10 @@ export default function AdminCashDrawerPage() {
                   <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Shift</th>
                   <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase">Start</th>
                   <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase">End</th>
+                  <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase">Cash collected</th>
+                  <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase">Drop</th>
+                  <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase" title="Total beverage sales for the shift (all payment types)">Beverages sold</th>
+                  <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase" title="Start + Collected - Drop (beverages not included)">Balance</th>
                   <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase">+/-</th>
                   <th className="px-3 py-2 text-center text-xs font-medium text-gray-500 uppercase">Status</th>
                   <th className="px-3 py-2 text-center text-xs font-medium text-gray-500 uppercase">Actions</th>
@@ -346,14 +358,14 @@ export default function AdminCashDrawerPage() {
               <tbody className="divide-y divide-gray-100">
                 {loadingSessions ? (
                   <tr>
-                    <td colSpan={8} className="px-3 py-8 text-center">
+                    <td colSpan={10} className="px-3 py-8 text-center">
                       <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600 mx-auto"></div>
                     </td>
                   </tr>
                 ) : sessions.length === 0 ? (
                   <tr>
-                    <td colSpan={8} className="px-3 py-8 text-center text-gray-500 text-sm">
-                      No cash drawer sessions found
+                    <td colSpan={12} className="px-3 py-8 text-center text-gray-500 text-sm">
+                      No shift sessions found
                     </td>
                   </tr>
                 ) : (
@@ -382,6 +394,18 @@ export default function AdminCashDrawerPage() {
                       </td>
                       <td className="px-3 py-2 text-sm text-gray-900 text-right">
                         {formatCurrency(session.end_cash_cents)}
+                      </td>
+                      <td className="px-3 py-2 text-sm text-gray-900 text-right">
+                        {formatCurrency(session.collected_cash_cents)}
+                      </td>
+                      <td className="px-3 py-2 text-sm text-gray-900 text-right">
+                        {formatCurrencyOptional(session.drop_amount_cents)}
+                      </td>
+                      <td className="px-3 py-2 text-sm text-gray-900 text-right">
+                        {formatCurrency(session.beverages_cash_cents)}
+                      </td>
+                      <td className="px-3 py-2 text-sm text-gray-900 text-right font-medium" title="Start + Collected - Drop">
+                        {formatCurrency(session.expected_balance_cents)}
                       </td>
                       <td className={`px-3 py-2 text-sm font-medium text-right ${getDeltaColor(session.delta_cents)}`}>
                         {session.delta_cents !== null ? (
@@ -438,7 +462,7 @@ export default function AdminCashDrawerPage() {
             <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center p-4">
               <div className="relative bg-white rounded-xl shadow-2xl w-full max-w-md m-4">
                 <div className="flex justify-between items-center px-8 py-6 border-b border-gray-200">
-                  <h3 className="text-xl font-bold text-gray-900">Edit Cash Drawer Session</h3>
+                  <h3 className="text-xl font-bold text-gray-900">Edit Shift Session</h3>
                   <button
                     onClick={() => {
                       setShowEditDialog(false)
@@ -513,8 +537,8 @@ export default function AdminCashDrawerPage() {
               setSelectedSession(null)
             }}
             onConfirm={onSubmitDelete}
-            title="Delete Cash Drawer Session"
-            message={`Are you sure you want to delete this cash drawer session? This action cannot be undone.`}
+            title="Delete Shift Session"
+            message={`Are you sure you want to delete this shift session? This action cannot be undone.`}
             confirmText="Delete"
             cancelText="Cancel"
             type="error"
@@ -525,7 +549,7 @@ export default function AdminCashDrawerPage() {
             <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center p-4">
               <div className="relative bg-white rounded-xl shadow-2xl w-full max-w-md m-4">
                 <div className="flex justify-between items-center px-8 py-6 border-b border-gray-200">
-                  <h3 className="text-xl font-bold text-gray-900">Review Cash Drawer Session</h3>
+                  <h3 className="text-xl font-bold text-gray-900">Review Shift Session</h3>
                   <button
                     onClick={() => {
                       setShowReviewDialog(false)

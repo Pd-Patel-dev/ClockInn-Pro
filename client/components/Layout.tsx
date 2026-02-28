@@ -157,50 +157,46 @@ export default function Layout({ children }: { children: React.ReactNode }) {
 
   const employeeLinks = [
     { href: '/dashboard', label: 'Dashboard' },
-    { href: '/punch', label: 'Punch In/Out' },
+    { href: '/punch-in-out', label: 'Punch In/Out' },
     { href: '/my-schedule', label: 'My Schedule' },
     { href: '/logs', label: 'My Logs' },
     { href: '/leave', label: 'Leave' },
   ]
 
-  // Admin navigation organized by type
+  // Admin navigation: primary links first, then grouped dropdowns, then Reports & Settings
   const adminNavGroups = [
     {
       type: 'single',
-      items: [{ href: '/dashboard', label: 'Dashboard' }]
+      items: [
+        { href: '/dashboard', label: 'Dashboard' },
+        { href: '/punch-in-out', label: 'Punch In/Out' },
+      ],
     },
     {
       type: 'dropdown',
-      label: 'Team Management',
+      label: 'Team',
       items: [
-    { href: '/employees', label: 'Employees' },
+        { href: '/employees', label: 'Employees' },
         { href: '/leave-requests', label: 'Leave Requests' },
         { href: '/roles', label: 'Roles & Permissions' },
-      ]
+      ],
     },
     {
       type: 'dropdown',
-      label: 'Time & Scheduling',
+      label: 'Scheduling',
       items: [
-    { href: '/schedules', label: 'Schedules' },
+        { href: '/schedules', label: 'Schedules' },
         { href: '/time-entries', label: 'Time Entries' },
-      ]
+        { href: '/admin/cash', label: 'Shift Log' },
+      ],
     },
     {
-      type: 'dropdown',
-      label: 'Financial',
+      type: 'single',
       items: [
-    { href: '/payroll', label: 'Payroll' },
-        { href: '/admin/cash', label: 'Cash Drawer' },
-      ]
-    },
-    {
-      type: 'single',
-      items: [{ href: '/reports', label: 'Reports' }]
-    },
-    {
-      type: 'single',
-      items: [{ href: '/settings', label: 'Settings' }]
+        { href: '/payroll', label: 'Payroll' },
+        { href: '/reports', label: 'Reports' },
+        { href: '/settings', label: 'Settings' },
+      ],
     },
   ]
 

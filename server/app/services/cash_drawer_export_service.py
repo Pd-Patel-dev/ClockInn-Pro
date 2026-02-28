@@ -86,7 +86,7 @@ async def generate_cash_drawer_pdf(
     # Simple table with fewer columns
     if sessions:
         # Header row - simple text, no Paragraph objects
-        table_data = [["Date", "Employee", "Start", "End", "+/-", "Status"]]
+        table_data = [["Date", "Employee", "Start", "Collected", "Drop", "Balance", "End", "+/-", "Status"]]
         
         total_delta = 0
         total_start = 0
@@ -100,6 +100,12 @@ async def generate_cash_drawer_pdf(
             
             date_str = session.start_counted_at.strftime("%m/%d/%y")
             start_cash = f"${session.start_cash_cents / 100:.0f}"
+            collected_cash = f"${(session.collected_cash_cents or 0) / 100:.0f}"
+            drop_cash = f"${(session.drop_amount_cents or 0) / 100:.0f}"
+            expected_balance = (
+                session.start_cash_cents + (session.collected_cash_cents or 0) - (session.drop_amount_cents or 0)
+            )
+            balance_str = f"${expected_balance / 100:.0f}" if session.end_cash_cents is not None else "-"
             end_cash = f"${session.end_cash_cents / 100:.0f}" if session.end_cash_cents else "-"
             
             delta_val = session.delta_cents or 0
@@ -117,14 +123,14 @@ async def generate_cash_drawer_pdf(
             if session.end_cash_cents:
                 total_end += session.end_cash_cents
             
-            table_data.append([date_str, emp_name, start_cash, end_cash, delta_str, status])
+            table_data.append([date_str, emp_name, start_cash, collected_cash, drop_cash, balance_str, end_cash, delta_str, status])
         
         # Totals row
         total_delta_str = f"+${total_delta / 100:.0f}" if total_delta >= 0 else f"-${abs(total_delta) / 100:.0f}"
-        table_data.append(["TOTAL", f"{len(sessions)} sessions", f"${total_start / 100:.0f}", f"${total_end / 100:.0f}", total_delta_str, ""])
+        table_data.append(["TOTAL", f"{len(sessions)} sessions", f"${total_start / 100:.0f}", "-", "-", "-", f"${total_end / 100:.0f}", total_delta_str, ""])
         
         # Create compact table
-        col_widths = [0.8*inch, 1.5*inch, 0.8*inch, 0.8*inch, 0.7*inch, 0.6*inch]
+        col_widths = [0.7*inch, 1.2*inch, 0.65*inch, 0.65*inch, 0.55*inch, 0.65*inch, 0.65*inch, 0.55*inch, 0.55*inch]
         table = Table(table_data, colWidths=col_widths)
         
         table.setStyle(TableStyle([
@@ -138,8 +144,8 @@ async def generate_cash_drawer_pdf(
             # Data rows
             ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
             ('FONTSIZE', (0, 1), (-1, -1), 8),
-            ('ALIGN', (2, 1), (4, -1), 'RIGHT'),
-            ('ALIGN', (5, 1), (5, -1), 'CENTER'),
+            ('ALIGN', (2, 1), (7, -1), 'RIGHT'),
+            ('ALIGN', (8, 1), (8, -1), 'CENTER'),
             
             # Totals row
             ('BACKGROUND', (0, -1), (-1, -1), header_bg),
@@ -185,7 +191,7 @@ async def generate_cash_drawer_excel(
     ws.title = "Cash Drawer"
     
     # Simple header
-    headers = ["Date", "Employee", "Start", "End", "+/-", "Status"]
+    headers = ["Date", "Employee", "Start", "Collected", "Drop", "Balance", "End", "+/-", "Status"]
     ws.append(headers)
     
     # Style header
@@ -204,11 +210,17 @@ async def generate_cash_drawer_excel(
         emp_name = employee.name if employee else "Unknown"
         
         status = "Open" if session.status.value == "OPEN" else "OK" if session.status.value == "CLOSED" else "Review"
+        expected_balance = (
+            session.start_cash_cents + (session.collected_cash_cents or 0) - (session.drop_amount_cents or 0)
+        ) if session.end_cash_cents is not None else None
         
         ws.append([
             session.start_counted_at.strftime("%m/%d/%y"),
             emp_name,
             session.start_cash_cents / 100,
+            (session.collected_cash_cents or 0) / 100,
+            (session.drop_amount_cents or 0) / 100,
+            expected_balance / 100 if expected_balance is not None else None,
             session.end_cash_cents / 100 if session.end_cash_cents else None,
             session.delta_cents / 100 if session.delta_cents else 0,
             status,
@@ -221,6 +233,9 @@ async def generate_cash_drawer_excel(
     ws.column_dimensions['D'].width = 8
     ws.column_dimensions['E'].width = 8
     ws.column_dimensions['F'].width = 8
+    ws.column_dimensions['G'].width = 8
+    ws.column_dimensions['H'].width = 8
+    ws.column_dimensions['I'].width = 8
     
     buffer = BytesIO()
     wb.save(buffer)

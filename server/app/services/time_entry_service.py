@@ -28,6 +28,7 @@ async def punch(
     cash_start_cents: Optional[int] = None,
     cash_end_cents: Optional[int] = None,
     collected_cash_cents: Optional[int] = None,
+    drop_amount_cents: Optional[int] = None,
     beverages_cash_cents: Optional[int] = None,
     ip_address: Optional[str] = None,
     user_agent: Optional[str] = None,
@@ -155,6 +156,7 @@ async def punch(
                     cash_end_cents,
                     CashCountSource.KIOSK if source == TimeEntrySource.KIOSK else CashCountSource.WEB,
                     collected_cash_cents=collected_cash_cents,
+                    drop_amount_cents=drop_amount_cents,
                     beverages_cash_cents=beverages_cash_cents,
                 )
             
