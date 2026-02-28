@@ -151,24 +151,14 @@ async def login(
             detail="Your account has been deactivated. Please contact your administrator.",
         )
     
-    # Check verification status and update if needed
+    # Check verification status and update if needed (but still allow login so they can verify)
     from app.services.verification_service import check_verification_required
     if check_verification_required(user):
-        # Update database
         user.verification_required = True
         db.add(user)
         await db.flush()
-        
-        # Block login if verification is required
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail={
-                "error": "EMAIL_VERIFICATION_REQUIRED",
-                "message": "Please verify your email to continue.",
-                "email": user.email,
-            }
-        )
-    
+        # Do NOT block login: return tokens so user can open verify-email page and request PIN
+
     # Update last login
     user.last_login_at = datetime.utcnow()
     await db.flush()

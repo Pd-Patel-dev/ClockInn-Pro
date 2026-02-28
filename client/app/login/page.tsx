@@ -55,9 +55,15 @@ function LoginContent() {
       // Start proactive token refresh after login
       startTokenRefreshInterval()
       
-      // Get current user to check role and redirect accordingly
+      // Get current user to check role and verification status
       try {
         const currentUser = await getCurrentUser()
+        // If email not verified, send to verify-email page (user has tokens so that page can load)
+        if (currentUser.verification_required || !currentUser.email_verified) {
+          setLoading(false)
+          window.location.href = `/verify-email?email=${encodeURIComponent(currentUser.email)}`
+          return
+        }
         if (currentUser.role === 'DEVELOPER') {
           router.push('/developer')
         } else {
