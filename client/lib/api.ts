@@ -391,23 +391,23 @@ api.interceptors.response.use(
     if (error.response?.status === 403) {
       const responseData = error.response?.data as any
       const detail = responseData?.detail
-      const detailError = (typeof detail === 'object' && detail !== null && 'error' in detail) 
-        ? detail.error 
+      const detailError = (typeof detail === 'object' && detail !== null && 'error' in detail)
+        ? detail.error
         : null
-      const isVerificationRequired = 
+      const bodyString = responseData ? JSON.stringify(responseData) : ''
+      const isVerificationRequired =
         detailError === 'EMAIL_VERIFICATION_REQUIRED' ||
         detail === 'EMAIL_VERIFICATION_REQUIRED' ||
-        responseData?.error === 'EMAIL_VERIFICATION_REQUIRED'
-      
+        responseData?.error === 'EMAIL_VERIFICATION_REQUIRED' ||
+        bodyString.includes('EMAIL_VERIFICATION_REQUIRED')
+
       if (isVerificationRequired) {
-        // Store verification info in a custom property
+        // Store verification info in a custom property so login/other pages can redirect
         const customError = error as any
         customError.isVerificationRequired = true
-        // Extract email from detail object or fallback to response data
         customError.verificationEmail = (typeof detail === 'object' && detail !== null && 'email' in detail)
           ? detail.email
           : responseData?.email || null
-        // Also store the message for better UX
         customError.verificationMessage = (typeof detail === 'object' && detail !== null && 'message' in detail)
           ? detail.message
           : 'Please verify your email to continue.'

@@ -82,19 +82,25 @@ function LoginContent() {
       
       // Handle email verification required (403) - only redirect in this case
       if (err.response?.status === 403) {
-        const detail = err.response?.data?.detail
+        const responseData = err.response?.data as Record<string, unknown> | undefined
+        const detail = responseData?.detail
+        const detailObj = typeof detail === 'object' && detail !== null ? detail as Record<string, unknown> : null
         const isVerificationRequired =
-          err.isVerificationRequired ||
-          (typeof detail === 'object' && detail?.error === 'EMAIL_VERIFICATION_REQUIRED') ||
+          (err as { isVerificationRequired?: boolean }).isVerificationRequired === true ||
+          detailObj?.error === 'EMAIL_VERIFICATION_REQUIRED' ||
           detail === 'EMAIL_VERIFICATION_REQUIRED' ||
-          err.response?.data?.error === 'EMAIL_VERIFICATION_REQUIRED'
+          responseData?.error === 'EMAIL_VERIFICATION_REQUIRED' ||
+          (typeof responseData === 'string' && responseData.includes('EMAIL_VERIFICATION_REQUIRED')) ||
+          (responseData && JSON.stringify(responseData).includes('EMAIL_VERIFICATION_REQUIRED'))
 
         if (isVerificationRequired) {
           const email =
-            (typeof detail === 'object' && detail?.email)
-              ? detail.email
-              : err.verificationEmail || data.email
-          router.push(`/verify-email?email=${encodeURIComponent(email)}`)
+            (detailObj && typeof detailObj.email === 'string')
+              ? detailObj.email
+              : (err as { verificationEmail?: string }).verificationEmail || data.email
+          setLoading(false)
+          // Use full navigation so verify-email page loads reliably
+          window.location.href = `/verify-email?email=${encodeURIComponent(email || '')}`
           return
         }
       }
