@@ -96,7 +96,7 @@ export default function DashboardPage() {
     {
       title: 'Punch In/Out',
       description: 'Clock in or out for your shift',
-      href: '/punch',
+      href: '/punch-in-out',
       color: 'from-blue-500 to-blue-600',
     },
     {
