@@ -230,8 +230,13 @@ async def update_shift(
         shift.requires_approval = data.requires_approval
     
     await db.commit()
-    await db.refresh(shift)
-    
+    # Refetch with employee loaded so endpoint can access shift.employee without lazy load
+    result = await db.execute(
+        select(Shift).options(selectinload(Shift.employee)).where(
+            and_(Shift.id == shift_id, Shift.company_id == company_id)
+        )
+    )
+    shift = result.scalar_one_or_none()
     return shift, conflicts
 
 
