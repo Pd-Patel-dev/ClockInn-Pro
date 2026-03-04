@@ -197,6 +197,12 @@ export default function ShiftDetailPage() {
             </div>
             {isAdmin && (
               <div className="flex space-x-2">
+                <button
+                  onClick={() => router.push(`/schedules/${shiftId}/edit`)}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                >
+                  Edit
+                </button>
                 {shift.status === 'DRAFT' && (
                   <button
                     onClick={handleApprove}

@@ -84,6 +84,8 @@ async def get_company_info_public_endpoint(
             cash_drawer_variance_threshold_cents=settings.get("cash_drawer_variance_threshold_cents", 2000),
             cash_drawer_allow_edit=settings.get("cash_drawer_allow_edit", True),
             cash_drawer_require_manager_review=settings.get("cash_drawer_require_manager_review", False),
+            schedule_day_start_hour=settings.get("schedule_day_start_hour", 7),
+            schedule_day_end_hour=settings.get("schedule_day_end_hour", 7),
         ),
         admin=admin_info,
     )
@@ -149,6 +151,8 @@ async def get_company_info_endpoint(
             cash_drawer_variance_threshold_cents=settings.get("cash_drawer_variance_threshold_cents", 2000),
             cash_drawer_allow_edit=settings.get("cash_drawer_allow_edit", True),
             cash_drawer_require_manager_review=settings.get("cash_drawer_require_manager_review", False),
+            schedule_day_start_hour=settings.get("schedule_day_start_hour", 7),
+            schedule_day_end_hour=settings.get("schedule_day_end_hour", 7),
         ),
         admin=admin_info,
     )
@@ -220,6 +224,8 @@ async def update_company_name_endpoint(
             cash_drawer_variance_threshold_cents=settings.get("cash_drawer_variance_threshold_cents", 2000),
             cash_drawer_allow_edit=settings.get("cash_drawer_allow_edit", True),
             cash_drawer_require_manager_review=settings.get("cash_drawer_require_manager_review", False),
+            schedule_day_start_hour=settings.get("schedule_day_start_hour", 7),
+            schedule_day_end_hour=settings.get("schedule_day_end_hour", 7),
         ),
         admin=admin_info,
     )
@@ -296,6 +302,8 @@ async def update_company_settings_endpoint(
             cash_drawer_variance_threshold_cents=settings.get("cash_drawer_variance_threshold_cents", 2000),
             cash_drawer_allow_edit=settings.get("cash_drawer_allow_edit", True),
             cash_drawer_require_manager_review=settings.get("cash_drawer_require_manager_review", False),
+            schedule_day_start_hour=settings.get("schedule_day_start_hour", 7),
+            schedule_day_end_hour=settings.get("schedule_day_end_hour", 7),
         ),
         admin=admin_info,
     )

@@ -29,6 +29,8 @@ const companySettingsSchema = z.object({
   }).pipe(z.string()),
   rounding_policy: z.enum(['none', '5', '6', '10', '15', '30']),
   breaks_paid: z.boolean(),
+  schedule_day_start_hour: z.number().int().min(0).max(23),
+  schedule_day_end_hour: z.number().int().min(0).max(23),
 })
 
 const cashDrawerSettingsSchema = z.object({
@@ -63,6 +65,8 @@ interface CompanySettings {
   cash_drawer_variance_threshold_cents?: number
   cash_drawer_allow_edit?: boolean
   cash_drawer_require_manager_review?: boolean
+  schedule_day_start_hour?: number
+  schedule_day_end_hour?: number
 }
 
 interface AdminInfo {
@@ -218,6 +222,8 @@ export default function AdminSettingsPage() {
           overtime_multiplier_default: response.data.settings.overtime_multiplier_default.toString(),
           rounding_policy: response.data.settings.rounding_policy as 'none' | '5' | '6' | '10' | '15' | '30',
           breaks_paid: response.data.settings.breaks_paid ?? false,
+          schedule_day_start_hour: response.data.settings.schedule_day_start_hour ?? 7,
+          schedule_day_end_hour: response.data.settings.schedule_day_end_hour ?? 7,
         })
         
         // Reset cash drawer form
@@ -272,6 +278,8 @@ export default function AdminSettingsPage() {
         overtime_multiplier_default: parseFloat(data.overtime_multiplier_default),
         rounding_policy: data.rounding_policy,
         breaks_paid: data.breaks_paid,
+        schedule_day_start_hour: data.schedule_day_start_hour,
+        schedule_day_end_hour: data.schedule_day_end_hour,
       }
       
       logger.debug('Updating settings', { updateData })
@@ -293,6 +301,8 @@ export default function AdminSettingsPage() {
           overtime_multiplier_default: response.data.settings.overtime_multiplier_default.toString(),
           rounding_policy: response.data.settings.rounding_policy as 'none' | '5' | '6' | '10' | '15' | '30',
           breaks_paid: response.data.settings.breaks_paid ?? false,
+          schedule_day_start_hour: response.data.settings.schedule_day_start_hour ?? 7,
+          schedule_day_end_hour: response.data.settings.schedule_day_end_hour ?? 7,
         }, { keepDefaultValues: false })
       }, 50)
       
@@ -383,6 +393,11 @@ export default function AdminSettingsPage() {
     'Pacific/Honolulu',
     'UTC',
   ]
+
+  const scheduleHourOptions = Array.from({ length: 24 }, (_, i) => ({
+    value: i,
+    label: i === 0 ? '12 AM' : i < 12 ? `${i} AM` : i === 12 ? '12 PM' : `${i - 12} PM`,
+  }))
 
   if (loading) {
     return (
@@ -936,6 +951,58 @@ export default function AdminSettingsPage() {
                 <p className="mt-1 text-xs text-gray-500">
                   When enabled, break time is included in paid hours. When disabled (default), breaks are deducted from total hours worked.
                 </p>
+              </div>
+
+              <div className="border-t border-gray-200 pt-6">
+                <h3 className="text-lg font-semibold text-gray-900 mb-2">Schedule View</h3>
+                <p className="text-sm text-gray-600 mb-4">
+                  Set when the scheduling day starts and ends. The weekly schedule timeline will use these hours to build time blocks. Use the same time for both to show a full 24-hour day (e.g. 7 AM to 7 AM next day).
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700">Schedule day starts at</label>
+                    <Controller
+                      name="schedule_day_start_hour"
+                      control={controlSettings}
+                      render={({ field }) => (
+                        <select
+                          {...field}
+                          value={field.value}
+                          onChange={(e) => field.onChange(parseInt(e.target.value))}
+                          className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm"
+                        >
+                          {scheduleHourOptions.map((opt) => (
+                            <option key={opt.value} value={opt.value}>
+                              {opt.label}
+                            </option>
+                          ))}
+                        </select>
+                      )}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700">Schedule day ends at</label>
+                    <Controller
+                      name="schedule_day_end_hour"
+                      control={controlSettings}
+                      render={({ field }) => (
+                        <select
+                          {...field}
+                          value={field.value}
+                          onChange={(e) => field.onChange(parseInt(e.target.value))}
+                          className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm"
+                        >
+                          {scheduleHourOptions.map((opt) => (
+                            <option key={opt.value} value={opt.value}>
+                              {opt.label}
+                            </option>
+                          ))}
+                        </select>
+                      )}
+                    />
+                    <p className="mt-1 text-xs text-gray-500">Same as start = 24-hour day (e.g. 7 AM–7 AM next day)</p>
+                  </div>
+                </div>
               </div>
 
               <div className="flex justify-end">

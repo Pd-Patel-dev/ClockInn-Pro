@@ -6,9 +6,9 @@ import Layout from '@/components/Layout'
 import api from '@/lib/api'
 import { useToast } from '@/components/Toast'
 import logger from '@/lib/logger'
-import { format, startOfWeek, endOfWeek, addDays, addWeeks, subWeeks, isSameDay, startOfDay, endOfDay, parseISO } from 'date-fns'
-import { getEmployeeColorStyles, getEmployeeColor } from '@/lib/employeeColors'
-import type { CSSProperties } from 'react'
+import { format, startOfWeek, endOfWeek, addDays, addWeeks, subWeeks, parseISO } from 'date-fns'
+import { getEmployeeColor } from '@/lib/employeeColors'
+import { ShiftTimeline } from '@/components/ShiftTimeline'
 
 interface Shift {
   id: string
@@ -38,6 +38,8 @@ export default function SchedulesPage() {
   const [selectedEmployee, setSelectedEmployee] = useState<string>('')
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [authErrorOccurred, setAuthErrorOccurred] = useState(false)
+  const [scheduleDayStartHour, setScheduleDayStartHour] = useState(7)
+  const [scheduleDayEndHour, setScheduleDayEndHour] = useState(7)
   const [formData, setFormData] = useState({
     employee_id: '',
     shift_date: '',
@@ -188,6 +190,25 @@ export default function SchedulesPage() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentWeek, selectedEmployee, weekStartStr, weekEndStr])
+
+  // Fetch company settings for schedule day start/end (once on mount)
+  useEffect(() => {
+    let isMounted = true
+    const fetchCompanySettings = async () => {
+      try {
+        const response = await api.get('/company/info')
+        if (isMounted && response.data?.settings) {
+          const s = response.data.settings
+          setScheduleDayStartHour(s.schedule_day_start_hour ?? 7)
+          setScheduleDayEndHour(s.schedule_day_end_hour ?? 7)
+        }
+      } catch (_) {
+        // Use defaults if fetch fails
+      }
+    }
+    fetchCompanySettings()
+    return () => { isMounted = false }
+  }, [])
 
   const handleCreateShift = async () => {
     // Client-side validation
@@ -386,105 +407,6 @@ export default function SchedulesPage() {
   }
 
   /**
-   * Split an overnight shift into day segments for UI display.
-   * Returns 1 segment for same-day shifts, or 2 segments for overnight shifts.
-   * Each segment includes the original shift ID to keep them linked.
-   */
-  interface ShiftSegment {
-    shift: Shift
-    day: Date
-    displayStart: Date
-    displayEnd: Date
-    isSegment: boolean
-    segmentIndex?: number
-  }
-  
-  const splitShiftForDisplay = (shift: Shift): ShiftSegment[] => {
-    const { startAt, endAt } = normalizeShift(shift)
-    const shiftDate = parseISO(shift.shift_date)
-    
-    // Check if it's overnight (endAt is on a different day)
-    const isOvernight = !isSameDay(startAt, endAt)
-    
-    if (!isOvernight) {
-      // Same-day shift: return single segment
-      return [{
-        shift,
-        day: shiftDate,
-        displayStart: startAt,
-        displayEnd: endAt,
-        isSegment: false,
-      }]
-    }
-    
-    // Overnight shift: split into two segments
-    const endOfStartDay = endOfDay(shiftDate)
-    const startOfEndDay = startOfDay(addDays(shiftDate, 1))
-    const endDate = parseISO(format(endAt, 'yyyy-MM-dd'))
-    
-    return [
-      {
-        shift,
-        day: shiftDate,
-        displayStart: startAt,
-        displayEnd: endOfStartDay,
-        isSegment: true,
-        segmentIndex: 0,
-      },
-      {
-        shift,
-        day: endDate,
-        displayStart: startOfEndDay,
-        displayEnd: endAt,
-        isSegment: true,
-        segmentIndex: 1,
-      },
-    ]
-  }
-
-  /**
-   * Get all shift segments for a specific day, including overnight shifts
-   * that start on previous days or end on subsequent days.
-   */
-  const getShiftsForDay = (date: Date): ShiftSegment[] => {
-    const segments: ShiftSegment[] = []
-    
-    // Process all shifts and collect segments for this day
-    shifts.forEach(shift => {
-      const shiftSegments = splitShiftForDisplay(shift)
-      shiftSegments.forEach(segment => {
-        if (isSameDay(segment.day, date)) {
-          segments.push(segment)
-        }
-      })
-    })
-    
-    // Sort by start time
-    segments.sort((a, b) => a.displayStart.getTime() - b.displayStart.getTime())
-    
-    return segments
-  }
-  
-  /**
-   * Memoized employee color objects to avoid recalculation
-   * The getEmployeeColor function has its own cache, but we can still memoize
-   * the lookup to avoid repeated function calls in render
-   */
-  const employeeColors = useMemo(() => {
-    const colorMap = new Map<string, ReturnType<typeof getEmployeeColor>>()
-    shifts.forEach(shift => {
-      if (!colorMap.has(shift.employee_id)) {
-        colorMap.set(shift.employee_id, getEmployeeColor(shift.employee_id))
-      }
-    })
-    return colorMap
-  }, [shifts])
-
-  const formatTime = (timeStr: string) => {
-    return timeStr.substring(0, 5) // HH:MM format
-  }
-
-  /**
    * Format a Date object to time string (HH:MM) for display
    */
   const formatTimeFromDate = (date: Date) => {
@@ -492,8 +414,168 @@ export default function SchedulesPage() {
   }
 
   const isOvernightShift = (shift: Shift) => {
-    // Check if shift is overnight (end_time <= start_time means it spans midnight)
     return shift.end_time <= shift.start_time
+  }
+
+  /** Open print-friendly schedule in new window and trigger print (or Save as PDF). */
+  const handlePrintSchedule = () => {
+    const dayLabels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+    // Use all employees so every person appears; show — for days with no shift
+    const sortedEmployees = [...employees]
+      .map((emp) => ({ id: emp.id, name: emp.name || 'Unknown' }))
+      .sort((a, b) => a.name.localeCompare(b.name))
+
+    if (sortedEmployees.length === 0) {
+      toast.error('No employees to show in the schedule.')
+      return
+    }
+
+    const shiftsByEmployeeAndDay = new Map<string, Map<string, Shift[]>>()
+    shifts.forEach((shift) => {
+      if (!shiftsByEmployeeAndDay.has(shift.employee_id)) {
+        shiftsByEmployeeAndDay.set(shift.employee_id, new Map())
+      }
+      const byDay = shiftsByEmployeeAndDay.get(shift.employee_id)!
+      const d = shift.shift_date
+      if (!byDay.has(d)) byDay.set(d, [])
+      byDay.get(d)!.push(shift)
+    })
+
+    const formatTimeNoSeconds = (t: string) => {
+      if (!t) return '—'
+      const parts = String(t).trim().split(':')
+      const h = parts[0] ? parseInt(parts[0], 10) : 0
+      const m = parts[1] !== undefined ? parseInt(parts[1], 10) : 0
+      const hour = isNaN(h) ? 0 : h
+      const min = isNaN(m) ? 0 : m
+      return `${hour.toString().padStart(2, '0')}:${min.toString().padStart(2, '0')}`
+    }
+
+    const formatCell = (dayShifts: Shift[] | undefined) => {
+      if (!dayShifts || dayShifts.length === 0) return '<span class="cell-empty">—</span>'
+      return dayShifts
+        .map((s) => {
+          const start = formatTimeNoSeconds(s.start_time)
+          const end = formatTimeNoSeconds(s.end_time)
+          const br = s.break_minutes ? ` <span class="cell-break">(${s.break_minutes}m break)</span>` : ''
+          return `<span class="cell-time">${start} – ${end}</span>${br}`
+        })
+        .join('<br/>')
+    }
+
+    const dayHeaders = weekDays
+      .map(
+        (d, i) =>
+          `<th class="day-col"><span class="day-name">${dayLabels[i]}</span><span class="day-num">${format(d, 'd')}</span><span class="day-month">${format(d, 'MMM')}</span></th>`
+      )
+      .join('')
+    const rows = sortedEmployees
+      .map(({ id, name }, idx) => {
+        const byDay = shiftsByEmployeeAndDay.get(id)
+        const cells = weekDays
+          .map((day) => {
+            const key = format(day, 'yyyy-MM-dd')
+            const dayShifts = byDay?.get(key)
+            return `<td class="cell">${formatCell(dayShifts)}</td>`
+          })
+          .join('')
+        const rowClass = idx % 2 === 0 ? 'row-even' : 'row-odd'
+        return `<tr class="${rowClass}"><td class="cell-employee">${escapeHtml(name)}</td>${cells}</tr>`
+      })
+      .join('')
+
+    const title = `Week of ${format(weekStart, 'MMMM d')} – ${format(weekEnd, 'MMMM d, yyyy')}`
+    const generated = format(new Date(), "MMM d, yyyy 'at' h:mm a")
+    const html = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Schedule – ${escapeHtml(title)}</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; background: #f8fafc; color: #1e293b; padding: 24px; font-size: 16px; line-height: 1.4; }
+    .print-sheet { max-width: 880px; margin: 0 auto; background: #fff; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 24px rgba(0,0,0,0.08); }
+    .print-header { background: linear-gradient(135deg, #1e3a5f 0%, #2563eb 100%); color: #fff; padding: 24px 28px; }
+    .print-header h1 { margin: 0; font-size: 13px; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; opacity: 0.9; }
+    .print-header .print-title { margin: 8px 0 0 0; font-size: 26px; font-weight: 700; letter-spacing: -0.02em; }
+    .print-header .print-sub { margin: 4px 0 0 0; font-size: 15px; opacity: 0.9; }
+    table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+    thead { background: #f1f5f9; }
+    th { text-align: left; padding: 10px 8px; font-weight: 600; font-size: 14px; color: #475569; border-bottom: 2px solid #e2e8f0; overflow: hidden; }
+    th.day-col { text-align: center; min-width: 0; width: 12%; }
+    th.cell-employee { width: 16%; min-width: 0; }
+    th .day-name { display: block; font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; color: #64748b; }
+    th .day-num { display: block; font-size: 20px; color: #1e293b; margin-top: 2px; }
+    th .day-month { display: block; font-size: 12px; color: #64748b; margin-top: 1px; }
+    td { padding: 10px 8px; border-bottom: 1px solid #e2e8f0; vertical-align: top; font-size: 15px; overflow: hidden; word-wrap: break-word; }
+    td.cell-employee { font-weight: 600; color: #1e293b; background: #fafbfc; width: 16%; min-width: 0; }
+    tr.row-odd td.cell-employee { background: #f8fafc; }
+    td.cell { color: #475569; width: 12%; min-width: 0; text-align: center; }
+    tr.row-even td.cell { background: #fefefe; }
+    tr.row-odd td.cell { background: #f8fafc; }
+    .cell-empty { color: #94a3b8; font-style: italic; }
+    .cell-time { font-weight: 500; color: #1e293b; }
+    .cell-break { font-size: 12px; color: #64748b; }
+    .print-footer { padding: 12px 20px; border-top: 1px solid #e2e8f0; font-size: 13px; color: #94a3b8; background: #f8fafc; }
+    .no-print { margin-top: 16px; font-size: 14px; color: #64748b; }
+    @page { size: landscape; margin: 0.5in; }
+    @media print {
+      body { background: #fff; padding: 0; margin: 0; }
+      .print-sheet { max-width: 100%; width: 100%; box-shadow: none; border-radius: 0; }
+      .print-header, .print-footer { padding-left: 0.5in; padding-right: 0.5in; }
+      .print-body { padding: 0 0.25in; }
+      table { width: 100%; }
+      .no-print { display: none !important; }
+    }
+  </style>
+</head>
+<body>
+  <div class="print-sheet">
+    <div class="print-header">
+      <h1>ClockIn Pro</h1>
+      <p class="print-title">Schedule</p>
+      <p class="print-sub">${escapeHtml(title)}</p>
+    </div>
+    <div class="print-body">
+  <table>
+    <thead><tr><th class="cell-employee">Employee</th>${dayHeaders}</tr></thead>
+    <tbody>${rows}</tbody>
+  </table>
+    </div>
+    <div class="print-footer">
+      Generated on ${escapeHtml(generated)} · Print or save as PDF from your browser
+    </div>
+  </div>
+  <p class="no-print">Use Print or Save as PDF to export this schedule.</p>
+
+</body>
+</html>`
+
+    // Use a hidden iframe to avoid pop-up blockers (no new window needed)
+    const iframe = document.createElement('iframe')
+    iframe.setAttribute('style', 'position:absolute;width:0;height:0;border:0;left:-9999px;')
+    document.body.appendChild(iframe)
+    const doc = iframe.contentWindow?.document
+    if (!doc) {
+      document.body.removeChild(iframe)
+      toast.error('Could not open print preview.')
+      return
+    }
+    doc.open()
+    doc.write(html)
+    doc.close()
+    iframe.contentWindow?.focus()
+    iframe.contentWindow?.print()
+    // Remove iframe after print dialog closes (user may cancel or print)
+    setTimeout(() => {
+      if (iframe.parentNode) document.body.removeChild(iframe)
+    }, 1000)
+  }
+
+  function escapeHtml(text: string): string {
+    const div = document.createElement('div')
+    div.textContent = text
+    return div.innerHTML
   }
   
   /**
@@ -527,19 +609,28 @@ export default function SchedulesPage() {
 
   return (
     <Layout>
-      <div className="min-h-screen bg-gray-50">
+      <div className="min-h-screen bg-gradient-to-br from-slate-100 via-gray-50 to-indigo-50/30">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           {/* Header */}
-          <div className="mb-8">
+          <div className="mb-6">
             <div className="flex justify-between items-start">
               <div>
-                <h1 className="text-3xl font-bold text-gray-900 tracking-tight">Schedule</h1>
-                <p className="mt-2 text-sm text-gray-500">View and manage employee shifts for the selected week</p>
+                <h1 className="text-2xl font-bold text-gray-900 tracking-tight">Schedule</h1>
+                <p className="mt-1 text-sm text-gray-500">View and manage shifts for the selected week</p>
               </div>
               <div className="flex gap-3">
                 <button
+                  onClick={handlePrintSchedule}
+                  className="inline-flex items-center px-5 py-2.5 bg-white/80 text-gray-700 font-medium rounded-xl shadow-[6px_6px_12px_rgba(0,0,0,0.06),-6px_-6px_12px_rgba(255,255,255,0.9)] border border-white/60 backdrop-blur-sm hover:shadow-[4px_4px_8px_rgba(0,0,0,0.08),-4px_-4px_8px_rgba(255,255,255,0.8)] hover:bg-white/90 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-gray-400/50"
+                >
+                  <svg className="h-5 w-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
+                  </svg>
+                  Print / Export
+                </button>
+                <button
                   onClick={() => router.push('/schedules/week')}
-                  className="inline-flex items-center px-5 py-2.5 bg-purple-600 text-white font-medium rounded-lg shadow-sm hover:bg-purple-700 hover:shadow-md transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2"
+                  className="inline-flex items-center px-5 py-2.5 bg-white/80 text-purple-700 font-medium rounded-xl shadow-[6px_6px_12px_rgba(0,0,0,0.06),-6px_-6px_12px_rgba(255,255,255,0.9)] border border-white/60 backdrop-blur-sm hover:shadow-[4px_4px_8px_rgba(0,0,0,0.08),-4px_-4px_8px_rgba(255,255,255,0.8)] hover:bg-white/90 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-purple-400/50"
                 >
                   <svg className="h-5 w-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
@@ -548,7 +639,7 @@ export default function SchedulesPage() {
                 </button>
                 <button
                   onClick={() => setShowCreateModal(true)}
-                  className="inline-flex items-center px-5 py-2.5 bg-blue-600 text-white font-medium rounded-lg shadow-sm hover:bg-blue-700 hover:shadow-md transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+                  className="inline-flex items-center px-5 py-2.5 bg-blue-500/90 text-white font-medium rounded-xl shadow-[6px_6px_14px_rgba(59,130,246,0.35),-2px_-2px_8px_rgba(255,255,255,0.2)] border border-white/30 backdrop-blur-sm hover:bg-blue-600 hover:shadow-[4px_4px_12px_rgba(59,130,246,0.4)] transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-blue-400/50"
                 >
                   <svg className="h-5 w-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
@@ -559,15 +650,15 @@ export default function SchedulesPage() {
             </div>
           </div>
 
-          {/* Filters & Navigation */}
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-6">
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-end">
+          {/* Filters & Navigation - glassmorphism */}
+          <div className="bg-white/60 backdrop-blur-xl rounded-2xl border border-white/50 shadow-[0_8px_32px_rgba(0,0,0,0.06)] p-4 mb-4">
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 items-end">
               <div className="lg:col-span-4">
                 <label className="block text-sm font-semibold text-gray-700 mb-2">Employee</label>
                 <select
                   value={selectedEmployee}
                   onChange={(e) => setSelectedEmployee(e.target.value)}
-                  className="block w-full px-4 py-2.5 border border-gray-300 rounded-lg bg-white text-gray-900 shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                  className="block w-full px-4 py-2.5 rounded-xl bg-white/80 border border-white/60 shadow-[inset_4px_4px_8px_rgba(0,0,0,0.04)] backdrop-blur-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-400/40 focus:border-blue-300/50 transition-all"
                 >
                   <option value="">All Employees</option>
                   {employees.map((emp) => (
@@ -583,21 +674,21 @@ export default function SchedulesPage() {
                 <div className="flex items-center">
                   <button
                     onClick={() => setCurrentWeek(subWeeks(currentWeek, 1))}
-                    className="p-2.5 border border-gray-300 rounded-l-lg hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors"
+                    className="p-2.5 rounded-l-xl bg-white/70 border border-white/50 shadow-[4px_4px_8px_rgba(0,0,0,0.05),-2px_-2px_6px_rgba(255,255,255,0.8)] hover:shadow-[inset_2px_2px_4px_rgba(0,0,0,0.06)] hover:bg-white/90 focus:outline-none focus:ring-2 focus:ring-blue-400/40 transition-all"
                     aria-label="Previous week"
                   >
                     <svg className="h-5 w-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
                     </svg>
                   </button>
-                  <div className="flex-1 px-6 py-2.5 border-y border-gray-300 text-center bg-gray-50">
+                  <div className="flex-1 px-6 py-2.5 border-y border-gray-200/80 bg-white/50 text-center backdrop-blur-sm">
                     <span className="text-sm font-semibold text-gray-900">
                       {format(weekStart, 'MMM d')} - {format(weekEnd, 'MMM d, yyyy')}
                     </span>
                   </div>
                   <button
                     onClick={() => setCurrentWeek(addWeeks(currentWeek, 1))}
-                    className="p-2.5 border border-gray-300 rounded-r-lg hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors"
+                    className="p-2.5 rounded-r-xl bg-white/70 border border-white/50 shadow-[4px_4px_8px_rgba(0,0,0,0.05),-2px_-2px_6px_rgba(255,255,255,0.8)] hover:shadow-[inset_2px_2px_4px_rgba(0,0,0,0.06)] hover:bg-white/90 focus:outline-none focus:ring-2 focus:ring-blue-400/40 transition-all"
                     aria-label="Next week"
                   >
                     <svg className="h-5 w-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -610,7 +701,7 @@ export default function SchedulesPage() {
               <div className="lg:col-span-2">
                 <button
                   onClick={() => setCurrentWeek(new Date())}
-                  className="w-full px-4 py-2.5 bg-gray-100 text-gray-700 font-medium rounded-lg hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-gray-400 transition-colors"
+                  className="w-full px-4 py-2.5 rounded-xl bg-white/70 text-gray-700 font-medium shadow-[4px_4px_10px_rgba(0,0,0,0.06),-4px_-4px_10px_rgba(255,255,255,0.9)] border border-white/50 hover:shadow-[inset_2px_2px_6px_rgba(0,0,0,0.05)] hover:bg-white/90 focus:outline-none focus:ring-2 focus:ring-gray-400/30 transition-all"
                 >
                   Today
                 </button>
@@ -620,211 +711,38 @@ export default function SchedulesPage() {
 
           {/* Calendar View */}
           {loading ? (
-            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-16">
+            <div className="bg-white/60 backdrop-blur-xl rounded-2xl border border-white/50 shadow-[0_8px_32px_rgba(0,0,0,0.06)] p-16">
               <div className="text-center">
-                <div className="animate-spin rounded-full h-12 w-12 border-3 border-blue-600 border-t-transparent mx-auto"></div>
+                <div className="animate-spin rounded-full h-12 w-12 border-2 border-blue-500/60 border-t-transparent mx-auto"></div>
                 <p className="mt-4 text-gray-600 font-medium">Loading shifts...</p>
               </div>
             </div>
           ) : (
-            <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-              {/* Calendar Header */}
-              <div className="grid grid-cols-7 border-b border-gray-200 bg-gradient-to-b from-gray-50 to-white">
-                {weekDays.map((day, idx) => {
-                  const isToday = isSameDay(day, new Date())
-                  return (
-                    <div 
-                      key={idx} 
-                      className={`p-4 text-center border-r last:border-r-0 ${
-                        isToday ? 'bg-blue-50 border-blue-200' : ''
-                      }`}
-                    >
-                      <div className={`text-xs font-semibold uppercase tracking-wider ${
-                        isToday ? 'text-blue-600' : 'text-gray-500'
-                      }`}>
-                        {format(day, 'EEE')}
-                      </div>
-                      <div className={`text-xl font-bold mt-2 ${
-                        isToday ? 'text-blue-600' : 'text-gray-900'
-                      }`}>
-                        {format(day, 'd')}
-                      </div>
-                      {isToday && (
-                        <div className="mt-1">
-                          <span className="inline-block w-1.5 h-1.5 bg-blue-600 rounded-full"></span>
-                        </div>
-                      )}
-                    </div>
-                  )
-                })}
-              </div>
-              
-              {/* Calendar Grid */}
-              <div className="grid grid-cols-7 min-h-[600px] auto-rows-fr" style={{ gridTemplateColumns: 'repeat(7, minmax(0, 1fr))' }}>
-                {weekDays.map((day, idx) => {
-                  const dayShifts = getShiftsForDay(day)
-                  const isToday = isSameDay(day, new Date())
-                  return (
-                    <div
-                      key={idx}
-                      className={`relative p-3 border-r last:border-r-0 border-b border-gray-100 min-h-[600px] min-w-[140px] ${
-                        isToday ? 'bg-blue-50/30' : 'bg-white'
-                      } hover:bg-gray-50/50 transition-colors overflow-hidden`}
-                    >
-                      <div className="space-y-2.5 h-full">
-                        {dayShifts.length === 0 && (
-                          <div className="text-center py-8">
-                            <p className="text-xs text-gray-400 font-medium">No shifts</p>
-                          </div>
-                        )}
-                        {dayShifts.map((segment, idx) => {
-                        const { shift, isSegment, displayStart, displayEnd } = segment
-                        const overnight = isOvernightShift(shift)
-                        
-                        // Create unique key for each segment (shift.id + segment index if split)
-                        const segmentKey = `${shift.id}-${isSegment ? segment.segmentIndex : 'single'}-${idx}`
-                        
-                        // Determine visual styling based on segment position
-                        const isFirstSegment = !isSegment || segment.segmentIndex === 0
-                        const isSecondSegment = isSegment && segment.segmentIndex === 1
-                        
-                        // Get employee color scheme (from memoized cache or calculate)
-                        const colors = employeeColors.get(shift.employee_id) || getEmployeeColor(shift.employee_id)
-                        
-                        // Determine state and opacity based on shift status
-                        let state: 'normal' | 'hover' | 'selected' | 'conflict' | 'muted' = 'normal'
-                        let opacity = 1
-                        if (shift.status === 'DRAFT' || shift.status === 'CANCELLED') {
-                          state = 'muted'
-                          opacity = 0.7
-                        }
-                        
-                        // Get color styles for current state
-                        const colorStyles = getEmployeeColorStyles(shift.employee_id, { state, opacity })
-                        
-                        // Convert CSS custom properties to inline styles
-                        // TypeScript doesn't support CSS custom properties in CSSProperties, so we use Record
-                        const currentStyles: Record<string, string> = {
-                          backgroundColor: colorStyles['--shift-bg'] || colors.bg,
-                          color: colorStyles['--shift-text'] || colors.text,
-                          borderColor: colorStyles['--shift-border'] || colors.border,
-                        }
-                        
-                        // For second segment of overnight shifts, use slightly different styling
-                        const segmentStyles = isSecondSegment 
-                          ? {
-                              ...currentStyles,
-                              // Slightly adjust opacity for visual distinction while maintaining color family
-                              opacity: `${opacity * 0.95}`,
-                            }
-                          : currentStyles
-                        
-                          return (
-                          <div
-                            key={segmentKey}
-                            className="group p-2.5 border-l-4 rounded-lg cursor-pointer transition-all duration-200 shadow-sm hover:shadow-md hover:scale-[1.01] active:scale-[0.99] w-full min-w-0 overflow-hidden"
-                            style={{
-                              ...segmentStyles as CSSProperties,
-                              borderLeftWidth: '4px',
-                              flexShrink: 0,
-                            }}
-                            onMouseEnter={(e) => {
-                              // Hover effect: slightly darker background
-                              const hoverColors = getEmployeeColor(shift.employee_id)
-                              e.currentTarget.style.backgroundColor = hoverColors.bgHover
-                            }}
-                            onMouseLeave={(e) => {
-                              // Reset to original
-                              e.currentTarget.style.backgroundColor = segmentStyles.backgroundColor as string
-                            }}
-                              onClick={() => router.push(`/schedules/${shift.id}`)}
-                              title={isSegment 
-                                ? (isFirstSegment 
-                                    ? `Overnight shift starting ${formatTimeFromDate(displayStart)} (continues tomorrow)` 
-                                    : `Overnight shift continuing from yesterday, ending ${formatTimeFromDate(displayEnd)}`)
-                                : `${shift.employee_name}: ${formatTimeFromDate(displayStart)} - ${formatTimeFromDate(displayEnd)}`
-                              }
-                            >
-                              <div className="mb-2 min-w-0">
-                                <div className="flex justify-start mb-1.5">
-                                  <span className={`inline-flex items-center px-1.5 py-0.5 rounded-md text-[9px] font-semibold uppercase tracking-wide whitespace-nowrap flex-shrink-0 ${getStatusColor(shift.status)}`}>
-                                    {shift.status === 'APPROVED' && (
-                                      <svg className="w-3 h-3 mr-1" fill="currentColor" viewBox="0 0 20 20">
-                                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-                                      </svg>
-                                    )}
-                                    {shift.status === 'CANCELLED' && (
-                                      <svg className="w-3 h-3 mr-1" fill="currentColor" viewBox="0 0 20 20">
-                                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
-                                      </svg>
-                                    )}
-                                    {shift.status.charAt(0) + shift.status.slice(1).toLowerCase()}
-                                  </span>
-                                </div>
-                                <div className="font-semibold text-sm leading-tight break-words" style={{ color: colors.text }}>
-                                  {shift.employee_name}
-                                </div>
-                              </div>
-                              <div className="flex items-center gap-1 text-xs font-medium flex-wrap min-w-0" style={{ color: colors.textMuted }}>
-                                <svg className="w-3 h-3 opacity-60 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                                </svg>
-                                {isSegment ? (
-                                  <div className="flex items-center gap-1 flex-wrap min-w-0">
-                                    {isFirstSegment ? (
-                                      <>
-                                        <span className="whitespace-nowrap">{formatTimeFromDate(displayStart)}</span>
-                                        <span className="opacity-50 flex-shrink-0">→</span>
-                                        <span className="whitespace-nowrap">24:00</span>
-                                        <span className="ml-1 text-[10px] opacity-60 font-normal whitespace-nowrap">(continues)</span>
-                                      </>
-                                    ) : (
-                                      <>
-                                        <span className="whitespace-nowrap">00:00</span>
-                                        <span className="opacity-50 flex-shrink-0">→</span>
-                                        <span className="whitespace-nowrap">{formatTimeFromDate(displayEnd)}</span>
-                                        <span className="ml-1 text-[10px] opacity-60 font-normal whitespace-nowrap">(continued)</span>
-                                      </>
-                                    )}
-                                  </div>
-                                ) : (
-                                  <div className="flex items-center gap-1 whitespace-nowrap">
-                                    <span>{formatTimeFromDate(displayStart)}</span>
-                                    <span className="opacity-50">-</span>
-                                    <span>{formatTimeFromDate(displayEnd)}</span>
-                                  </div>
-                                )}
-                              </div>
-                              {overnight && isFirstSegment && (
-                                <div className="mt-1 flex items-center gap-1 text-[9px] opacity-60 truncate" style={{ color: colors.textMuted }}>
-                                  <svg className="w-2.5 h-2.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
-                                  </svg>
-                                  <span className="truncate">Overnight</span>
-                                </div>
-                              )}
-                            </div>
-                          )
-                        })}
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
+            <div className="max-h-[calc(100vh-200px)] overflow-auto min-h-[540px] rounded-2xl shadow-[0_8px_32px_rgba(0,0,0,0.06)]">
+              {/* Timeline: 24h, duration-proportional, one continuous box per shift including overnight */}
+              <ShiftTimeline
+                shifts={shifts}
+                weekDays={weekDays}
+                onShiftClick={(s) => router.push(`/schedules/${s.id}`)}
+                loading={loading}
+                today={new Date()}
+                dayStartHour={scheduleDayStartHour}
+                dayEndHour={scheduleDayEndHour}
+              />
             </div>
           )}
 
         {/* Create Shift Modal */}
         {showCreateModal && (
           <div 
-            className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4"
+            className="fixed inset-0 bg-black/40 backdrop-blur-md flex items-center justify-center z-50 p-4"
             onClick={() => setShowCreateModal(false)}
           >
             <div 
-              className="bg-white rounded-2xl shadow-2xl max-w-md w-full mx-4 transform transition-all"
+              className="bg-white/85 backdrop-blur-xl rounded-2xl shadow-[0_25px_50px_-12px_rgba(0,0,0,0.2),0_0_0_1px_rgba(255,255,255,0.5)] border border-white/60 max-w-md w-full mx-4 transform transition-all"
               onClick={(e) => e.stopPropagation()}
             >
-              <div className="p-6 border-b border-gray-200">
+              <div className="p-6 border-b border-gray-200/60">
                 <div className="flex items-center justify-between">
                   <div>
                     <h2 className="text-2xl font-bold text-gray-900">Create New Shift</h2>
@@ -850,7 +768,7 @@ export default function SchedulesPage() {
                       <select
                         value={formData.employee_id}
                         onChange={(e) => setFormData({ ...formData, employee_id: e.target.value })}
-                        className="block w-full px-4 py-2.5 border border-gray-300 rounded-lg bg-white text-gray-900 shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                        className="block w-full px-4 py-2.5 rounded-xl bg-white/90 border border-white/60 shadow-[inset_4px_4px_8px_rgba(0,0,0,0.04)] backdrop-blur-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-400/40 focus:border-blue-300/50 transition-all"
                         required
                       >
                         <option value="">Select Employee</option>
@@ -882,7 +800,7 @@ export default function SchedulesPage() {
                           type="time"
                           value={formData.start_time}
                           onChange={(e) => setFormData({ ...formData, start_time: e.target.value })}
-                          className="block w-full px-4 py-2.5 border border-gray-300 rounded-lg bg-white text-gray-900 shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                          className="block w-full px-4 py-2.5 rounded-xl bg-white/90 border border-white/60 shadow-[inset_4px_4px_8px_rgba(0,0,0,0.04)] text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-400/40 focus:border-blue-300/50 transition-all"
                           required
                         />
                       </div>
@@ -894,7 +812,7 @@ export default function SchedulesPage() {
                           type="time"
                           value={formData.end_time}
                           onChange={(e) => setFormData({ ...formData, end_time: e.target.value })}
-                          className="block w-full px-4 py-2.5 border border-gray-300 rounded-lg bg-white text-gray-900 shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                          className="block w-full px-4 py-2.5 rounded-xl bg-white/90 border border-white/60 shadow-[inset_4px_4px_8px_rgba(0,0,0,0.04)] text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-400/40 focus:border-blue-300/50 transition-all"
                           required
                         />
                       </div>
@@ -922,16 +840,16 @@ export default function SchedulesPage() {
                     </div>
                   </div>
                 </div>
-                <div className="mt-8 flex justify-end space-x-3 pt-6 border-t border-gray-200">
+                <div className="mt-8 flex justify-end space-x-3 pt-6 border-t border-gray-200/60">
                   <button
                     onClick={() => setShowCreateModal(false)}
-                    className="px-5 py-2.5 border border-gray-300 rounded-lg text-gray-700 font-medium hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-gray-400 transition-colors"
+                    className="px-5 py-2.5 rounded-xl bg-white/80 text-gray-700 font-medium shadow-[4px_4px_10px_rgba(0,0,0,0.06),-4px_-4px_10px_rgba(255,255,255,0.8)] border border-white/50 hover:shadow-[inset_2px_2px_6px_rgba(0,0,0,0.05)] hover:bg-white/90 focus:outline-none focus:ring-2 focus:ring-gray-400/30 transition-all"
                   >
                     Cancel
                   </button>
                   <button
                     onClick={handleCreateShift}
-                    className="px-5 py-2.5 bg-blue-600 text-white font-medium rounded-lg shadow-sm hover:bg-blue-700 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-all duration-200"
+                    className="px-5 py-2.5 bg-blue-500/90 text-white font-medium rounded-xl shadow-[6px_6px_14px_rgba(59,130,246,0.35),-2px_-2px_8px_rgba(255,255,255,0.2)] border border-white/30 backdrop-blur-sm hover:bg-blue-600 hover:shadow-[4px_4px_12px_rgba(59,130,246,0.4)] focus:outline-none focus:ring-2 focus:ring-blue-400/50 transition-all"
                   >
                     Create Shift
                   </button>

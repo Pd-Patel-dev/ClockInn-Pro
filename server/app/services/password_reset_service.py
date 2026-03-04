@@ -1,9 +1,7 @@
 """
 Password reset service: send OTP and verify OTP + set new password.
-Security: user lookup uses parameterized queries (no SQL injection);
-responses are generic to prevent user enumeration; constant-time when user not found.
+Security: user lookup uses parameterized queries (no SQL injection).
 """
-import asyncio
 import secrets
 import logging
 from datetime import datetime, timedelta, timezone
@@ -20,8 +18,6 @@ logger = logging.getLogger(__name__)
 PASSWORD_RESET_OTP_EXPIRY_MINUTES = 15
 PASSWORD_RESET_RESEND_COOLDOWN_SECONDS = 60
 MAX_PASSWORD_RESET_ATTEMPTS = 5
-# Minimize timing difference between "user not found" and "user found" paths
-CONSTANT_TIME_DELAY_SECONDS = 0.3
 
 
 def _generate_otp() -> str:
@@ -32,14 +28,12 @@ def _generate_otp() -> str:
 async def send_password_reset_otp(db: AsyncSession, email_normalized: str) -> Tuple[bool, Optional[str]]:
     """
     Find user by email (parameterized query), generate 6-digit OTP, store hash, send email.
-    Returns (success, error_message). Caller must not expose error_message to clients
-    to avoid user enumeration. When user not found, we delay to reduce timing leakage.
+    Returns (success, error_message). If email is not registered, returns (False, error_message).
     """
     result = await db.execute(select(User).where(User.email == email_normalized))
     user = result.scalar_one_or_none()
     if not user:
-        await asyncio.sleep(CONSTANT_TIME_DELAY_SECONDS)
-        return True, None  # Don't reveal whether email exists
+        return False, "No account is registered with this email."
 
     now = datetime.now(timezone.utc)
     try:

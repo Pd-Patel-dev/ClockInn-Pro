@@ -22,6 +22,8 @@ class CompanySettingsResponse(BaseModel):
     cash_drawer_variance_threshold_cents: Optional[int] = None
     cash_drawer_allow_edit: Optional[bool] = None
     cash_drawer_require_manager_review: Optional[bool] = None
+    schedule_day_start_hour: Optional[int] = 7  # 0-23, hour when schedule day starts (e.g. 7 = 7 AM)
+    schedule_day_end_hour: Optional[int] = 7    # 0-23, hour when schedule day ends (same = 24h, e.g. 7 = 7 AM next day)
 
 
 class AdminInfo(BaseModel):
@@ -69,6 +71,8 @@ class CompanySettingsUpdate(BaseModel):
     cash_drawer_variance_threshold_cents: Optional[int] = Field(None, ge=0, description="Variance threshold in cents (e.g., 2000 = $20.00)")
     cash_drawer_allow_edit: Optional[bool] = Field(None, description="Allow editing cash drawer sessions")
     cash_drawer_require_manager_review: Optional[bool] = Field(None, description="Require manager review for variances")
+    schedule_day_start_hour: Optional[int] = Field(None, ge=0, le=23, description="Hour (0-23) when the schedule day starts (e.g. 7 = 7 AM)")
+    schedule_day_end_hour: Optional[int] = Field(None, ge=0, le=23, description="Hour (0-23) when the schedule day ends (e.g. 7 = 7 AM next day; same as start = 24h day)")
 
 
 class CompanyNameUpdate(BaseModel):

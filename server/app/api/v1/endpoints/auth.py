@@ -143,11 +143,15 @@ async def forgot_password_endpoint(
     db: AsyncSession = Depends(get_db),
 ):
     """Request a 6-digit OTP to be sent to the given email for password reset.
-    Always returns the same response to prevent user enumeration."""
+    Returns an error if the email is not registered."""
     normalized_email = normalize_email(request.email)
-    await send_password_reset_otp(db, normalized_email)
-    # Never return 400 or different messages so attackers cannot infer if email exists
-    return {"message": "If an account exists with this email, a verification code has been sent."}
+    success, error_msg = await send_password_reset_otp(db, normalized_email)
+    if not success:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=error_msg or "No account is registered with this email.",
+        )
+    return {"message": "A verification code has been sent to your email."}
 
 
 @router.post("/reset-password")

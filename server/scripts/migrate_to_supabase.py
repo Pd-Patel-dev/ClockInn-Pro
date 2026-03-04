@@ -25,7 +25,8 @@ from app.core.config import settings
 from app.models import (
     Company, User, Session, TimeEntry, LeaveRequest,
     PayrollRun, PayrollLineItem, PayrollAdjustment,
-    Shift, ShiftTemplate, ScheduleSwap
+    Shift, ShiftTemplate, ScheduleSwap,
+    CashDrawerSession, CashDrawerAudit, AuditLog,
 )
 
 logging.basicConfig(
@@ -57,12 +58,13 @@ async def export_table_data(
     session: AsyncSession,
     model_class,
     table_name: str,
-    order_by: str = "created_at"
+    order_by_column: str = "created_at"
 ) -> List[Dict[str, Any]]:
     """Export all data from a table."""
     try:
+        order_col = getattr(model_class, order_by_column, None) or model_class.id
         result = await session.execute(
-            select(model_class).order_by(order_by)
+            select(model_class).order_by(order_col)
         )
         rows = result.scalars().all()
         
@@ -109,7 +111,14 @@ async def import_table_data(
             try:
                 # Check if row already exists (by ID)
                 if skip_duplicates and 'id' in row_data:
-                    existing = await session.get(model_class, row_data['id'])
+                    pk = row_data['id']
+                    if isinstance(pk, str):
+                        try:
+                            import uuid
+                            pk = uuid.UUID(pk)
+                        except (ValueError, TypeError):
+                            pass
+                    existing = await session.get(model_class, pk)
                     if existing:
                         skipped += 1
                         continue
@@ -171,28 +180,31 @@ async def migrate_data(source_url: str, target_url: str, skip_existing: bool = T
     
     # Define migration order (respect foreign key constraints)
     migration_order = [
-        (Company, "companies"),
-        (User, "users"),
-        (Session, "sessions"),
-        (ShiftTemplate, "shift_templates"),
-        (Shift, "shifts"),
-        (TimeEntry, "time_entries"),
-        (LeaveRequest, "leave_requests"),
-        (PayrollRun, "payroll_runs"),
-        (PayrollLineItem, "payroll_line_items"),
-        (PayrollAdjustment, "payroll_adjustments"),
-        (ScheduleSwap, "schedule_swaps"),
+        (Company, "companies", "created_at"),
+        (User, "users", "created_at"),
+        (Session, "sessions", "id"),
+        (ShiftTemplate, "shift_templates", "id"),
+        (Shift, "shifts", "id"),
+        (TimeEntry, "time_entries", "clock_in_at"),
+        (CashDrawerSession, "cash_drawer_sessions", "created_at"),
+        (CashDrawerAudit, "cash_drawer_audit", "created_at"),
+        (LeaveRequest, "leave_requests", "created_at"),
+        (PayrollRun, "payroll_runs", "created_at"),
+        (PayrollLineItem, "payroll_line_items", "id"),
+        (PayrollAdjustment, "payroll_adjustments", "id"),
+        (ScheduleSwap, "schedule_swaps", "id"),
+        (AuditLog, "audit_logs", "created_at"),
     ]
     
     async with source_session_maker() as source_session, target_session_maker() as target_session:
         total_exported = 0
         total_imported = 0
         
-        for model_class, table_name in migration_order:
+        for model_class, table_name, order_by_col in migration_order:
             logger.info(f"\n--- Migrating {table_name} ---")
             
             # Export from source
-            data = await export_table_data(source_session, model_class, table_name)
+            data = await export_table_data(source_session, model_class, table_name, order_by_col)
             total_exported += len(data)
             
             if not data:
@@ -233,7 +245,9 @@ async def verify_migration(target_url: str):
         ("sessions", Session),
         ("time_entries", TimeEntry),
         ("shifts", Shift),
+        ("cash_drawer_sessions", CashDrawerSession),
         ("leave_requests", LeaveRequest),
+        ("audit_logs", AuditLog),
     ]
     
     async with target_session_maker() as session:

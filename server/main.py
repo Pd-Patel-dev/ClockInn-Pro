@@ -50,6 +50,16 @@ async def lifespan(app: FastAPI):
     else:
         logger.info("Skipping automatic migrations (set RUN_MIGRATIONS=true to enable)")
     
+    # Log email (Gmail) status so admins know if schedule/verification emails will work
+    try:
+        from app.services.email_service import email_service
+        if email_service.service is not None:
+            logger.info("Email (Gmail API): enabled — schedule and verification emails will be sent.")
+        else:
+            logger.warning("Email (Gmail API): NOT configured — schedule and verification emails will NOT be sent. Set GMAIL_CREDENTIALS_JSON and GMAIL_TOKEN_JSON (or use Developer Portal /setup/gmail).")
+    except Exception as e:
+        logger.warning("Could not check email service: %s", e)
+    
     logger.info("ClockInn API server started successfully")
     yield
     # Shutdown

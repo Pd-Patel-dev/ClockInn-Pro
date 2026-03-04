@@ -29,6 +29,10 @@ DEFAULT_CASH_DRAWER_VARIANCE_THRESHOLD_CENTS = 2000  # $20.00
 DEFAULT_CASH_DRAWER_ALLOW_EDIT = True
 DEFAULT_CASH_DRAWER_REQUIRE_MANAGER_REVIEW = False
 
+# Schedule view: day start/end for timeline (0-23). Same value = 24h day (e.g. 7 = 7 AM to 7 AM next day).
+DEFAULT_SCHEDULE_DAY_START_HOUR = 7
+DEFAULT_SCHEDULE_DAY_END_HOUR = 7
+
 
 def get_company_settings(company: Company) -> Dict:
     """Get company settings with defaults."""
@@ -51,6 +55,8 @@ def get_company_settings(company: Company) -> Dict:
         "cash_drawer_variance_threshold_cents": settings.get("cash_drawer_variance_threshold_cents", DEFAULT_CASH_DRAWER_VARIANCE_THRESHOLD_CENTS),
         "cash_drawer_allow_edit": settings.get("cash_drawer_allow_edit", DEFAULT_CASH_DRAWER_ALLOW_EDIT),
         "cash_drawer_require_manager_review": settings.get("cash_drawer_require_manager_review", DEFAULT_CASH_DRAWER_REQUIRE_MANAGER_REVIEW),
+        "schedule_day_start_hour": settings.get("schedule_day_start_hour", DEFAULT_SCHEDULE_DAY_START_HOUR),
+        "schedule_day_end_hour": settings.get("schedule_day_end_hour", DEFAULT_SCHEDULE_DAY_END_HOUR),
     }
 
 
@@ -163,7 +169,11 @@ async def update_company_settings(
         current_settings["cash_drawer_allow_edit"] = data.cash_drawer_allow_edit
     if data.cash_drawer_require_manager_review is not None:
         current_settings["cash_drawer_require_manager_review"] = data.cash_drawer_require_manager_review
-    
+    if data.schedule_day_start_hour is not None:
+        current_settings["schedule_day_start_hour"] = data.schedule_day_start_hour
+    if data.schedule_day_end_hour is not None:
+        current_settings["schedule_day_end_hour"] = data.schedule_day_end_hour
+
     logger.info(f"Settings after update: {current_settings}")
     
     # IMPORTANT: Clear old/deprecated keys to avoid confusion

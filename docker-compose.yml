@@ -49,7 +49,7 @@ services:
     volumes:
       - ./client:/app
       - /app/node_modules
-      - /app/.next
+    # - /app/.next  # Commented out so restarts get a fresh build and pick up new routes
     ports:
       - "3000:3000"
     environment:

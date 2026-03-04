@@ -4,8 +4,10 @@ Email service for sending verification emails via Gmail API.
 import base64
 import json
 import logging
+from datetime import date, timedelta
 from email.mime.text import MIMEText
-from typing import Optional
+from typing import Optional, List, Any, Dict
+import html as html_module
 from google.oauth2.credentials import Credentials
 from google.auth.transport.requests import Request
 from google_auth_oauthlib.flow import InstalledAppFlow
@@ -19,6 +21,263 @@ logger = logging.getLogger(__name__)
 
 # Gmail API scopes
 SCOPES = ['https://www.googleapis.com/auth/gmail.send']
+
+
+def _shift_duration_minutes(s: Any) -> float:
+    """Compute shift duration in minutes (end - start - break). Handles overnight (end <= start)."""
+    start_str = s.get("start_time") or "00:00"
+    end_str = s.get("end_time") or "00:00"
+    break_m = int(s.get("break_minutes") or 0)
+    try:
+        parts_s = start_str.split(":")
+        parts_e = end_str.split(":")
+        start_m = int(parts_s[0]) * 60 + int(parts_s[1]) if len(parts_s) >= 2 else 0
+        end_m = int(parts_e[0]) * 60 + int(parts_e[1]) if len(parts_e) >= 2 else 0
+        if end_m <= start_m:
+            end_m += 24 * 60  # overnight
+        return max(0, (end_m - start_m) - break_m)
+    except (ValueError, IndexError):
+        return 0.0
+
+
+def _format_hours(minutes: float) -> str:
+    """Format minutes as hours e.g. 7.5 or 8.0."""
+    if minutes <= 0:
+        return "0"
+    h = minutes / 60
+    return f"{h:.1f}" if h != int(h) else str(int(h))
+
+
+def _escape(s: Optional[str]) -> str:
+    """Escape for HTML content."""
+    if not s:
+        return ""
+    return html_module.escape(str(s).strip())
+
+
+def _start_time_hour(s: Any) -> int:
+    """Get start time hour (0-23) from shift dict. Returns 12 if unparseable."""
+    start_str = s.get("start_time") or "00:00"
+    try:
+        parts = start_str.split(":")
+        return int(parts[0]) if len(parts) >= 1 else 12
+    except (ValueError, IndexError):
+        return 12
+
+
+def _get_schedule_motivation(
+    shifts: List[Any],
+    total_minutes: float,
+    week_start_date: Optional[date],
+) -> tuple:
+    """Return (greeting, motivation_line) — each is one sentence; together they form two sentences. Written in full, descriptive language."""
+    total_hrs = total_minutes / 60.0 if total_minutes else 0
+    if not shifts:
+        return "Hello!", "Here is your schedule. We are glad to have you on the team."
+
+    earliest_hour = min(_start_time_hour(s) for s in shifts)
+
+    # Sentence 1: time-based (one sentence)
+    if earliest_hour < 6:
+        time_sentence = "Rise and shine. Your early start sets the tone for a great day and shows real dedication."
+    elif earliest_hour < 10:
+        time_sentence = "Good morning. A solid start at this hour makes a real difference for the rest of the day."
+    elif earliest_hour < 14:
+        time_sentence = "Your afternoon shift is a chance to bring your best energy when the day is in full swing."
+    elif earliest_hour < 18:
+        time_sentence = "Evening shifts keep everything running when it matters most. Thank you for being there."
+    elif earliest_hour < 22:
+        time_sentence = "Thank you for holding the evening. Your flexibility and commitment do not go unnoticed."
+    else:
+        time_sentence = "Night shift team members like you keep operations going around the clock. We appreciate you."
+
+    # Sentence 2: hours-based (one sentence)
+    if week_start_date is not None:
+        if total_hrs >= 38:
+            hours_sentence = f"With {_format_hours(total_minutes)} hours scheduled this week, you are a cornerstone of the team. Thank you for your dedication."
+        elif total_hrs >= 25:
+            hours_sentence = f"Your {_format_hours(total_minutes)} hours this week make a real impact. We appreciate your contribution."
+        elif total_hrs >= 15:
+            hours_sentence = f"A balanced {_format_hours(total_minutes)} hours this week allows you to stay sharp and well rested while still making a difference."
+        else:
+            hours_sentence = f"Your {_format_hours(total_minutes)} hours this week help keep everything running smoothly. Every hour counts."
+    else:
+        if total_hrs >= 10:
+            hours_sentence = f"At {_format_hours(total_minutes)} hours, remember to take breaks and finish strong. We value your stamina."
+        elif total_hrs >= 6:
+            hours_sentence = f"This {_format_hours(total_minutes)}-hour shift makes a real difference. Thank you for your commitment."
+        elif total_hrs >= 3:
+            hours_sentence = f"A focused {_format_hours(total_minutes)}-hour shift. Quality over quantity, and every hour counts."
+        else:
+            hours_sentence = f"Thank you for your {_format_hours(total_minutes)} hours today. Your time and effort are valued."
+
+    greeting = time_sentence
+    motivation_line = hours_sentence
+    return greeting, motivation_line
+
+
+# Inline styles for email (compatible with major clients)
+_STYLE = {
+    "wrapper": "margin:0; padding:0; background-color:#f1f5f9; font-family:'Segoe UI',Roboto,sans-serif;",
+    "container": "max-width:560px; margin:0 auto; padding:24px 16px;",
+    "card": "background:#ffffff; border-radius:8px; box-shadow:0 1px 3px rgba(0,0,0,0.08); overflow:hidden; margin-bottom:20px;",
+    "header_bg": "background:linear-gradient(135deg,#1e40af 0%,#2563eb 100%); color:#ffffff; padding:20px 24px;",
+    "header_title": "margin:0; font-size:18px; font-weight:600; letter-spacing:0.02em;",
+    "header_sub": "margin:6px 0 0 0; font-size:13px; opacity:0.9;",
+    "body_pad": "padding:24px;",
+    "greeting": "color:#1e293b; font-size:15px; line-height:1.5; margin:0 0 20px 0;",
+    "table": "width:100%; border-collapse:collapse; font-size:14px;",
+    "th": "text-align:left; padding:10px 12px; background:#f8fafc; color:#475569; font-weight:600; font-size:12px; text-transform:uppercase; letter-spacing:0.04em; border-bottom:1px solid #e2e8f0;",
+    "td": "padding:10px 12px; border-bottom:1px solid #f1f5f9; color:#334155; vertical-align:top;",
+    "td_time": "font-weight:500; color:#1e293b;",
+    "td_muted": "color:#64748b; font-size:13px;",
+    "day_row": "background:#fafbfc;",
+    "day_name": "font-weight:600; color:#1e293b; padding:12px 12px 8px 12px; font-size:14px; border-bottom:1px solid #e2e8f0;",
+    "shift_line": "padding:4px 12px 8px 12px; font-size:13px; color:#475569; border-bottom:1px solid #f1f5f9;",
+    "hours_badge": "display:inline-block; background:#e0f2fe; color:#0369a1; padding:4px 10px; border-radius:6px; font-size:12px; font-weight:600; margin-left:8px;",
+    "total_row": "background:#f0f9ff; padding:14px 24px; font-weight:600; color:#0c4a6e; font-size:15px; border-top:2px solid #bae6fd;",
+    "footer": "padding:20px 24px; border-top:1px solid #e2e8f0; color:#64748b; font-size:12px; line-height:1.5;",
+    "link": "color:#2563eb; text-decoration:none;",
+    "motivation": "color:#475569; font-size:14px; line-height:1.6; margin:0 0 20px 0; padding:14px 16px; background:#f8fafc; border-left:4px solid #2563eb; border-radius:0 6px 6px 0; font-style:italic;",
+}
+
+
+def _build_schedule_email_html(
+    employee_name: str,
+    week_start_date: Optional[date],
+    shifts: List[Any],
+) -> str:
+    """Build HTML body for week schedule or single/multi shift list."""
+    day_names = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+    total_minutes = sum(_shift_duration_minutes(s) for s in shifts)
+    greeting, motivation_line = _get_schedule_motivation(shifts, total_minutes, week_start_date)
+
+    if week_start_date is not None:
+        shifts_by_date, total_minutes = _build_week_schedule_data(week_start_date, shifts)
+        week_title = week_start_date.strftime("%b %d, %Y")
+        header_title = "Your Week Schedule"
+        header_sub = f"Week of {week_title}"
+        day_blocks = []
+        for i in range(7):
+            day_date = week_start_date + timedelta(days=i)
+            day_key = day_date.isoformat()
+            day_label = f"{day_names[i]}, {day_date.strftime('%b %d, %Y')}"
+            day_shifts = shifts_by_date.get(day_key, [])
+            day_minutes = sum(_shift_duration_minutes(s) for s in day_shifts)
+            shifts_html = []
+            if not day_shifts:
+                shifts_html.append(f'<div style="{_STYLE["shift_line"]}">No shifts scheduled</div>')
+            else:
+                for s in sorted(day_shifts, key=lambda x: (x.get("start_time", ""), x.get("end_time", ""))):
+                    start_str = s.get("start_time", "")
+                    end_str = s.get("end_time", "")
+                    break_m = s.get("break_minutes") or 0
+                    job_role = _escape(s.get("job_role"))
+                    notes = _escape(s.get("notes"))
+                    line = f"{start_str} – {end_str}"
+                    if break_m:
+                        line += f" <span style=\"{_STYLE['td_muted']}\">({break_m} min break)</span>"
+                    if job_role:
+                        line += f" <span style=\"{_STYLE['td_muted']}\"> —  {job_role}</span>"
+                    shifts_html.append(f'<div style="{_STYLE["shift_line"]}">• {line}</div>')
+                    if notes:
+                        shifts_html.append(f'<div style="{_STYLE["shift_line"]}; padding-left:24px; font-style:italic;">Note: {notes}</div>')
+            hours_badge = f'<span style="{_STYLE["hours_badge"]}">{_format_hours(day_minutes)} hrs</span>'
+            day_blocks.append(
+                f'<div style="{_STYLE["day_row"]}">'
+                f'<div style="{_STYLE["day_name"]}">{day_label} {hours_badge}</div>'
+                + "".join(shifts_html) +
+                "</div>"
+            )
+        schedule_html = "".join(day_blocks)
+        total_html = f'<div style="{_STYLE["total_row"]}">Total hours this week: {_format_hours(total_minutes)}</div>'
+    else:
+        by_date, total_minutes = _build_single_schedule_data(shifts)
+        header_title = "Your Schedule"
+        header_sub = "Updated shifts"
+        shifts_flat = []
+        for d in sorted(by_date.keys()):
+            for s in sorted(by_date[d], key=lambda x: (x.get("start_time", ""), x.get("end_time", ""))):
+                shifts_flat.append((d, s))
+        rows = []
+        for d, s in shifts_flat:
+            start_str = s.get("start_time", "")
+            end_str = s.get("end_time", "")
+            break_m = s.get("break_minutes") or 0
+            job_role = _escape(s.get("job_role"))
+            notes = _escape(s.get("notes"))
+            line = f"{start_str} – {end_str}"
+            if break_m:
+                line += f" ({break_m} min break)"
+            if job_role:
+                line += f"  —  {job_role}"
+            rows.append(f'<div style="{_STYLE["shift_line"]}"><strong>{d}</strong> · {line}</div>')
+            if notes:
+                rows.append(f'<div style="{_STYLE["shift_line"]}; padding-left:24px; font-style:italic;">Note: {notes}</div>')
+        schedule_html = "".join(rows)
+        summary = []
+        if len(by_date) > 1:
+            for d in sorted(by_date.keys()):
+                day_m = sum(_shift_duration_minutes(x) for x in by_date[d])
+                summary.append(f'<div style="{_STYLE["shift_line"]}">{d}: <span style="{_STYLE["hours_badge"]}">{_format_hours(day_m)} hrs</span></div>')
+        summary.append(f'<div style="{_STYLE["total_row"]}">Total hours: {_format_hours(total_minutes)}</div>')
+        total_html = "".join(summary)
+
+    html = f"""<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"></head>
+<body style="{_STYLE["wrapper"]}">
+  <div style="{_STYLE["container"]}">
+    <div style="{_STYLE["card"]}">
+      <div style="{_STYLE["header_bg"]}">
+        <p style="{_STYLE["header_title"]}">ClockIn Pro</p>
+        <p style="{_STYLE["header_sub"]}">{header_title}</p>
+      </div>
+      <div style="{_STYLE["body_pad"]}">
+        <p style="{_STYLE["greeting"]}">Hello {_escape(employee_name)},</p>
+        <p style="{_STYLE["motivation"]}">{_escape(greeting)} {_escape(motivation_line)}</p>
+        <p style="{_STYLE["greeting"]}">{header_sub}</p>
+        {schedule_html}
+        {total_html}
+      </div>
+      <div style="{_STYLE["footer"]}">
+        View your full schedule in the ClockIn Pro dashboard.<br>
+        Questions? Contact your manager.
+      </div>
+    </div>
+  </div>
+</body>
+</html>"""
+    return html
+
+
+def _build_week_schedule_data(
+    week_start_date: date,
+    shifts: List[Any],
+) -> tuple:
+    """Group shifts by date and compute total minutes for the week."""
+    shifts_by_date: Dict[str, List[Any]] = {}
+    total_minutes = 0.0
+    for s in shifts:
+        d = s.get("date", "")
+        if d not in shifts_by_date:
+            shifts_by_date[d] = []
+        shifts_by_date[d].append(s)
+        total_minutes += _shift_duration_minutes(s)
+    return shifts_by_date, total_minutes
+
+
+def _build_single_schedule_data(shifts: List[Any]) -> tuple:
+    """Group shifts by date and compute total minutes."""
+    by_date: Dict[str, List[Any]] = {}
+    total_minutes = 0.0
+    for s in shifts:
+        d = s.get("date", "")
+        if d not in by_date:
+            by_date[d] = []
+        by_date[d].append(s)
+        total_minutes += _shift_duration_minutes(s)
+    return by_date, total_minutes
 
 
 class EmailService:
@@ -184,9 +443,9 @@ class EmailService:
             logger.error(f"Failed to initialize Gmail API service: {e}")
             self.service = None
     
-    def _create_message(self, to: str, subject: str, body: str) -> dict:
-        """Create a message for an email."""
-        message = MIMEText(body)
+    def _create_message(self, to: str, subject: str, body: str, subtype: str = "plain") -> dict:
+        """Create a message for an email. subtype: 'plain' or 'html'."""
+        message = MIMEText(body, subtype, "utf-8")
         message['to'] = to
         message['from'] = settings.GMAIL_SENDER_EMAIL
         message['subject'] = subject
@@ -215,7 +474,7 @@ class EmailService:
             return False
         
         try:
-            subject = "Verify your email — ClockIn Pro"
+            subject = "Verify your email  —  ClockIn Pro"
             body = f"""Your 6-digit verification code is:
 
 {verification_pin}
@@ -288,7 +547,7 @@ If you didn't request this code, please ignore this email.
             return False
         
         try:
-            subject = "Email Verification Expiring Soon — ClockIn Pro"
+            subject = "Email Verification Expiring Soon  —  ClockIn Pro"
             body = f"""Your email verification expires in 3 days.
 
 Please verify your email to continue using ClockIn Pro without interruption.
@@ -372,7 +631,7 @@ If you have any questions, please contact support.
             return False
         
         try:
-            subject = f"New Leave Request from {employee_name} — ClockIn Pro"
+            subject = f"New Leave Request from {employee_name}  —  ClockIn Pro"
             
             reason_text = f"\nReason: {reason}" if reason else ""
             
@@ -463,7 +722,7 @@ ClockIn Pro"""
         
         try:
             status_text = "Approved" if status.lower() == "approved" else "Rejected"
-            subject = f"Leave Request {status_text} — ClockIn Pro"
+            subject = f"Leave Request {status_text}  —  ClockIn Pro"
             
             reason_text = f"\n- Reason: {reason}" if reason else ""
             reviewer_text = f"\n- Reviewed by: {reviewer_name}" if reviewer_name else ""
@@ -538,7 +797,7 @@ ClockIn Pro"""
             return False
         
         try:
-            subject = "Set Up Your Password — ClockIn Pro"
+            subject = "Set Up Your Password  —  ClockIn Pro"
             
             body = f"""Hello {employee_name},
 
@@ -610,7 +869,7 @@ ClockIn Pro"""
             return False
 
         try:
-            subject = "Reset Your Password — ClockIn Pro"
+            subject = "Reset Your Password  —  ClockIn Pro"
             body = f"""You requested to reset your password.
 
 Your 6-digit verification code is:
@@ -632,7 +891,7 @@ ClockIn Pro"""
         except HttpError as error:
             if error.resp.status == 401 and self._refresh_token_if_needed():
                 try:
-                    msg = self._create_message(to_email, "Reset Your Password — ClockIn Pro",
+                    msg = self._create_message(to_email, "Reset Your Password  —  ClockIn Pro",
                         f"Your 6-digit code: {otp}. Expires in 15 minutes.")
                     result = self.service.users().messages().send(userId='me', body=msg).execute()
                     logger.info(f"Password reset OTP sent to {to_email} after token refresh.")
@@ -643,6 +902,75 @@ ClockIn Pro"""
             return False
         except Exception as e:
             logger.error(f"Unexpected error sending password reset OTP: {e}")
+            return False
+
+    async def send_schedule_notification(
+        self,
+        employee_email: str,
+        employee_name: str,
+        shifts: List[Any],
+        week_start_date: Optional[date] = None,
+    ) -> bool:
+        """
+        Send schedule details to an employee when shifts are created.
+
+        Args:
+            employee_email: Employee email address
+            employee_name: Name of employee
+            shifts: List of shift dicts with keys: date (str), start_time (str), end_time (str),
+                    break_minutes (int), notes (optional str), job_role (optional str)
+            week_start_date: If set, format as a full week schedule (Mon–Sun) with this Monday's date.
+
+        Returns:
+            True if email sent successfully, False otherwise
+        """
+        if not shifts:
+            return True
+
+        logger.info("Sending schedule notification to %s (%d shift(s))", employee_email, len(shifts))
+
+        if not self._refresh_token_if_needed():
+            logger.error("Schedule email NOT sent to %s: Gmail not initialized or token refresh failed. Set GMAIL_CREDENTIALS_JSON and GMAIL_TOKEN_JSON.", employee_email)
+            return False
+
+        if not self.service:
+            logger.error("Schedule email NOT sent to %s: Gmail service not initialized. Configure Gmail API (see server logs at startup).", employee_email)
+            return False
+
+        try:
+            if week_start_date is not None:
+                subject = "Your Week Schedule  —  ClockIn Pro"
+            else:
+                subject = "Your Schedule  —  ClockIn Pro"
+            body = _build_schedule_email_html(
+                employee_name=employee_name or "Employee",
+                week_start_date=week_start_date,
+                shifts=shifts,
+            )
+            message = self._create_message(employee_email, subject, body, subtype="html")
+
+            result = self.service.users().messages().send(
+                userId='me',
+                body=message
+            ).execute()
+
+            logger.info(f"Schedule notification sent to {employee_email}. Message ID: {result.get('id')}")
+            return True
+
+        except HttpError as error:
+            error_details = error.error_details if hasattr(error, 'error_details') else str(error)
+            if error.resp.status == 401 and self._refresh_token_if_needed():
+                try:
+                    result = self.service.users().messages().send(userId='me', body=message).execute()
+                    logger.info(f"Schedule notification sent to {employee_email} after token refresh.")
+                    return True
+                except Exception as retry_error:
+                    logger.error(f"Failed to send schedule notification after token refresh: {retry_error}")
+                    return False
+            logger.error(f"Gmail API error while sending schedule notification: {error_details}")
+            return False
+        except Exception as e:
+            logger.error(f"Unexpected error sending schedule notification: {e}")
             return False
 
 
