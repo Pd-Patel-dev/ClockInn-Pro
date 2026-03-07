@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Layout from '@/components/Layout'
 import api from '@/lib/api'
@@ -23,7 +23,7 @@ interface Shift {
   job_role?: string
 }
 
-export default function EditWeekShiftsPage() {
+function EditWeekShiftsContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const toast = useToast()
@@ -206,5 +206,21 @@ export default function EditWeekShiftsPage() {
         showCancel={true}
       />
     </Layout>
+  )
+}
+
+export default function EditWeekShiftsPage() {
+  return (
+    <Suspense
+      fallback={
+        <Layout>
+          <div className="min-h-screen bg-gradient-to-br from-slate-100 via-gray-50 to-indigo-50/30 flex items-center justify-center">
+            <div className="animate-spin rounded-full h-10 w-10 border-2 border-blue-500/60 border-t-transparent" />
+          </div>
+        </Layout>
+      }
+    >
+      <EditWeekShiftsContent />
+    </Suspense>
   )
 }
