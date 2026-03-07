@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Layout from '@/components/Layout'
 import api from '@/lib/api'
@@ -45,7 +45,7 @@ interface BulkWeekShiftPreviewResponse {
   total_conflicts: number
 }
 
-export default function BulkWeekShiftPage() {
+function BulkWeekShiftContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const toast = useToast()
@@ -590,6 +590,22 @@ export default function BulkWeekShiftPage() {
         )}
       </div>
     </Layout>
+  )
+}
+
+export default function BulkWeekShiftPage() {
+  return (
+    <Suspense
+      fallback={
+        <Layout>
+          <div className="container mx-auto px-4 py-8 max-w-7xl flex items-center justify-center min-h-[200px]">
+            <div className="animate-spin rounded-full h-10 w-10 border-2 border-blue-500/60 border-t-transparent" />
+          </div>
+        </Layout>
+      }
+    >
+      <BulkWeekShiftContent />
+    </Suspense>
   )
 }
 
