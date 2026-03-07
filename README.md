@@ -35,6 +35,8 @@ docker-compose exec api python -m scripts.seed_data
 
 Then go to http://localhost:3000. API docs are at http://localhost:8000/docs.
 
+**Migrations:** Run `docker-compose exec api alembic upgrade head` after pulling new code that adds migrations (e.g. shift notes, RLS). Optional: set `RUN_MIGRATIONS=true` in your `.env` to run migrations automatically when the API container starts.
+
 ### Without Docker
 
 **Backend:**
@@ -65,6 +67,8 @@ You'll need a `.env` file. Copy `.env.example` to `.env` and fill in:
 - `SECRET_KEY` - Random string for JWT (I used `openssl rand -hex 32` to generate one)
 - `FRONTEND_URL` and `CORS_ORIGINS` - Your frontend URL
 - `NEXT_PUBLIC_API_URL` - Backend API URL
+
+To use **Supabase** as the database instead of local Postgres, see **[docs/MIGRATE_TO_SUPABASE.md](docs/MIGRATE_TO_SUPABASE.md)**.
 
 ## Sample data
 

@@ -35,6 +35,8 @@ services:
       - REFRESH_TOKEN_EXPIRE_DAYS=${REFRESH_TOKEN_EXPIRE_DAYS:-7}
       - FRONTEND_URL=${FRONTEND_URL:-http://localhost:3000}
       - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:3000}
+      # Set to "true" to run migrations on API startup (optional)
+      - RUN_MIGRATIONS=${RUN_MIGRATIONS:-false}
     depends_on:
       db:
         condition: service_healthy

@@ -14,6 +14,20 @@ import logging
 logger = logging.getLogger(__name__)
 
 
+def _is_schema_error(e: Exception) -> bool:
+    """True if the exception indicates missing table/column (migrations not run)."""
+    msg = str(e).lower()
+    if "does not exist" in msg or "relation" in msg or "undefined column" in msg:
+        return True
+    if "column" in msg and ("does not exist" in msg or "not found" in msg):
+        return True
+    # Unwrap SQLAlchemy ProgrammingError / asyncpg UndefinedColumnError
+    cause = getattr(e, "orig", None) or getattr(e, "__cause__", None)
+    if cause is not None:
+        return _is_schema_error(cause)
+    return False
+
+
 def parse_uuid(uuid_string: str, entity_name: str = "ID") -> UUID:
     """
     Parse a UUID string and raise a standardized error if invalid.
@@ -79,12 +93,12 @@ def handle_endpoint_errors(
                 # Catch all other unexpected exceptions. Never send stack traces or internal paths to client in production.
                 error_detail = str(e)
                 error_type = type(e).__name__
+                error_lower = error_detail.lower()
 
-                # Check for common database errors and provide more helpful messages (dev only; production gets generic message below)
-                if "does not exist" in error_detail.lower() or "relation" in error_detail.lower():
-                    error_detail = f"Database schema issue detected. Please ensure all migrations have been run. Original error: {error_detail}"
-                elif "column" in error_detail.lower() and ("does not exist" in error_detail.lower() or "not found" in error_detail.lower()):
-                    error_detail = f"Database column missing. Please ensure all migrations have been run. Original error: {error_detail}"
+                # Detect schema/relation/column errors (missing table or column = migrations not run)
+                is_schema_error = _is_schema_error(e)
+                if is_schema_error:
+                    error_detail = f"Database schema issue. Ensure all migrations have been run. Original: {error_detail}"
 
                 if log_error:
                     logger.error(
@@ -99,12 +113,20 @@ def handle_endpoint_errors(
 
                 is_dev = os.getenv("ENVIRONMENT", "").lower() not in ["prod", "production"]
 
+                if is_schema_error:
+                    # 503 so client knows it's a server/config issue, not a bug; safe message in prod too
+                    detail_msg = (
+                        error_detail if is_dev
+                        else "Service temporarily unavailable. Please ensure database migrations have been run."
+                    )
+                    raise HTTPException(
+                        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                        detail=detail_msg,
+                    )
                 if is_dev:
                     detail_msg = f"Error in {op_name}: {error_type}: {error_detail}"
                 else:
-                    # Production: fixed message only; no exception text, stack traces, or paths
                     detail_msg = "An unexpected error occurred while processing your request. Please try again later."
-
                 raise HTTPException(
                     status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                     detail=detail_msg,

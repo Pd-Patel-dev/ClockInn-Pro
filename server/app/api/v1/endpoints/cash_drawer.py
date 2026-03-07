@@ -36,6 +36,11 @@ from app.services.cash_drawer_service import (
 router = APIRouter()
 
 
+def _safe_session_attr(session, name, default=None):
+    """Use getattr for optional columns so missing migrations don't cause 500."""
+    return getattr(session, name, default)
+
+
 @router.get("", response_model=list[CashDrawerSessionResponse])
 @handle_endpoint_errors(operation_name="list_cash_drawer_sessions")
 async def list_cash_drawer_sessions(
@@ -97,15 +102,15 @@ async def list_cash_drawer_sessions(
             end_cash_cents=session.end_cash_cents,
             end_counted_at=session.end_counted_at,
             end_count_source=session.end_count_source.value if session.end_count_source else None,
-            collected_cash_cents=session.collected_cash_cents,
-            drop_amount_cents=session.drop_amount_cents,
-            beverages_cash_cents=session.beverages_cash_cents,
+            collected_cash_cents=_safe_session_attr(session, "collected_cash_cents"),
+            drop_amount_cents=_safe_session_attr(session, "drop_amount_cents"),
+            beverages_cash_cents=_safe_session_attr(session, "beverages_cash_cents"),
             expected_balance_cents=(
                 session.start_cash_cents
-                + (session.collected_cash_cents or 0)
-                - (session.drop_amount_cents or 0)
+                + (_safe_session_attr(session, "collected_cash_cents") or 0)
+                - (_safe_session_attr(session, "drop_amount_cents") or 0)
             ) if session.end_cash_cents is not None else None,
-            delta_cents=session.delta_cents,
+            delta_cents=_safe_session_attr(session, "delta_cents"),
             status=session.status.value,
             reviewed_by=session.reviewed_by,
             reviewed_at=session.reviewed_at,
@@ -305,21 +310,23 @@ async def get_cash_drawer_session_endpoint(
         end_cash_cents=session.end_cash_cents,
         end_counted_at=session.end_counted_at,
         end_count_source=session.end_count_source.value if session.end_count_source else None,
-        collected_cash_cents=session.collected_cash_cents,
-        drop_amount_cents=session.drop_amount_cents,
-        beverages_cash_cents=session.beverages_cash_cents,
+        collected_cash_cents=_safe_session_attr(session, "collected_cash_cents"),
+        drop_amount_cents=_safe_session_attr(session, "drop_amount_cents"),
+        beverages_cash_cents=_safe_session_attr(session, "beverages_cash_cents"),
         expected_balance_cents=(
             session.start_cash_cents
-            + (session.collected_cash_cents or 0)
-            - (session.drop_amount_cents or 0)
+            + (_safe_session_attr(session, "collected_cash_cents") or 0)
+            - (_safe_session_attr(session, "drop_amount_cents") or 0)
         ) if session.end_cash_cents is not None else None,
-        delta_cents=session.delta_cents,
+        delta_cents=_safe_session_attr(session, "delta_cents"),
         status=session.status.value,
         reviewed_by=session.reviewed_by,
         reviewed_at=session.reviewed_at,
         review_note=session.review_note,
         created_at=session.created_at,
         updated_at=session.updated_at,
+        clock_in_at=time_entry.clock_in_at if time_entry else None,
+        clock_out_at=time_entry.clock_out_at if time_entry else None,
         audit_logs=audit_logs,
     )
 
@@ -343,49 +350,56 @@ async def edit_cash_drawer_session_endpoint(
         data.end_cash_cents,
         data.reason,
     )
-    
-    # Load employee name and time entry
+    await db.refresh(session)
+
+    # Copy all session attributes to locals *before* any other await (avoid expired attributes -> MissingGreenlet)
+    collected = _safe_session_attr(session, "collected_cash_cents")
+    drop = _safe_session_attr(session, "drop_amount_cents")
+    beverages = _safe_session_attr(session, "beverages_cash_cents")
+    delta = _safe_session_attr(session, "delta_cents")
+    payload = {
+        "id": session.id,
+        "company_id": session.company_id,
+        "time_entry_id": session.time_entry_id,
+        "employee_id": session.employee_id,
+        "start_cash_cents": session.start_cash_cents,
+        "start_counted_at": session.start_counted_at,
+        "start_count_source": session.start_count_source.value,
+        "end_cash_cents": session.end_cash_cents,
+        "end_counted_at": session.end_counted_at,
+        "end_count_source": session.end_count_source.value if session.end_count_source else None,
+        "collected_cash_cents": collected,
+        "drop_amount_cents": drop,
+        "beverages_cash_cents": beverages,
+        "delta_cents": delta,
+        "status": session.status.value,
+        "reviewed_by": session.reviewed_by,
+        "reviewed_at": session.reviewed_at,
+        "review_note": session.review_note,
+        "created_at": session.created_at,
+        "updated_at": session.updated_at,
+    }
+
     emp_result = await db.execute(
         select(User).where(User.id == session.employee_id)
     )
     employee = emp_result.scalar_one_or_none()
-    
-    # Load time entry for clock in/out times
     time_entry_result = await db.execute(
         select(TimeEntry).where(TimeEntry.id == session.time_entry_id)
     )
     time_entry = time_entry_result.scalar_one_or_none()
-    
-    return CashDrawerSessionResponse(
-        id=session.id,
-        company_id=session.company_id,
-        time_entry_id=session.time_entry_id,
-        employee_id=session.employee_id,
+
+    response = CashDrawerSessionResponse(
+        **payload,
         employee_name=employee.name if employee else "Unknown",
-        start_cash_cents=session.start_cash_cents,
-        start_counted_at=session.start_counted_at,
-        start_count_source=session.start_count_source.value,
-        end_cash_cents=session.end_cash_cents,
-        end_counted_at=session.end_counted_at,
-        end_count_source=session.end_count_source.value if session.end_count_source else None,
-        collected_cash_cents=session.collected_cash_cents,
-        drop_amount_cents=session.drop_amount_cents,
-        beverages_cash_cents=session.beverages_cash_cents,
         expected_balance_cents=(
-            session.start_cash_cents
-            + (session.collected_cash_cents or 0)
-            - (session.drop_amount_cents or 0)
-        ) if session.end_cash_cents is not None else None,
-        delta_cents=session.delta_cents,
-        status=session.status.value,
-        reviewed_by=session.reviewed_by,
-        reviewed_at=session.reviewed_at,
-        review_note=session.review_note,
-        created_at=session.created_at,
-        updated_at=session.updated_at,
+            payload["start_cash_cents"] + (collected or 0) - (drop or 0)
+        ) if payload["end_cash_cents"] is not None else None,
         clock_in_at=time_entry.clock_in_at if time_entry else None,
         clock_out_at=time_entry.clock_out_at if time_entry else None,
     )
+    await db.commit()
+    return response
 
 
 @router.post("/{session_id}/review", response_model=CashDrawerSessionResponse)
@@ -398,7 +412,6 @@ async def review_cash_drawer_session_endpoint(
 ):
     """Review and update cash drawer session status."""
     sid = parse_uuid(session_id, "Session ID")
-    # After review, status should always be CLOSED
     session = await review_cash_drawer_session(
         db,
         current_user.company_id,
@@ -407,53 +420,51 @@ async def review_cash_drawer_session_endpoint(
         data.note,
         CashDrawerStatus.CLOSED,
     )
-    
-    # Commit the transaction to persist changes
-    await db.commit()
     await db.refresh(session)
-    
-    # Load employee name and time entry
+
+    collected = _safe_session_attr(session, "collected_cash_cents")
+    drop = _safe_session_attr(session, "drop_amount_cents")
+    payload = {
+        "id": session.id,
+        "company_id": session.company_id,
+        "time_entry_id": session.time_entry_id,
+        "employee_id": session.employee_id,
+        "start_cash_cents": session.start_cash_cents,
+        "start_counted_at": session.start_counted_at,
+        "start_count_source": session.start_count_source.value,
+        "end_cash_cents": session.end_cash_cents,
+        "end_counted_at": session.end_counted_at,
+        "end_count_source": session.end_count_source.value if session.end_count_source else None,
+        "collected_cash_cents": collected,
+        "drop_amount_cents": drop,
+        "beverages_cash_cents": _safe_session_attr(session, "beverages_cash_cents"),
+        "delta_cents": _safe_session_attr(session, "delta_cents"),
+        "status": session.status.value,
+        "reviewed_by": session.reviewed_by,
+        "reviewed_at": session.reviewed_at,
+        "review_note": session.review_note,
+        "created_at": session.created_at,
+        "updated_at": session.updated_at,
+    }
     emp_result = await db.execute(
         select(User).where(User.id == session.employee_id)
     )
     employee = emp_result.scalar_one_or_none()
-    
-    # Load time entry for clock in/out times
     time_entry_result = await db.execute(
         select(TimeEntry).where(TimeEntry.id == session.time_entry_id)
     )
     time_entry = time_entry_result.scalar_one_or_none()
-    
-    return CashDrawerSessionResponse(
-        id=session.id,
-        company_id=session.company_id,
-        time_entry_id=session.time_entry_id,
-        employee_id=session.employee_id,
+    response = CashDrawerSessionResponse(
+        **payload,
         employee_name=employee.name if employee else "Unknown",
-        start_cash_cents=session.start_cash_cents,
-        start_counted_at=session.start_counted_at,
-        start_count_source=session.start_count_source.value,
-        end_cash_cents=session.end_cash_cents,
-        end_counted_at=session.end_counted_at,
-        end_count_source=session.end_count_source.value if session.end_count_source else None,
-        collected_cash_cents=session.collected_cash_cents,
-        drop_amount_cents=session.drop_amount_cents,
-        beverages_cash_cents=session.beverages_cash_cents,
         expected_balance_cents=(
-            session.start_cash_cents
-            + (session.collected_cash_cents or 0)
-            - (session.drop_amount_cents or 0)
-        ) if session.end_cash_cents is not None else None,
-        delta_cents=session.delta_cents,
-        status=session.status.value,
-        reviewed_by=session.reviewed_by,
-        reviewed_at=session.reviewed_at,
-        review_note=session.review_note,
-        created_at=session.created_at,
-        updated_at=session.updated_at,
+            payload["start_cash_cents"] + (collected or 0) - (drop or 0)
+        ) if payload["end_cash_cents"] is not None else None,
         clock_in_at=time_entry.clock_in_at if time_entry else None,
         clock_out_at=time_entry.clock_out_at if time_entry else None,
     )
+    await db.commit()
+    return response
 
 
 @router.delete("/{session_id}", status_code=status.HTTP_204_NO_CONTENT)

@@ -1,11 +1,13 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 import Layout from '@/components/Layout'
 import api from '@/lib/api'
 import { getCurrentUser, User } from '@/lib/auth'
 import { format } from 'date-fns'
+import type { ShiftNoteCurrent } from '@/lib/shiftNotes'
 
 type TimeEntry = {
   id: string
@@ -38,6 +40,18 @@ export default function PunchInOutPage() {
   const [locationError, setLocationError] = useState<string | null>(null)
   const [locationLoading, setLocationLoading] = useState(false)
 
+  // Shift note (when clocked in)
+  const [shiftNote, setShiftNote] = useState<ShiftNoteCurrent | null>(null)
+  const [shiftNoteContent, setShiftNoteContent] = useState('')
+  const [shiftNoteBeverageSold, setShiftNoteBeverageSold] = useState('')
+  const [shiftNoteLoading, setShiftNoteLoading] = useState(false)
+  const [shiftNoteSaveStatus, setShiftNoteSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle')
+  const [shiftNoteSavedAt, setShiftNoteSavedAt] = useState<Date | null>(null)
+  const shiftNoteSaveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const lastSavedContentRef = useRef('')
+  const lastSavedBeverageRef = useRef<number | null>(null)
+  const SHIFT_NOTE_DEBOUNCE_MS = 800
+
   const fetchStatusAndEntries = useCallback(async () => {
     try {
       const [meRes, entriesRes] = await Promise.all([
@@ -62,6 +76,65 @@ export default function PunchInOutPage() {
       setLoadingList(false)
     }
   }, [router])
+
+  const fetchShiftNote = useCallback(async () => {
+    setShiftNoteLoading(true)
+    try {
+      const res = await api.get('/shift-notes/current')
+      const data = res.data as ShiftNoteCurrent
+      setShiftNote(data)
+      setShiftNoteContent(data.content ?? '')
+      setShiftNoteBeverageSold(data.beverage_sold != null ? String(data.beverage_sold) : '')
+      lastSavedContentRef.current = data.content ?? ''
+      lastSavedBeverageRef.current = data.beverage_sold ?? null
+    } catch {
+      setShiftNote(null)
+      setShiftNoteContent('')
+    } finally {
+      setShiftNoteLoading(false)
+    }
+  }, [])
+
+  const saveShiftNote = useCallback(async (content: string, beverageStr: string) => {
+    const bevNum = beverageStr === '' ? null : parseInt(beverageStr, 10)
+    const bevSafe = beverageStr === '' ? null : (Number.isNaN(bevNum) ? lastSavedBeverageRef.current : bevNum)
+    if (content === lastSavedContentRef.current && bevSafe === lastSavedBeverageRef.current) return
+    setShiftNoteSaveStatus('saving')
+    try {
+      await api.put('/shift-notes/current', {
+        content,
+        beverage_sold: bevSafe ?? undefined,
+      })
+      lastSavedContentRef.current = content
+      lastSavedBeverageRef.current = bevSafe
+      setShiftNoteSavedAt(new Date())
+      setShiftNoteSaveStatus('saved')
+    } catch {
+      setShiftNoteSaveStatus('idle')
+    }
+  }, [])
+
+  useEffect(() => {
+    if (currentStatus === 'in') {
+      fetchShiftNote()
+    } else {
+      setShiftNote(null)
+      setShiftNoteContent('')
+      setShiftNoteBeverageSold('')
+    }
+  }, [currentStatus, fetchShiftNote])
+
+  useEffect(() => {
+    if (!shiftNote?.can_edit || shiftNoteSaveStatus === 'saving') return
+    if (shiftNoteSaveTimeoutRef.current) clearTimeout(shiftNoteSaveTimeoutRef.current)
+    shiftNoteSaveTimeoutRef.current = setTimeout(() => {
+      saveShiftNote(shiftNoteContent, shiftNoteBeverageSold)
+      shiftNoteSaveTimeoutRef.current = null
+    }, SHIFT_NOTE_DEBOUNCE_MS)
+    return () => {
+      if (shiftNoteSaveTimeoutRef.current) clearTimeout(shiftNoteSaveTimeoutRef.current)
+    }
+  }, [shiftNoteContent, shiftNoteBeverageSold, shiftNote?.can_edit, saveShiftNote])
 
   useEffect(() => {
     const getLocation = () => {
@@ -376,6 +449,58 @@ export default function PunchInOutPage() {
         {error && (
           <div className="mb-4 p-3 rounded-lg bg-red-50 text-red-800 border border-red-200 text-center text-sm">
             {error}
+          </div>
+        )}
+
+        {/* Shift note — when clocked in */}
+        {currentStatus === 'in' && (
+          <div className="mb-6 bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm">
+            <div className="px-4 py-3 border-b border-gray-200 bg-gray-50 flex items-center justify-between flex-wrap gap-2">
+              <h2 className="text-sm font-semibold text-gray-900">Shift note</h2>
+              <Link
+                href="/my/shift-notepad"
+                className="text-xs font-medium text-blue-600 hover:text-blue-700"
+              >
+                Open full notepad →
+              </Link>
+            </div>
+            {shiftNoteLoading ? (
+              <div className="p-6 flex justify-center">
+                <div className="animate-spin rounded-full h-6 w-6 border-2 border-blue-600 border-t-transparent" />
+              </div>
+            ) : shiftNote ? (
+              <>
+                <div className="px-4 py-2 border-b border-gray-100 flex items-center gap-3 flex-wrap">
+                  <label className="flex items-center gap-2 text-xs text-gray-600">
+                    <span>Beverages sold:</span>
+                    <input
+                      type="number"
+                      min={0}
+                      value={shiftNoteBeverageSold}
+                      onChange={(e) => setShiftNoteBeverageSold(e.target.value)}
+                      disabled={!shiftNote.can_edit}
+                      className="w-16 rounded border border-gray-300 px-2 py-1 text-sm disabled:bg-gray-100"
+                    />
+                  </label>
+                  <span className="text-xs text-gray-500">
+                    {shiftNoteSaveStatus === 'saving' && 'Saving...'}
+                    {shiftNoteSaveStatus === 'saved' && shiftNoteSavedAt && `Saved at ${format(shiftNoteSavedAt, 'h:mm a')}`}
+                  </span>
+                </div>
+                <textarea
+                  value={shiftNoteContent}
+                  onChange={(e) => setShiftNoteContent(e.target.value)}
+                  disabled={!shiftNote.can_edit}
+                  placeholder="Jot down notes for this shift..."
+                  rows={4}
+                  className="w-full p-4 text-gray-900 placeholder-gray-400 border-0 focus:ring-0 focus:outline-none resize-y text-sm disabled:bg-gray-50 disabled:cursor-not-allowed"
+                />
+              </>
+            ) : (
+              <div className="p-4 text-sm text-gray-500">
+                Shift note will appear here. If it doesn’t load, try refreshing.
+              </div>
+            )}
           </div>
         )}
 

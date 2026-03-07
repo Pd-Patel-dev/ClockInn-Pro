@@ -214,7 +214,11 @@ async def admin_list_shift_notes(
     if employee_id:
         q = q.where(ShiftNote.employee_id == employee_id)
     if status_filter:
-        q = q.where(ShiftNote.status == status_filter)
+        try:
+            status_enum = ShiftNoteStatus(status_filter.strip().upper())
+            q = q.where(ShiftNote.status == status_enum)
+        except ValueError:
+            pass
     if search and search.strip():
         term = f"%{search.strip()}%"
         q = q.where(ShiftNote.content.ilike(term))
@@ -225,7 +229,28 @@ async def admin_list_shift_notes(
         q = q.order_by(TimeEntry.clock_in_at.desc() if not order_asc else TimeEntry.clock_in_at.asc())
     else:
         q = q.order_by(ShiftNote.updated_at.desc() if not order_asc else ShiftNote.updated_at.asc())
-    count_q = select(func.count()).select_from(q.subquery())
+    # Use a separate count query to avoid subquery/alias issues in some async drivers
+    count_q = (
+        select(func.count(ShiftNote.id))
+        .select_from(ShiftNote)
+        .join(TimeEntry, TimeEntry.id == ShiftNote.time_entry_id)
+        .where(ShiftNote.company_id == company_id)
+    )
+    if from_date:
+        count_q = count_q.where(TimeEntry.clock_in_at >= datetime.combine(from_date, datetime.min.time()))
+    if to_date:
+        count_q = count_q.where(TimeEntry.clock_in_at < datetime.combine(to_date, datetime.min.time()) + timedelta(days=1))
+    if employee_id:
+        count_q = count_q.where(ShiftNote.employee_id == employee_id)
+    if status_filter:
+        try:
+            status_enum = ShiftNoteStatus(status_filter.strip().upper())
+            count_q = count_q.where(ShiftNote.status == status_enum)
+        except ValueError:
+            pass
+    if search and search.strip():
+        term = f"%{search.strip()}%"
+        count_q = count_q.where(ShiftNote.content.ilike(term))
     total = (await db.execute(count_q)).scalar() or 0
     q = q.offset(skip).limit(limit)
     result = await db.execute(q)
@@ -253,6 +278,12 @@ async def admin_list_shift_notes(
             and note.last_edited_at is not None
             and note.last_edited_at > note.reviewed_at
         )
+        cash_delta = cash_map.get(entry.id)
+        if cash_delta is not None and not isinstance(cash_delta, int):
+            try:
+                cash_delta = int(cash_delta)
+            except (TypeError, ValueError):
+                cash_delta = None
         items.append({
             "id": str(note.id),
             "time_entry_id": str(note.time_entry_id),
@@ -261,13 +292,13 @@ async def admin_list_shift_notes(
             "clock_in_at": entry.clock_in_at,
             "clock_out_at": entry.clock_out_at,
             "preview": preview,
-            "beverage_sold": note.beverage_sold,
+            "beverage_sold": getattr(note, "beverage_sold", None),
             "status": note.status.value,
             "updated_at": note.updated_at,
             "last_edited_at": note.last_edited_at,
             "reviewed_at": note.reviewed_at,
             "updated_since_review": updated_since_review,
-            "cash_delta_cents": cash_map.get(entry.id),
+            "cash_delta_cents": cash_delta,
         })
     return items, total
 
@@ -311,7 +342,7 @@ async def admin_get_shift_note(
         "employee_id": str(note.employee_id),
         "employee_name": employee_name,
         "content": note.content or "",
-        "beverage_sold": note.beverage_sold,
+        "beverage_sold": getattr(note, "beverage_sold", None),
         "status": note.status.value,
         "last_edited_at": note.last_edited_at,
         "last_edited_by": str(note.last_edited_by) if note.last_edited_by else None,
@@ -324,10 +355,10 @@ async def admin_get_shift_note(
         "is_shift_open": entry.clock_out_at is None,
         "cash_start_cents": cash_session.start_cash_cents if cash_session else None,
         "cash_end_cents": cash_session.end_cash_cents if cash_session else None,
-        "cash_delta_cents": cash_session.delta_cents if cash_session else None,
-        "collected_cash_cents": cash_session.collected_cash_cents if cash_session else None,
-        "drop_amount_cents": cash_session.drop_amount_cents if cash_session else None,
-        "beverages_cash_cents": cash_session.beverages_cash_cents if cash_session else None,
+        "cash_delta_cents": getattr(cash_session, "delta_cents", None) if cash_session else None,
+        "collected_cash_cents": getattr(cash_session, "collected_cash_cents", None) if cash_session else None,
+        "drop_amount_cents": getattr(cash_session, "drop_amount_cents", None) if cash_session else None,
+        "beverages_cash_cents": getattr(cash_session, "beverages_cash_cents", None) if cash_session else None,
     }
 
 
@@ -370,7 +401,7 @@ async def admin_get_shift_note_by_time_entry(
         "employee_id": str(note.employee_id),
         "employee_name": employee_name,
         "content": note.content or "",
-        "beverage_sold": note.beverage_sold,
+        "beverage_sold": getattr(note, "beverage_sold", None),
         "status": note.status.value,
         "last_edited_at": note.last_edited_at,
         "last_edited_by": str(note.last_edited_by) if note.last_edited_by else None,
@@ -383,10 +414,10 @@ async def admin_get_shift_note_by_time_entry(
         "is_shift_open": entry.clock_out_at is None,
         "cash_start_cents": cash_session.start_cash_cents if cash_session else None,
         "cash_end_cents": cash_session.end_cash_cents if cash_session else None,
-        "cash_delta_cents": cash_session.delta_cents if cash_session else None,
-        "collected_cash_cents": cash_session.collected_cash_cents if cash_session else None,
-        "drop_amount_cents": cash_session.drop_amount_cents if cash_session else None,
-        "beverages_cash_cents": cash_session.beverages_cash_cents if cash_session else None,
+        "cash_delta_cents": getattr(cash_session, "delta_cents", None) if cash_session else None,
+        "collected_cash_cents": getattr(cash_session, "collected_cash_cents", None) if cash_session else None,
+        "drop_amount_cents": getattr(cash_session, "drop_amount_cents", None) if cash_session else None,
+        "beverages_cash_cents": getattr(cash_session, "beverages_cash_cents", None) if cash_session else None,
     }
 
 
