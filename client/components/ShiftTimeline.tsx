@@ -1,18 +1,23 @@
 'use client'
 
 import { useMemo, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { format, parseISO, addDays } from 'date-fns'
 import { getEmployeeColor } from '@/lib/employeeColors'
+import { parseTime24 } from '@/lib/time'
 import type { CSSProperties } from 'react'
 
 const HOUR_HEIGHT = 30
 const SLOT_HEIGHT = HOUR_HEIGHT * 2 // 2-hour slot = 60px
 const TOTAL_HEIGHT = 24 * HOUR_HEIGHT // 720px; always 24h so overnight shifts fit
 const TIME_COL_WIDTH = 52
-const DAY_COL_WIDTH = 132
 const HEADER_HEIGHT = 44
 const SHIFT_MIN_HEIGHT = 24
 const SHIFT_GAP = 3
+const TOOLTIP_OFFSET = 8
+const TOOLTIP_PADDING = 12
+const TOOLTIP_MAX_WIDTH = 280
+const TOOLTIP_EST_HEIGHT = 140
 
 export interface ShiftForTimeline {
   id: string
@@ -27,20 +32,22 @@ export interface ShiftForTimeline {
   notes?: string
 }
 
-function normalizeShift(shift: ShiftForTimeline): { startAt: Date; endAt: Date; durationMinutes: number } {
+function normalizeShift(shift: ShiftForTimeline): { startAt: Date; endAt: Date; durationMinutes: number; invalid: boolean } {
   const shiftDate = parseISO(shift.shift_date)
-  const [sh, sm] = shift.start_time.split(':').map(Number)
-  const [eh, em] = shift.end_time.split(':').map(Number)
-
+  const startParsed = parseTime24(shift.start_time)
+  const endParsed = parseTime24(shift.end_time)
+  if (!startParsed || !endParsed) {
+    const fallback = new Date(shiftDate)
+    fallback.setHours(0, 0, 0, 0)
+    return { startAt: fallback, endAt: addDays(fallback, 1), durationMinutes: 0, invalid: true }
+  }
   const startAt = new Date(shiftDate)
-  startAt.setHours(sh, sm ?? 0, 0, 0)
-
+  startAt.setHours(startParsed.hour, startParsed.minute, 0, 0)
   let endAt = new Date(shiftDate)
-  endAt.setHours(eh, em ?? 0, 0, 0)
+  endAt.setHours(endParsed.hour, endParsed.minute, 0, 0)
   if (endAt <= startAt) endAt = addDays(endAt, 1)
-
   const durationMinutes = (endAt.getTime() - startAt.getTime()) / (1000 * 60)
-  return { startAt, endAt, durationMinutes }
+  return { startAt, endAt, durationMinutes, invalid: false }
 }
 
 function hoursFromMidnight(d: Date): number {
@@ -100,22 +107,47 @@ const EVEN_DISPLAY_HOURS = [0, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22]
 
 export function ShiftTimeline({ shifts, weekDays, onShiftClick, loading, today, dayStartHour = 7, dayEndHour = 7 }: ShiftTimelineProps) {
   const [hoveredId, setHoveredId] = useState<string | null>(null)
+  const [tooltipAnchor, setTooltipAnchor] = useState<DOMRect | null>(null)
   const todayKey = today ? format(today, 'yyyy-MM-dd') : null
 
-/** Break when the timeline (schedule day) ends; continuation moves to next day. Otherwise one block. */
-interface ShiftSegment {
-  shift: ShiftForTimeline
-  dayKey: string
-  displayStart: Date
-  displayEnd: Date
-  durationMinutes: number
-  isContinuation: boolean
-}
+  const tooltipStyle = useMemo((): CSSProperties => {
+    if (typeof window === 'undefined' || !tooltipAnchor) {
+      return { left: TOOLTIP_PADDING, top: 100 }
+    }
+    // Keep tooltip next to the block; only clamp when it would go off viewport
+    let left = tooltipAnchor.left
+    let top = tooltipAnchor.bottom + TOOLTIP_OFFSET
+    const maxLeft = window.innerWidth - TOOLTIP_MAX_WIDTH - TOOLTIP_PADDING
+    const maxTop = window.innerHeight - TOOLTIP_EST_HEIGHT - TOOLTIP_PADDING
+    if (left > maxLeft) left = maxLeft
+    if (left < TOOLTIP_PADDING) left = TOOLTIP_PADDING
+    if (top > maxTop) top = Math.max(TOOLTIP_PADDING, tooltipAnchor.top - TOOLTIP_EST_HEIGHT - TOOLTIP_OFFSET)
+    if (top < TOOLTIP_PADDING) top = TOOLTIP_PADDING
+    return { left, top }
+  }, [tooltipAnchor])
 
-  const shiftsByDay = useMemo(() => {
+  /** Break when the timeline (schedule day) ends; continuation moves to next day. Otherwise one block. */
+  interface ShiftSegment {
+    shift: ShiftForTimeline
+    dayKey: string
+    displayStart: Date
+    displayEnd: Date
+    durationMinutes: number
+    isContinuation: boolean
+  }
+
+  const shiftsByDayResult = useMemo(() => {
     const byDay = new Map<string, ShiftSegment[]>()
+    const invalidByDay = new Map<string, ShiftForTimeline[]>()
     for (const shift of shifts) {
-      const { startAt, endAt, durationMinutes } = normalizeShift(shift)
+      const norm = normalizeShift(shift)
+      if (norm.invalid) {
+        const dayKey = shift.shift_date
+        if (!invalidByDay.has(dayKey)) invalidByDay.set(dayKey, [])
+        invalidByDay.get(dayKey)!.push(shift)
+        continue
+      }
+      const { startAt, endAt, durationMinutes } = norm
       const startKey = format(startAt, 'yyyy-MM-dd')
 
       // Timeline end: when day ends at 7 AM, the day runs 7 AM → 7 AM next day (no date change, no break for overnight within that).
@@ -170,8 +202,10 @@ interface ShiftSegment {
     for (const arr of byDay.values()) {
       arr.sort((a, b) => a.displayStart.getTime() - b.displayStart.getTime())
     }
-    return byDay
+    return { shiftsByDay: byDay, invalidShiftsByDay: invalidByDay }
   }, [shifts, dayStartHour, dayEndHour])
+
+  const { shiftsByDay, invalidShiftsByDay } = shiftsByDayResult
 
   const lanesByDay = useMemo(() => {
     const lanes = new Map<string, number[]>()
@@ -194,8 +228,8 @@ interface ShiftSegment {
   }
 
   return (
-    <div className="bg-white/70 backdrop-blur-md rounded-2xl border border-white/60 shadow-[0_8px_32px_rgba(0,0,0,0.06),inset_0_1px_0_rgba(255,255,255,0.8)] overflow-x-auto overflow-y-auto">
-      <div className="flex min-w-max pb-8" style={{ minHeight: TOTAL_HEIGHT + HEADER_HEIGHT }}>
+    <div className="bg-white/70 backdrop-blur-md rounded-2xl border border-white/60 shadow-[0_8px_32px_rgba(0,0,0,0.06),inset_0_1px_0_rgba(255,255,255,0.8)] overflow-y-auto overflow-x-auto">
+      <div className="flex w-full min-w-0 pb-8" style={{ minHeight: TOTAL_HEIGHT + HEADER_HEIGHT }}>
         {/* Time column - clear 2-hour slots */}
         <div
           className="flex-shrink-0 sticky left-0 z-20 border-r border-gray-200/70 bg-gray-50/90"
@@ -258,12 +292,11 @@ interface ShiftSegment {
           return (
             <div
               key={dayKey}
-              className={`flex-shrink-0 relative border-r border-gray-200/60 last:border-r-0 ${isToday ? 'bg-blue-50/30' : 'bg-white/50'}`}
+              className={`flex-1 min-w-0 relative border-r border-gray-200/60 last:border-r-0 ${isToday ? 'bg-blue-50/30' : 'bg-white/50'}`}
               style={{
-                width: DAY_COL_WIDTH,
-                minWidth: DAY_COL_WIDTH,
                 height: TOTAL_HEIGHT + HEADER_HEIGHT,
                 overflow: 'visible',
+                minWidth: 72,
               }}
             >
               <div
@@ -283,6 +316,15 @@ interface ShiftSegment {
                 className="relative overflow-visible"
                 style={{ height: TOTAL_HEIGHT }}
               >
+                {/* Invalid time indicator for shifts that couldn't be parsed */}
+                {(invalidShiftsByDay.get(dayKey) ?? []).length > 0 && (
+                  <div
+                    className="absolute top-2 left-2 right-2 z-10 px-2 py-1.5 rounded-md bg-amber-100 text-amber-800 text-[10px] font-medium border border-amber-200/80"
+                    title={`${(invalidShiftsByDay.get(dayKey) ?? []).length} shift(s) with invalid or missing time`}
+                  >
+                    Invalid time
+                  </div>
+                )}
                 {/* Alternating 2-hour slot backgrounds */}
                 {EVEN_DISPLAY_HOURS.map((hour, i) => (
                   <div
@@ -330,12 +372,13 @@ interface ShiftSegment {
                   const night = isNightShift(shift, displayStart, displayEnd)
                   const colors = getEmployeeColor(shift.employee_id)
                   const isHovered = hoveredId === shift.id
-                  const { startAt, endAt } = normalizeShift(shift)
 
                   return (
                     <div
                       key={`${shift.id}-${seg.dayKey}-${isContinuation ? 'cont' : 'start'}-${idx}`}
-                      className="absolute rounded-lg cursor-pointer transition-all duration-200 border border-white/50 shadow-sm hover:shadow-md overflow-hidden"
+                      className={`absolute rounded-lg cursor-pointer overflow-hidden border border-white/50 shadow-sm
+                        transition-all duration-200 ease-out
+                        ${isHovered ? 'scale-[1.01] shadow-md ring-2 ring-blue-400/40 ring-inset' : 'scale-100'}`}
                       style={{
                         top: `${top}px`,
                         height: `${height}px`,
@@ -347,8 +390,14 @@ interface ShiftSegment {
                         zIndex: isHovered ? 20 : 5,
                       } as CSSProperties}
                       onClick={() => onShiftClick?.(shift)}
-                      onMouseEnter={() => setHoveredId(shift.id)}
-                      onMouseLeave={() => setHoveredId(null)}
+                      onMouseEnter={(e) => {
+                        setHoveredId(shift.id)
+                        setTooltipAnchor(e.currentTarget.getBoundingClientRect())
+                      }}
+                      onMouseLeave={() => {
+                        setHoveredId(null)
+                        setTooltipAnchor(null)
+                      }}
                     >
                       <div className="flex items-start gap-2 h-full min-h-0 p-2">
                         <div
@@ -394,36 +443,49 @@ interface ShiftSegment {
         })}
       </div>
 
-      {/* Hover tooltip - refined shape and typography */}
-      {hoveredId && (() => {
-        const shift = shifts.find((s) => s.id === hoveredId)
-        if (!shift) return null
-        const { startAt, endAt, durationMinutes } = normalizeShift(shift)
-        const night = isNightShift(shift, startAt, endAt)
-        return (
-          <div
-            className="fixed z-[100] pointer-events-none bg-white rounded-xl shadow-lg border border-gray-200/80 p-4 max-w-[280px]"
-            style={{
-              left: typeof window !== 'undefined' ? Math.min(window.innerWidth - 300, 24) : 24,
-              top: 100,
-            }}
-          >
-            <div className="font-semibold text-gray-900 text-sm">{shift.employee_name}</div>
-            <div className="text-xs text-gray-600 mt-1.5">
-              {format(startAt, 'EEE, MMM d · h:mm a')} – {format(endAt, 'h:mm a')}
+      {/* Hover tooltip - rendered in portal so position:fixed is viewport-relative (parent has backdrop-blur) */}
+      {hoveredId && typeof document !== 'undefined' && createPortal(
+        (() => {
+          const shift = shifts.find((s) => s.id === hoveredId)
+          if (!shift) return null
+          const norm = normalizeShift(shift)
+          if (norm.invalid) {
+            return (
+              <div
+                className="fixed z-[100] pointer-events-none bg-white rounded-xl shadow-lg border border-gray-200/80 p-4 max-w-[280px]"
+                style={tooltipStyle}
+              >
+                <div className="font-semibold text-gray-900 text-sm">{shift.employee_name}</div>
+                <div className="text-xs text-amber-700 mt-1.5 font-medium">Invalid time</div>
+                <div className="text-[11px] text-gray-500 mt-1">Start/end time could not be parsed.</div>
+              </div>
+            )
+          }
+          const { startAt, endAt, durationMinutes } = norm
+          const night = isNightShift(shift, startAt, endAt)
+          return (
+            <div
+              className="fixed z-[100] pointer-events-none bg-white rounded-xl shadow-lg border border-gray-200/80 p-4 max-w-[280px]"
+              style={tooltipStyle}
+            >
+              <div className="font-semibold text-gray-900 text-sm">{shift.employee_name}</div>
+              <div className="text-xs text-gray-600 mt-1.5">
+                {format(startAt, 'EEE, MMM d · h:mm a')} – {format(endAt, 'h:mm a')}
+              </div>
+              <div className="text-xs font-medium text-gray-700 mt-1">
+                Total: {durationMinutes >= 60 ? `${Math.floor(durationMinutes / 60)}h ${durationMinutes % 60}m` : `${durationMinutes}m`}
+              </div>
+              {shift.job_role && <div className="text-xs text-gray-500 mt-1">{shift.job_role}</div>}
+              {night && (
+                <span className="inline-block mt-2 px-2 py-1 rounded-md text-xs font-medium bg-purple-100 text-purple-800">
+                  Night shift
+                </span>
+              )}
             </div>
-            <div className="text-xs font-medium text-gray-700 mt-1">
-              Total: {durationMinutes >= 60 ? `${Math.floor(durationMinutes / 60)}h ${durationMinutes % 60}m` : `${durationMinutes}m`}
-            </div>
-            {shift.job_role && <div className="text-xs text-gray-500 mt-1">{shift.job_role}</div>}
-            {night && (
-              <span className="inline-block mt-2 px-2 py-1 rounded-md text-xs font-medium bg-purple-100 text-purple-800">
-                Night shift
-              </span>
-            )}
-          </div>
-        )
-      })()}
+          )
+        })(),
+        document.body
+      )}
     </div>
   )
 }

@@ -2,7 +2,7 @@
 
 import { useState, Suspense } from 'react'
 import { useRouter } from 'next/navigation'
-import Link from 'next/link'
+import BackButton from '@/components/BackButton'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
@@ -92,9 +92,9 @@ function ForgotPasswordContent() {
             </form>
 
             <div className="mt-6 text-center">
-              <Link href="/login" className="text-sm font-medium text-blue-600 hover:text-blue-500">
+              <BackButton fallbackHref="/login" className="text-sm font-medium text-blue-600 hover:text-blue-500">
                 Back to login
-              </Link>
+              </BackButton>
             </div>
           </div>
         </div>

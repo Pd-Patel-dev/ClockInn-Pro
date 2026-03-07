@@ -20,6 +20,7 @@ from app.core.security import (
     validate_password_strength,
     get_pin_hash,
 )
+from app.core.login_attempts import is_locked_out, record_failed_attempt, clear_attempts
 from app.core.slug import generate_unique_slug
 from app.core.config import settings
 from app.schemas.auth import RegisterCompanyRequest, LoginRequest
@@ -80,8 +81,13 @@ async def register_company(
     db.add(user)
     await db.flush()
     
-    # Create session with refresh token
-    refresh_token = create_refresh_token({"sub": str(user.id), "company_id": str(company.id)})
+    # Create session with refresh token (session_start for sliding + absolute max)
+    now_ts = datetime.utcnow()
+    refresh_token = create_refresh_token({
+        "sub": str(user.id),
+        "company_id": str(company.id),
+        "session_start": int(now_ts.timestamp()),
+    })
     from passlib.context import CryptContext
     token_context = CryptContext(schemes=["argon2"], deprecated="auto")
     refresh_token_hash = token_context.hash(refresh_token)
@@ -94,10 +100,10 @@ async def register_company(
         expires_at=datetime.utcnow() + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS),
     )
     db.add(session)
-    
+
     await db.commit()
     await db.refresh(user)
-    
+
     # Send verification PIN after registration
     try:
         from app.services.verification_service import send_verification_pin
@@ -120,6 +126,17 @@ async def login(
 ) -> tuple[User, str, str]:
     """Authenticate user and create session."""
     normalized_email = normalize_email(request.email)
+
+    # Rate limiting: check lockout before any password check
+    locked, lockout_until = is_locked_out(normalized_email)
+    if locked and lockout_until:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail={
+                "error": "TOO_MANY_LOGIN_ATTEMPTS",
+                "message": "Too many failed login attempts. Please try again later.",
+            },
+        )
     
     # Query with limit to prevent MultipleResultsFound error if duplicates exist
     result = await db.execute(
@@ -134,17 +151,22 @@ async def login(
         # This prevents timing attacks that could reveal if email exists
         dummy_hash = "$argon2id$v=19$m=65536,t=3,p=4$dummy$dummy"
         verify_password(request.password, dummy_hash)
+        record_failed_attempt(normalized_email)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid email or password",
         )
     
     if not verify_password(request.password, user.password_hash):
+        record_failed_attempt(normalized_email)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid email or password",
         )
-    
+
+    # Success: clear rate-limit state for this email
+    clear_attempts(normalized_email)
+
     if user.status != UserStatus.ACTIVE:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -163,8 +185,13 @@ async def login(
     user.last_login_at = datetime.utcnow()
     await db.flush()
     
-    # Create session with refresh token
-    refresh_token = create_refresh_token({"sub": str(user.id), "company_id": str(user.company_id)})
+    # Create session with refresh token (session_start for sliding + absolute max)
+    now_ts = datetime.utcnow()
+    refresh_token = create_refresh_token({
+        "sub": str(user.id),
+        "company_id": str(user.company_id),
+        "session_start": int(now_ts.timestamp()),
+    })
     from passlib.context import CryptContext
     token_context = CryptContext(schemes=["argon2"], deprecated="auto")
     refresh_token_hash = token_context.hash(refresh_token)
@@ -280,8 +307,28 @@ async def refresh_access_token(
             }
         )
     
-    # Create new session with new refresh token
-    new_refresh_token = create_refresh_token({"sub": str(user.id), "company_id": str(user.company_id)})
+    # Create new session with new refresh token (keep same session_start for absolute max)
+    session_start = payload.get("session_start")
+    if session_start is None:
+        # Old token without session_start: approximate from exp
+        exp = payload.get("exp")
+        if exp is not None:
+            session_start = int(exp) - (settings.REFRESH_TOKEN_EXPIRE_DAYS * 86400)
+        else:
+            session_start = int(datetime.utcnow().timestamp())
+
+    now_ts = datetime.utcnow().timestamp()
+    if (now_ts - session_start) > (settings.REFRESH_TOKEN_ABSOLUTE_MAX_DAYS * 86400):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Session expired. Please log in again.",
+        )
+
+    new_refresh_token = create_refresh_token({
+        "sub": str(user.id),
+        "company_id": str(user.company_id),
+        "session_start": session_start,
+    })
     new_refresh_token_hash = token_context.hash(new_refresh_token)
     
     new_session = Session(

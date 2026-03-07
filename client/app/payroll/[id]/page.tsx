@@ -9,6 +9,7 @@ import logger from '@/lib/logger'
 import { useToast } from '@/components/Toast'
 import { ButtonSpinner } from '@/components/LoadingSpinner'
 import ConfirmationDialog from '@/components/ConfirmationDialog'
+import BackButton from '@/components/BackButton'
 
 interface PayrollLineItem {
   id: string
@@ -224,12 +225,9 @@ export default function PayrollDetailsPage() {
     <Layout>
       <div className="px-4 py-6 sm:px-0">
         <div className="mb-6">
-          <button
-            onClick={() => router.push('/payroll')}
-            className="mb-4 text-primary-600 hover:text-primary-700 flex items-center"
-          >
+          <BackButton fallbackHref="/payroll" className="mb-4 text-primary-600 hover:text-primary-700 flex items-center gap-1.5">
             ← Back to Payroll Runs
-          </button>
+          </BackButton>
           <div className="flex justify-between items-center">
             <div>
               <h1 className="text-2xl font-bold">Payroll Details</h1>

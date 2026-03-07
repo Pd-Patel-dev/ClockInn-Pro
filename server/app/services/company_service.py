@@ -33,6 +33,12 @@ DEFAULT_CASH_DRAWER_REQUIRE_MANAGER_REVIEW = False
 DEFAULT_SCHEDULE_DAY_START_HOUR = 7
 DEFAULT_SCHEDULE_DAY_END_HOUR = 7
 
+# Shift notepad / common log
+DEFAULT_SHIFT_NOTES_ENABLED = True
+DEFAULT_SHIFT_NOTES_REQUIRED_ON_CLOCK_OUT = False
+DEFAULT_SHIFT_NOTES_ALLOW_EDIT_AFTER_CLOCK_OUT = False
+MIN_SHIFT_NOTE_LENGTH_REQUIRED = 10
+
 
 def get_company_settings(company: Company) -> Dict:
     """Get company settings with defaults."""
@@ -57,6 +63,10 @@ def get_company_settings(company: Company) -> Dict:
         "cash_drawer_require_manager_review": settings.get("cash_drawer_require_manager_review", DEFAULT_CASH_DRAWER_REQUIRE_MANAGER_REVIEW),
         "schedule_day_start_hour": settings.get("schedule_day_start_hour", DEFAULT_SCHEDULE_DAY_START_HOUR),
         "schedule_day_end_hour": settings.get("schedule_day_end_hour", DEFAULT_SCHEDULE_DAY_END_HOUR),
+        # Shift notepad
+        "shift_notes_enabled": settings.get("shift_notes_enabled", DEFAULT_SHIFT_NOTES_ENABLED),
+        "shift_notes_required_on_clock_out": settings.get("shift_notes_required_on_clock_out", DEFAULT_SHIFT_NOTES_REQUIRED_ON_CLOCK_OUT),
+        "shift_notes_allow_edit_after_clock_out": settings.get("shift_notes_allow_edit_after_clock_out", DEFAULT_SHIFT_NOTES_ALLOW_EDIT_AFTER_CLOCK_OUT),
     }
 
 
@@ -173,6 +183,12 @@ async def update_company_settings(
         current_settings["schedule_day_start_hour"] = data.schedule_day_start_hour
     if data.schedule_day_end_hour is not None:
         current_settings["schedule_day_end_hour"] = data.schedule_day_end_hour
+    if data.shift_notes_enabled is not None:
+        current_settings["shift_notes_enabled"] = data.shift_notes_enabled
+    if data.shift_notes_required_on_clock_out is not None:
+        current_settings["shift_notes_required_on_clock_out"] = data.shift_notes_required_on_clock_out
+    if data.shift_notes_allow_edit_after_clock_out is not None:
+        current_settings["shift_notes_allow_edit_after_clock_out"] = data.shift_notes_allow_edit_after_clock_out
 
     logger.info(f"Settings after update: {current_settings}")
     

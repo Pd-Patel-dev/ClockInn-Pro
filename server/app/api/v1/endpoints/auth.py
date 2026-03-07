@@ -1,7 +1,8 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi import APIRouter, Body, Depends, HTTPException, Request, Response, status, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 import uuid
 
+from app.core.config import settings
 from app.core.database import get_db
 from app.core.dependencies import get_current_user
 from app.core.error_handling import handle_endpoint_errors
@@ -24,71 +25,110 @@ from app.core.security import normalize_email
 
 router = APIRouter()
 
+# Cookie settings for refresh token (HttpOnly, Secure, SameSite to prevent XSS access)
+def _refresh_cookie_max_age() -> int:
+    return settings.REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60 * 60
+
+
+def _set_refresh_cookie(response: Response, refresh_token: str) -> None:
+    response.set_cookie(
+        key=settings.REFRESH_TOKEN_COOKIE_NAME,
+        value=refresh_token,
+        max_age=_refresh_cookie_max_age(),
+        secure=settings.COOKIE_SECURE,
+        httponly=True,
+        samesite=settings.COOKIE_SAMESITE.lower(),
+        path="/",
+    )
+
+
+def _clear_refresh_cookie(response: Response) -> None:
+    response.delete_cookie(
+        key=settings.REFRESH_TOKEN_COOKIE_NAME,
+        path="/",
+    )
+
 
 @router.post("/register-company", response_model=TokenResponse, status_code=status.HTTP_201_CREATED)
 @handle_endpoint_errors(operation_name="register_company")
 async def register_company_endpoint(
     request: RegisterCompanyRequest,
+    response: Response,
     db: AsyncSession = Depends(get_db),
 ):
-    """Register a new company and create the first admin user."""
+    """Register a new company and create the first admin user. Sets refresh token in HttpOnly cookie."""
     user, access_token, refresh_token = await register_company(db, request)
+    _set_refresh_cookie(response, refresh_token)
     return TokenResponse(
         access_token=access_token,
-        refresh_token=refresh_token,
+        refresh_token=None,
     )
 
 
 @router.post("/login", response_model=TokenResponse)
 @handle_endpoint_errors(operation_name="login")
 async def login_endpoint(
+    request: Request,
     login_data: LoginRequest,
+    response: Response,
     db: AsyncSession = Depends(get_db),
 ):
-    """Login with email and password."""
-    # Log received data for debugging (only in development)
-    import os
-    import logging
-    logger = logging.getLogger(__name__)
-    if os.getenv("ENVIRONMENT", "").lower() not in ["prod", "production"]:
-        logger.debug(f"Login attempt for email: {login_data.email[:3]}***")
-    
-    # IP and user agent are optional - can be added later if needed
-    user, access_token, refresh_token = await login(db, login_data, ip=None, user_agent=None)
+    """Login with email and password. Sets refresh token in HttpOnly cookie. Credentials in body only."""
+    ip = request.client.host if request.client else None
+    user_agent = request.headers.get("user-agent")
+    user, access_token, refresh_token = await login(db, login_data, ip=ip, user_agent=user_agent)
+    _set_refresh_cookie(response, refresh_token)
     return TokenResponse(
         access_token=access_token,
-        refresh_token=refresh_token,
+        refresh_token=None,
     )
 
 
 @router.post("/refresh", response_model=TokenResponse)
 @handle_endpoint_errors(operation_name="refresh_token")
 async def refresh_token_endpoint(
-    refresh_data: RefreshTokenRequest,
+    request: Request,
+    response: Response,
+    refresh_data: RefreshTokenRequest | None = Body(None),
     db: AsyncSession = Depends(get_db),
 ):
-    """Refresh access token and rotate refresh token."""
-    # IP and user agent are optional - can be added later if needed
-    access_token, refresh_token = await refresh_access_token(
+    """Refresh access token and rotate refresh token. Reads refresh token from HttpOnly cookie (or body for backwards compatibility)."""
+    refresh_token = request.cookies.get(settings.REFRESH_TOKEN_COOKIE_NAME)
+    if not refresh_token and refresh_data and refresh_data.refresh_token:
+        refresh_token = refresh_data.refresh_token
+    if not refresh_token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Refresh token required (cookie or body).",
+        )
+    access_token, new_refresh_token = await refresh_access_token(
         db,
-        refresh_data.refresh_token,
+        refresh_token,
         ip=None,
         user_agent=None,
     )
+    _set_refresh_cookie(response, new_refresh_token)
     return TokenResponse(
         access_token=access_token,
-        refresh_token=refresh_token,
+        refresh_token=None,
     )
 
 
 @router.post("/logout")
 @handle_endpoint_errors(operation_name="logout")
 async def logout_endpoint(
-    request: LogoutRequest,
+    request: Request,
+    response: Response,
+    body: LogoutRequest | None = Body(None),
     db: AsyncSession = Depends(get_db),
 ):
-    """Logout and revoke refresh token."""
-    await logout(db, request.refresh_token)
+    """Logout and revoke refresh token. Reads from HttpOnly cookie (or body for backwards compatibility)."""
+    refresh_token = request.cookies.get(settings.REFRESH_TOKEN_COOKIE_NAME)
+    if not refresh_token and body and body.refresh_token:
+        refresh_token = body.refresh_token
+    if refresh_token:
+        await logout(db, refresh_token)
+    _clear_refresh_cookie(response)
     return {"message": "Logged out successfully"}
 
 
@@ -323,8 +363,11 @@ async def set_password_endpoint(
         return {"message": "Password set successfully. You can now log in."}
     except Exception as e:
         await db.rollback()
+        import os
+        is_production = os.getenv("ENVIRONMENT", "").lower() in ["prod", "production"]
+        detail = "Failed to set password. Please try again." if is_production else f"Failed to set password: {str(e)}"
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to set password: {str(e)}"
+            detail=detail,
         )
 

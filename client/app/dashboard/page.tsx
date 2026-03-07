@@ -8,6 +8,8 @@ import Link from 'next/link'
 import api from '@/lib/api'
 import { format } from 'date-fns'
 import logger from '@/lib/logger'
+import type { ShiftNoteListItemType } from '@/lib/shiftNotes'
+import { formatDateTimeForDisplay } from '@/lib/time'
 
 interface Employee {
   id: string
@@ -27,6 +29,8 @@ export default function DashboardPage() {
   const [pendingLeave, setPendingLeave] = useState(0)
   const [employees, setEmployees] = useState<Employee[]>([])
   const [loadingStats, setLoadingStats] = useState(true)
+  const [shiftNotes, setShiftNotes] = useState<ShiftNoteListItemType[]>([])
+  const [loadingNotes, setLoadingNotes] = useState(false)
 
   useEffect(() => {
     const fetchUser = async () => {
@@ -36,10 +40,23 @@ export default function DashboardPage() {
         if (currentUser.role === 'ADMIN') {
           fetchStats()
         }
+        fetchNotes(currentUser)
       } catch (error) {
         router.push('/login')
       } finally {
         setLoading(false)
+      }
+    }
+    async function fetchNotes(u: User) {
+      setLoadingNotes(true)
+      try {
+        const res = await api.get('/shift-notes/common?limit=25&sort_by=clock_in_at&order=desc')
+        const data = res.data as { items?: ShiftNoteListItemType[]; total?: number }
+        setShiftNotes(data.items ?? [])
+      } catch {
+        setShiftNotes([])
+      } finally {
+        setLoadingNotes(false)
       }
     }
     fetchUser()
@@ -232,6 +249,58 @@ export default function DashboardPage() {
                 <p className="text-sm text-gray-600">{action.description}</p>
               </Link>
             ))}
+          </div>
+        </div>
+
+        {/* Shift notes – notepad (all employees' notes so everyone can see what's going on) */}
+        <div className="mb-8">
+          <div className="flex justify-between items-center mb-4">
+            <div>
+              <h2 className="text-xl font-semibold text-gray-900">Shift notes</h2>
+              <p className="text-sm text-gray-500 mt-0.5">Notes from all employees — see what&apos;s going on</p>
+            </div>
+            <Link
+              href={isAdmin ? '/admin/shift-log' : '/my/shift-notepad'}
+              className="text-sm text-blue-600 hover:text-blue-700 font-medium"
+            >
+              {isAdmin ? 'View Shift Log' : 'My shift notepad'}
+            </Link>
+          </div>
+          <div
+            className="relative rounded-lg border border-amber-200/80 bg-[#faf8f3] shadow-sm overflow-hidden"
+            style={{ boxShadow: '2px 2px 8px rgba(0,0,0,0.06)' }}
+          >
+            {/* Notepad left margin line */}
+            <div className="absolute left-0 top-0 bottom-0 w-1 bg-red-200/60" />
+            <div className="pl-6 pr-5 py-5 min-h-[200px]">
+              {loadingNotes ? (
+                <div className="flex items-center justify-center py-12">
+                  <div className="animate-spin rounded-full h-8 w-8 border-2 border-amber-600 border-t-transparent" />
+                </div>
+              ) : shiftNotes.length === 0 ? (
+                <p className="text-gray-500 text-sm italic">No shift notes yet.</p>
+              ) : (
+                <div className="space-y-6">
+                  {shiftNotes.map((note) => {
+                    const timeStr = formatDateTimeForDisplay(
+                      note.clock_in_at ?? note.updated_at,
+                      '—'
+                    )
+                    return (
+                      <div key={note.id} className="border-b border-amber-200/50 pb-5 last:border-0 last:pb-0">
+                        {/* User-supplied preview: React text content (escaped). Do not use dangerouslySetInnerHTML. */}
+                        <p className="text-gray-800 text-sm leading-relaxed whitespace-pre-wrap font-[inherit]">
+                          {note.preview || '—'}
+                        </p>
+                        <p className="mt-2 text-right text-xs text-gray-500 font-medium">
+                          — {note.employee_name}, {timeStr}
+                        </p>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
           </div>
         </div>
 

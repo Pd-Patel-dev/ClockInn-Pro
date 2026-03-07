@@ -1,5 +1,10 @@
 """
 Email service for sending verification emails via Gmail API.
+
+File paths: Gmail token/credentials paths are built from Path(__file__).parent (server
+root) only — no user input. Any future file paths must be derived from config/env only
+and validated (e.g. resolved to a real path and checked against an allowed base to
+prevent path traversal).
 """
 import base64
 import json
@@ -21,6 +26,11 @@ logger = logging.getLogger(__name__)
 
 # Gmail API scopes
 SCOPES = ['https://www.googleapis.com/auth/gmail.send']
+
+
+def _gmail_server_root() -> Path:
+    """Server root path for Gmail files. Not from user input; do not use user input for file paths here."""
+    return Path(__file__).resolve().parent.parent.parent
 
 
 def _shift_duration_minutes(s: Any) -> float:
@@ -340,17 +350,15 @@ class EmailService:
             
             # Try to save to file (development)
             if not settings.GMAIL_TOKEN_JSON:
-                token_file = Path(__file__).parent.parent.parent / 'gmail_token.json'
+                token_file = _gmail_server_root() / 'gmail_token.json'
                 if token_file.parent.exists():
                     with open(token_file, 'w') as token:
                         token.write(token_json)
                     logger.info(f"Gmail token saved to {token_file}")
             
-            # In production (env vars), log instructions
+            # In production (env vars), log instructions without exposing token
             if settings.GMAIL_TOKEN_JSON:
-                logger.warning("⚠️  Gmail token refreshed. You should update GMAIL_TOKEN_JSON env var with:")
-                logger.warning(f"   New token JSON: {token_json[:100]}...")
-                logger.warning("   This is required for the token to persist across server restarts.")
+                logger.warning("Gmail token refreshed; update GMAIL_TOKEN_JSON if using env.")
         except Exception as e:
             logger.error(f"Failed to save Gmail token: {e}")
     
@@ -369,7 +377,7 @@ class EmailService:
             
             # If no token from env, try file-based approach (development)
             if not creds:
-                token_file = Path(__file__).parent.parent.parent / 'gmail_token.json'
+                token_file = _gmail_server_root() / 'gmail_token.json'
                 if token_file.exists():
                     creds = Credentials.from_authorized_user_file(str(token_file), SCOPES)
             
@@ -381,7 +389,7 @@ class EmailService:
                         creds.refresh(Request())
                         # Save refreshed token if using file-based approach
                         if not settings.GMAIL_TOKEN_JSON:
-                            token_file = Path(__file__).parent.parent.parent / 'gmail_token.json'
+                            token_file = _gmail_server_root() / 'gmail_token.json'
                             if token_file.parent.exists():
                                 with open(token_file, 'w') as token:
                                     token.write(creds.to_json())
@@ -402,7 +410,7 @@ class EmailService:
                     
                     # Fall back to file
                     if not creds_data:
-                        creds_file = Path(__file__).parent.parent.parent / 'gmail_credentials.json'
+                        creds_file = _gmail_server_root() / 'gmail_credentials.json'
                         if creds_file.exists():
                             with open(creds_file, 'r') as f:
                                 creds_data = json.load(f)
@@ -420,7 +428,7 @@ class EmailService:
                             # Use port 8080 - must be added to Google Cloud Console redirect URIs
                             creds = flow.run_local_server(port=8080, prompt='consent')
                             # Save token
-                            token_file = Path(__file__).parent.parent.parent / 'gmail_token.json'
+                            token_file = _gmail_server_root() / 'gmail_token.json'
                             if token_file.parent.exists():
                                 with open(token_file, 'w') as token:
                                     token.write(creds.to_json())

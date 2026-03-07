@@ -18,6 +18,7 @@ from app.schemas.bulk_shift import (
     BulkWeekShiftCreate, PreviewShift, ShiftConflictDetail,
     DayTemplate, BulkWeekShiftTemplate
 )
+from app.schemas.shift import _parse_time_24h
 
 
 # Day name to weekday number (Monday = 0, Sunday = 6)
@@ -49,9 +50,8 @@ def get_week_dates(week_start: date) -> Dict[str, date]:
 
 
 def parse_time_string(time_str: str) -> time:
-    """Parse HH:mm string to time object."""
-    parts = time_str.split(":")
-    return time(int(parts[0]), int(parts[1]))
+    """Parse HH:mm (or HH:mm:ss) string to time object. Validates format and range (hour 0-23, minute 0-59)."""
+    return _parse_time_24h(time_str)
 
 
 def check_shift_overlap(
@@ -137,7 +137,12 @@ async def preview_bulk_week_shifts(
     company_id: UUID,
     data: BulkWeekShiftCreate,
 ) -> Tuple[List[PreviewShift], List[ShiftConflictDetail]]:
-    """Preview shifts that would be created without actually creating them."""
+    """Preview shifts that would be created without actually creating them.
+    
+    Note: data.timezone is accepted but not used when building shift dates/times;
+    week boundaries and times are taken as provided (wall-clock). See schema and
+    create_bulk_week_shifts for future use of timezone.
+    """
     # Verify employee exists and belongs to company (any role except ADMIN/DEVELOPER)
     result = await db.execute(
         select(User).where(
@@ -234,6 +239,8 @@ async def create_bulk_week_shifts(
 ) -> Tuple[int, int, int, List[UUID], List[PreviewShift], List[ShiftConflictDetail], Optional[UUID]]:
     """Create shifts for a whole week for multiple employees.
     
+    data.timezone is accepted but not used when building shift dates/times
+    (week and times are as provided; reserved for future use).
     Returns:
         (created_count, skipped_count, overwritten_count, created_shift_ids, skipped_shifts, conflicts, series_id)
     """
@@ -263,7 +270,7 @@ async def create_bulk_week_shifts(
             status_code=status.HTTP_409_CONFLICT,
             detail={
                 "message": "Conflicts detected. Cannot create shifts.",
-                "conflicts": [c.dict() for c in conflicts]
+                "conflicts": [c.model_dump() for c in conflicts]
             }
         )
     
@@ -276,7 +283,11 @@ async def create_bulk_week_shifts(
                 continue
             
             elif data.conflict_policy == "overwrite":
-                # Find and cancel/delete conflicting shifts
+                # Overwrite: delete conflicting shifts in this transaction; new shifts are
+                # added below and committed once at the end. Keep as a single transaction:
+                # if commit fails, everything rolls back. If this flow is later split
+                # (e.g. commit after each delete), use a single transaction or
+                # compensating logic to avoid partial state.
                 conflicting = await find_conflicting_shifts(
                     db, company_id, preview.employee_id,
                     preview.shift_date, preview.start_time, preview.end_time

@@ -1,5 +1,8 @@
 """
 Developer-only endpoints for system monitoring and administration.
+All routes require DEVELOPER role (get_current_developer).
+Responses must not expose details that could help attackers (e.g. secret names,
+token expiry, file paths, CORS origins, or database host/port).
 """
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -94,137 +97,69 @@ async def get_developer_stats(
         )
         stats["today_time_entries"] = today_entries_result.scalar_one() or 0
         
-        # Database connection test
+        # Database connection test (do not expose error details to response)
         try:
             await db.execute(text("SELECT 1"))
             stats["database_status"] = "connected"
         except Exception as e:
+            logger.debug(f"Database check failed: {e}")
             stats["database_status"] = "disconnected"
-            stats["database_error"] = str(e)
         
-        # Email service status - detailed (wrap in try-catch to prevent failures)
+        # Email service status - minimal to avoid helping attackers (no token expiry, paths, or sender)
         try:
             email_info = {
-                "initialized": email_service.service is not None,
-                "has_credentials": email_service.creds is not None,
-                "sender_email": settings.GMAIL_SENDER_EMAIL or "Not configured",
+                "configured": email_service.service is not None and email_service.creds is not None,
+                "operational": False,
             }
-            
-            # Add token expiration info if credentials exist
             if email_service.creds:
                 try:
-                    email_info["token_valid"] = email_service.creds.valid
-                    email_info["token_expired"] = email_service.creds.expired
-                    email_info["has_refresh_token"] = bool(email_service.creds.refresh_token)
-                    if email_service.creds.expiry:
-                        email_info["token_expires_at"] = email_service.creds.expiry.isoformat()
-                        now = datetime.now(timezone.utc)
-                        if email_service.creds.expiry > now:
-                            time_until_expiry = (email_service.creds.expiry - now).total_seconds()
-                            email_info["token_expires_in_seconds"] = int(time_until_expiry)
-                            email_info["token_expires_in_hours"] = round(time_until_expiry / 3600, 2)
-                except Exception as e:
-                    logger.warning(f"Error reading email service creds: {e}")
+                    email_info["operational"] = getattr(email_service.creds, "valid", True) and not getattr(email_service.creds, "expired", False)
+                except Exception:
+                    pass
         except Exception as e:
-            logger.error(f"Error getting email service info: {e}", exc_info=True)
-            email_info = {
-                "initialized": False,
-                "has_credentials": False,
-                "sender_email": "Error loading",
-            }
+            logger.warning(f"Error getting email service info: {e}")
+            email_info = {"configured": False, "operational": False}
         
         stats["email_service"] = email_info
         
-        # Configuration status (non-sensitive)
-        # Check for Gmail credentials - can be in env vars or files
-        from pathlib import Path
-        # Path from server/app/api/v1/endpoints/developer.py to server/ directory
-        server_root = Path(__file__).parent.parent.parent.parent.parent
-        gmail_creds_file = server_root / 'gmail_credentials.json'
-        gmail_token_file = server_root / 'gmail_token.json'
-        
-        gmail_credentials_configured = (
-            bool(settings.GMAIL_CREDENTIALS_JSON) or 
-            gmail_creds_file.exists()
-        )
-        gmail_token_configured = (
-            bool(settings.GMAIL_TOKEN_JSON) or 
-            gmail_token_file.exists()
-        )
-        
-        # Parse CORS origins for display
-        cors_origins_list = []
-        if settings.CORS_ORIGINS:
-            if isinstance(settings.CORS_ORIGINS, list):
-                cors_origins_list = settings.CORS_ORIGINS
-            elif isinstance(settings.CORS_ORIGINS, str):
-                cors_origins_list = [origin.strip() for origin in settings.CORS_ORIGINS.split(',')]
-        
-        # Database URL info (non-sensitive parts only)
-        database_info = {}
-        if settings.DATABASE_URL:
-            db_url = settings.DATABASE_URL
-            # Extract non-sensitive parts
-            if '@' in db_url:
-                # Format: postgresql://user:pass@host:port/db
-                parts = db_url.split('@')
-                if len(parts) == 2:
-                    # Extract host and database
-                    after_at = parts[1]
-                    if '/' in after_at:
-                        host_port = after_at.split('/')[0]
-                        database = after_at.split('/')[1].split('?')[0] if '/' in after_at else None
-                        database_info["host"] = host_port.split(':')[0] if ':' in host_port else host_port
-                        database_info["port"] = host_port.split(':')[1] if ':' in host_port else "5432"
-                        database_info["database"] = database
-                    database_info["provider"] = "postgresql"
-                    if "supabase" in db_url.lower():
-                        database_info["provider"] = "supabase"
-        
-        # Configuration status (wrap in try-catch to ensure it's always set)
+        # Configuration status - minimal booleans only; no secret names, paths, origins, or token settings
         try:
+            from pathlib import Path
+            server_root = Path(__file__).parent.parent.parent.parent.parent
+            gmail_creds_file = server_root / 'gmail_credentials.json'
+            gmail_token_file = server_root / 'gmail_token.json'
+            gmail_credentials_configured = (
+                bool(settings.GMAIL_CREDENTIALS_JSON) or gmail_creds_file.exists()
+            )
+            gmail_token_configured = (
+                bool(settings.GMAIL_TOKEN_JSON) or gmail_token_file.exists()
+            )
             stats["configuration"] = {
                 "database_configured": bool(settings.DATABASE_URL),
-                "database_info": database_info,
-                "secret_key_configured": bool(settings.SECRET_KEY),
-                "gmail_credentials_configured": gmail_credentials_configured,
-                "gmail_token_configured": gmail_token_configured,
-                "gmail_credentials_source": "env_var" if settings.GMAIL_CREDENTIALS_JSON else ("file" if gmail_creds_file.exists() else "none"),
-                "gmail_token_source": "env_var" if settings.GMAIL_TOKEN_JSON else ("file" if gmail_token_file.exists() else "none"),
-                "cors_origins_configured": bool(settings.CORS_ORIGINS),
-                "cors_origins": cors_origins_list,
-                "frontend_url": settings.FRONTEND_URL,
-                "refresh_token_expire_days": settings.REFRESH_TOKEN_EXPIRE_DAYS,
-                "access_token_expire_minutes": settings.ACCESS_TOKEN_EXPIRE_MINUTES,
-                "rate_limit_enabled": settings.RATE_LIMIT_ENABLED,
-                "rate_limit_per_minute": settings.RATE_LIMIT_PER_MINUTE,
+                "auth_configured": bool(settings.SECRET_KEY),
+                "email_configured": gmail_credentials_configured and gmail_token_configured,
+                "cors_configured": bool(settings.CORS_ORIGINS),
             }
         except Exception as e:
-            logger.error(f"Error getting configuration info: {e}", exc_info=True)
+            logger.warning(f"Error getting configuration info: {e}")
             stats["configuration"] = {
                 "database_configured": False,
-                "secret_key_configured": False,
-                "gmail_credentials_configured": False,
-                "gmail_token_configured": False,
-                "cors_origins_configured": False,
+                "auth_configured": False,
+                "email_configured": False,
+                "cors_configured": False,
             }
         
     except Exception as e:
         logger.error(f"Error fetching developer stats: {e}", exc_info=True)
         # Ensure email_service and configuration are always set even on error
         if "email_service" not in stats:
-            stats["email_service"] = {
-                "initialized": False,
-                "has_credentials": False,
-                "sender_email": "Error loading",
-            }
+            stats["email_service"] = {"configured": False, "operational": False}
         if "configuration" not in stats:
             stats["configuration"] = {
                 "database_configured": False,
-                "secret_key_configured": False,
-                "gmail_credentials_configured": False,
-                "gmail_token_configured": False,
-                "cors_origins_configured": False,
+                "auth_configured": False,
+                "email_configured": False,
+                "cors_configured": False,
             }
         stats["error"] = str(e)
     
@@ -238,45 +173,43 @@ async def get_system_info(
     db: AsyncSession = Depends(get_db),
 ):
     """
-    Get system information for developers.
-    Includes environment details, configuration status, etc.
+    Get minimal system information for developers.
+    Only high-level status booleans; no secret names, token details, or paths.
     """
     import platform
     import sys
     from pathlib import Path
-    
-    # Check for Gmail files
+
     server_root_info = Path(__file__).parent.parent.parent.parent.parent
     gmail_creds_file_info = server_root_info / 'gmail_credentials.json'
     gmail_token_file_info = server_root_info / 'gmail_token.json'
-    
+
+    email_configured = (
+        (bool(settings.GMAIL_CREDENTIALS_JSON) or gmail_creds_file_info.exists())
+        and (bool(settings.GMAIL_TOKEN_JSON) or gmail_token_file_info.exists())
+    )
+    email_operational = False
+    if email_service.creds:
+        try:
+            email_operational = getattr(email_service.creds, "valid", True) and not getattr(email_service.creds, "expired", False)
+        except Exception:
+            pass
+
     info = {
-        "python_version": sys.version,
-        "platform": platform.platform(),
-        "system": platform.system(),
-        "processor": platform.processor(),
-        "server_time": datetime.now(timezone.utc).isoformat(),
-        "timezone": "UTC",
+        "api_version": "1.0.0",
         "environment": {
-            "api_version": "1.0.0",
-            "database_url_configured": bool(settings.DATABASE_URL),
-            "secret_key_configured": bool(settings.SECRET_KEY),
-            "cors_enabled": bool(settings.CORS_ORIGINS),
+            "database_configured": bool(settings.DATABASE_URL),
+            "auth_configured": bool(settings.SECRET_KEY),
+            "email_configured": email_configured,
+            "email_operational": email_operational,
+            "cors_configured": bool(settings.CORS_ORIGINS),
         },
-        "email_service": {
-            "sender_email": settings.GMAIL_SENDER_EMAIL,
-            "credentials_configured": bool(settings.GMAIL_CREDENTIALS_JSON) or gmail_creds_file_info.exists(),
-            "token_configured": bool(settings.GMAIL_TOKEN_JSON) or gmail_token_file_info.exists(),
-            "initialized": email_service.service is not None,
-            "has_credentials": email_service.creds is not None,
-            "token_valid": email_service.creds.valid if email_service.creds else False,
-        },
-        "security": {
-            "refresh_token_expire_days": settings.REFRESH_TOKEN_EXPIRE_DAYS,
-            "access_token_expire_minutes": settings.ACCESS_TOKEN_EXPIRE_MINUTES,
+        "runtime": {
+            "python_version": sys.version.split()[0],
+            "platform": platform.system(),
         },
     }
-    
+
     return info
 
 

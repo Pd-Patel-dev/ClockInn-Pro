@@ -25,27 +25,26 @@ export interface User {
 }
 
 export const login = async (credentials: LoginCredentials) => {
-  const response = await api.post('/auth/login', credentials)
-  const { access_token, refresh_token } = response.data
-  setTokens(access_token, refresh_token)
+  const response = await api.post('/auth/login', credentials, {
+    params: {}, // ensure no query string; credentials must be in body only
+  })
+  const { access_token } = response.data
+  setTokens(access_token)
   return response.data
 }
 
 export const register = async (data: RegisterData) => {
   const response = await api.post('/auth/register-company', data)
-  const { access_token, refresh_token } = response.data
-  setTokens(access_token, refresh_token)
+  const { access_token } = response.data
+  setTokens(access_token)
   return response.data
 }
 
 export const logout = async () => {
-  const refreshToken = localStorage.getItem('refresh_token')
-  if (refreshToken) {
-    try {
-      await api.post('/auth/logout', { refresh_token: refreshToken })
-    } catch (error) {
-      // Ignore errors on logout
-    }
+  try {
+    await api.post('/auth/logout', {})
+  } catch {
+    // Ignore errors on logout
   }
   clearTokens()
 }

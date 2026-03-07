@@ -17,16 +17,18 @@ class LoginRequest(BaseModel):
 
 class TokenResponse(BaseModel):
     access_token: str
-    refresh_token: str
+    refresh_token: Optional[str] = None  # Omitted when using HttpOnly cookie
     token_type: str = "bearer"
 
 
 class RefreshTokenRequest(BaseModel):
-    refresh_token: str
+    """Optional body for refresh; when using cookies, refresh token is read from cookie only."""
+    refresh_token: Optional[str] = None
 
 
 class LogoutRequest(BaseModel):
-    refresh_token: str
+    """Optional body for logout; when using cookies, refresh token is read from cookie only."""
+    refresh_token: Optional[str] = None
 
 
 class SendVerificationPinRequest(BaseModel):

@@ -4,7 +4,7 @@ Shift and Schedule Management API Endpoints
 import logging
 from typing import List, Optional, Dict
 from uuid import UUID
-from datetime import date
+from datetime import date, timedelta
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -14,11 +14,21 @@ from app.core.database import get_db
 from app.core.dependencies import get_current_admin, get_current_user
 from app.core.error_handling import handle_endpoint_errors, parse_uuid
 from app.models.user import User, UserRole
-from app.models.shift import Shift
+from app.models.shift import Shift, ShiftStatus
 from app.schemas.shift import (
-    ShiftCreate, ShiftUpdate, ShiftResponse, ShiftConflict,
-    ShiftTemplateCreate, ShiftTemplateUpdate, ShiftTemplateResponse,
-    GenerateShiftsFromTemplate, ScheduleSwapCreate, ScheduleSwapResponse,
+    ShiftCreate,
+    ShiftUpdate,
+    ShiftResponse,
+    ShiftResponseWithConflicts,
+    ShiftConflict,
+    ShiftTemplateCreate,
+    ShiftTemplateUpdate,
+    ShiftTemplateResponse,
+    GenerateShiftsFromTemplate,
+    GenerateShiftsFromTemplateBody,
+    ScheduleSwapCreate,
+    ScheduleSwapResponse,
+    SendScheduleRequest,
 )
 from app.schemas.bulk_shift import (
     BulkWeekShiftCreate, BulkWeekShiftPreviewResponse, BulkWeekShiftCreateResponse,
@@ -35,14 +45,15 @@ router = APIRouter()
 logger = logging.getLogger(__name__)
 
 
-@router.post("/shifts", response_model=ShiftResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/shifts", response_model=ShiftResponseWithConflicts, status_code=status.HTTP_201_CREATED)
 @handle_endpoint_errors(operation_name="create_shift")
 async def create_shift_endpoint(
     data: ShiftCreate,
     current_user: User = Depends(get_current_admin),
     db: AsyncSession = Depends(get_db),
 ):
-    """Create a new shift (admin only)."""
+    """Create a new shift (admin only). No email is sent on create; use Send schedule to email employee.
+    Returns the created shift and any overlapping conflicts (shift is still created)."""
     shift, conflicts = await create_shift(
         db,
         current_user.company_id,
@@ -50,43 +61,10 @@ async def create_shift_endpoint(
         created_by=current_user.id,
     )
 
-    # Get employee for response and for schedule email
     result = await db.execute(select(User).where(User.id == shift.employee_id))
     employee = result.scalar_one_or_none()
 
-    # Send schedule notification to employee (non-blocking; do not fail request on email failure)
-    if employee and getattr(employee, "email", None):
-        try:
-            from app.services.email_service import email_service
-            start_str = shift.start_time.strftime("%H:%M") if hasattr(shift.start_time, "strftime") else str(shift.start_time)
-            end_str = shift.end_time.strftime("%H:%M") if hasattr(shift.end_time, "strftime") else str(shift.end_time)
-            ok = await email_service.send_schedule_notification(
-                employee_email=employee.email,
-                employee_name=employee.name or "Employee",
-                shifts=[{
-                    "date": str(shift.shift_date),
-                    "start_time": start_str,
-                    "end_time": end_str,
-                    "break_minutes": shift.break_minutes or 0,
-                    "notes": shift.notes,
-                    "job_role": shift.job_role,
-                }],
-            )
-            if not ok:
-                logger.warning("Schedule email not sent to %s (Gmail may not be configured or send failed).", employee.email)
-            else:
-                logger.info("Schedule email sent to %s for shift %s.", employee.email, shift.id)
-        except Exception as e:
-            logger.warning("Failed to send schedule email to employee: %s", e, exc_info=True)
-    else:
-        if not employee:
-            logger.debug("Schedule email skipped: employee not found for shift %s.", shift.id)
-        else:
-            logger.debug("Schedule email skipped: employee %s has no email.", shift.employee_id)
-
-    # If conflicts exist, return them in response (but shift is still created)
-    # Frontend can show warnings
-    response = ShiftResponse(
+    shift_response = ShiftResponse(
         id=shift.id,
         company_id=shift.company_id,
         employee_id=shift.employee_id,
@@ -106,8 +84,7 @@ async def create_shift_endpoint(
         created_by=shift.created_by,
         updated_at=shift.updated_at,
     )
-    
-    return response
+    return ShiftResponseWithConflicts(shift=shift_response, conflicts=conflicts)
 
 
 @router.get("/shifts", response_model=List[ShiftResponse])
@@ -196,61 +173,13 @@ async def create_bulk_week_shifts_endpoint(
     current_user: User = Depends(get_current_admin),
     db: AsyncSession = Depends(get_db),
 ):
-    """Create shifts for a whole week for multiple employees (admin only)."""
+    """Create shifts for a whole week for multiple employees (admin only). No email is sent; use Send schedule to email employees."""
     created_count, skipped_count, overwritten_count, created_shift_ids, skipped_shifts, conflicts, series_id = await create_bulk_week_shifts(
         db,
         current_user.company_id,
         data,
         created_by=current_user.id,
     )
-
-    # Send schedule notification to each employee with their new shifts (one email per employee)
-    if created_shift_ids:
-        try:
-            result = await db.execute(
-                select(Shift)
-                .options(selectinload(Shift.employee))
-                .where(Shift.id.in_(created_shift_ids))
-            )
-            created_shifts = result.scalars().all()
-            # Group by employee_id
-            by_employee: Dict[UUID, List[Shift]] = {}
-            for s in created_shifts:
-                if s.employee_id not in by_employee:
-                    by_employee[s.employee_id] = []
-                by_employee[s.employee_id].append(s)
-            from app.services.email_service import email_service
-            for employee_id, emp_shifts in by_employee.items():
-                employee = emp_shifts[0].employee if emp_shifts else None
-                if not employee or not getattr(employee, "email", None):
-                    continue
-                shift_rows = []
-                for s in sorted(emp_shifts, key=lambda x: (x.shift_date, x.start_time)):
-                    start_str = s.start_time.strftime("%H:%M") if hasattr(s.start_time, "strftime") else str(s.start_time)
-                    end_str = s.end_time.strftime("%H:%M") if hasattr(s.end_time, "strftime") else str(s.end_time)
-                    shift_rows.append({
-                        "date": str(s.shift_date),
-                        "start_time": start_str,
-                        "end_time": end_str,
-                        "break_minutes": s.break_minutes or 0,
-                        "notes": s.notes,
-                        "job_role": s.job_role,
-                    })
-                try:
-                    ok = await email_service.send_schedule_notification(
-                        employee_email=employee.email,
-                        employee_name=employee.name or "Employee",
-                        shifts=shift_rows,
-                        week_start_date=data.week_start_date,
-                    )
-                    if not ok:
-                        logger.warning("Week schedule email not sent to %s (Gmail may not be configured or send failed).", employee.email)
-                    else:
-                        logger.info("Week schedule email sent to %s.", employee.email)
-                except Exception as e:
-                    logger.warning("Failed to send schedule email to employee %s: %s", employee_id, e, exc_info=True)
-        except Exception as e:
-            logger.warning("Failed to send bulk schedule emails: %s", e, exc_info=True)
 
     return BulkWeekShiftCreateResponse(
         created_count=created_count,
@@ -261,6 +190,75 @@ async def create_bulk_week_shifts_endpoint(
         conflicts=conflicts,
         series_id=series_id,
     )
+
+
+@router.post("/shifts/send-schedule")
+@handle_endpoint_errors(operation_name="send_schedule")
+async def send_schedule_endpoint(
+    data: SendScheduleRequest,
+    current_user: User = Depends(get_current_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Send the schedule email for an employee for the given week (admin only).
+    week_start_date must be a Monday; week is Monday through Sunday."""
+    from app.services.email_service import email_service
+    from sqlalchemy import and_
+
+    # SendScheduleRequest validates week_start_date is Monday; so Monday + 6 = Sunday of same week
+    week_end = data.week_start_date + timedelta(days=6)
+    result = await db.execute(
+        select(User).where(
+            and_(User.id == data.employee_id, User.company_id == current_user.company_id)
+        )
+    )
+    employee = result.scalar_one_or_none()
+    if not employee:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Employee not found")
+
+    shift_result = await db.execute(
+        select(Shift).where(
+            and_(
+                Shift.company_id == current_user.company_id,
+                Shift.employee_id == data.employee_id,
+                Shift.shift_date >= data.week_start_date,
+                Shift.shift_date <= week_end,
+                Shift.status != ShiftStatus.CANCELLED,
+            )
+        ).order_by(Shift.shift_date, Shift.start_time)
+    )
+    shifts = shift_result.scalars().all()
+
+    shift_rows = []
+    for s in shifts:
+        start_str = s.start_time.strftime("%H:%M") if hasattr(s.start_time, "strftime") else str(s.start_time)
+        end_str = s.end_time.strftime("%H:%M") if hasattr(s.end_time, "strftime") else str(s.end_time)
+        shift_rows.append({
+            "date": str(s.shift_date),
+            "start_time": start_str,
+            "end_time": end_str,
+            "break_minutes": s.break_minutes or 0,
+            "notes": s.notes,
+            "job_role": s.job_role,
+        })
+
+    if not getattr(employee, "email", None):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Employee has no email set",
+        )
+
+    ok = await email_service.send_schedule_notification(
+        employee_email=employee.email,
+        employee_name=employee.name or "Employee",
+        shifts=shift_rows,
+        week_start_date=data.week_start_date,
+    )
+    if not ok:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Failed to send schedule email. Check Gmail configuration.",
+        )
+    return {"sent": True, "message": "Schedule sent to employee"}
 
 
 @router.get("/shifts/{shift_id}", response_model=ShiftResponse)
@@ -309,7 +307,7 @@ async def get_shift_endpoint(
     )
 
 
-@router.put("/shifts/{shift_id}", response_model=ShiftResponse)
+@router.put("/shifts/{shift_id}", response_model=ShiftResponseWithConflicts)
 @handle_endpoint_errors(operation_name="update_shift")
 async def update_shift_endpoint(
     shift_id: str,
@@ -317,7 +315,7 @@ async def update_shift_endpoint(
     current_user: User = Depends(get_current_admin),
     db: AsyncSession = Depends(get_db),
 ):
-    """Update a shift (admin only)."""
+    """Update a shift (admin only). Returns the updated shift and any overlapping conflicts (shift is still updated)."""
     parsed_shift_id = parse_uuid(shift_id, "Shift ID")
     shift, conflicts = await update_shift(
         db,
@@ -325,8 +323,8 @@ async def update_shift_endpoint(
         current_user.company_id,
         data,
     )
-    
-    return ShiftResponse(
+
+    shift_response = ShiftResponse(
         id=shift.id,
         company_id=shift.company_id,
         employee_id=shift.employee_id,
@@ -346,6 +344,7 @@ async def update_shift_endpoint(
         created_by=shift.created_by,
         updated_at=shift.updated_at,
     )
+    return ShiftResponseWithConflicts(shift=shift_response, conflicts=conflicts)
 
 
 @router.post("/shifts/{shift_id}/approve", response_model=ShiftResponse)
@@ -393,12 +392,13 @@ async def delete_shift_endpoint(
     current_user: User = Depends(get_current_admin),
     db: AsyncSession = Depends(get_db),
 ):
-    """Delete a shift (permanently removes it from the database, admin only)."""
+    """Delete a shift (soft delete: sets status to CANCELLED and records audit note; admin only)."""
     parsed_shift_id = parse_uuid(shift_id, "Shift ID")
     await delete_shift(
         db,
         parsed_shift_id,
         current_user.company_id,
+        deleted_by=current_user.id,
     )
 
 
@@ -456,18 +456,22 @@ async def create_shift_template_endpoint(
 @handle_endpoint_errors(operation_name="generate_shifts_from_template")
 async def generate_shifts_from_template_endpoint(
     template_id: str,
-    data: GenerateShiftsFromTemplate,
+    data: GenerateShiftsFromTemplateBody,
     current_user: User = Depends(get_current_admin),
     db: AsyncSession = Depends(get_db),
 ):
-    """Generate shifts from a template (admin only)."""
+    """Generate shifts from a template (admin only). template_id is from the URL path."""
     parsed_template_id = parse_uuid(template_id, "Template ID")
-    data.template_id = parsed_template_id
-    
+    payload = GenerateShiftsFromTemplate(
+        template_id=parsed_template_id,
+        start_date=data.start_date,
+        end_date=data.end_date,
+        employee_ids=data.employee_ids,
+    )
     shifts, conflicts = await generate_shifts_from_template(
         db,
         current_user.company_id,
-        data,
+        payload,
     )
     
     return [

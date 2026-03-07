@@ -12,7 +12,7 @@ from io import BytesIO
 
 from app.core.database import get_db
 from app.core.dependencies import get_current_admin
-from app.core.error_handling import handle_endpoint_errors
+from app.core.error_handling import handle_endpoint_errors, parse_uuid
 from app.models.user import User
 from app.models.cash_drawer import CashDrawerSession, CashDrawerStatus
 from app.models.time_entry import TimeEntry
@@ -253,12 +253,13 @@ async def export_cash_drawer(
 @router.get("/{session_id}", response_model=CashDrawerSessionDetailResponse)
 @handle_endpoint_errors(operation_name="get_cash_drawer_session")
 async def get_cash_drawer_session_endpoint(
-    session_id: UUID,
+    session_id: str,
     current_user: User = Depends(get_current_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """Get cash drawer session details with audit history."""
-    session = await get_cash_drawer_session(db, current_user.company_id, session_id)
+    sid = parse_uuid(session_id, "Session ID")
+    session = await get_cash_drawer_session(db, current_user.company_id, sid)
     if not session:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -276,7 +277,7 @@ async def get_cash_drawer_session_endpoint(
     audit_result = await db.execute(
         select(CashDrawerAudit, User.name)
         .join(User, CashDrawerAudit.actor_user_id == User.id)
-        .where(CashDrawerAudit.cash_drawer_session_id == session_id)
+        .where(CashDrawerAudit.cash_drawer_session_id == sid)
         .order_by(CashDrawerAudit.created_at.desc())
     )
     audit_logs = []
@@ -326,16 +327,17 @@ async def get_cash_drawer_session_endpoint(
 @router.put("/{session_id}", response_model=CashDrawerSessionResponse)
 @handle_endpoint_errors(operation_name="edit_cash_drawer_session")
 async def edit_cash_drawer_session_endpoint(
-    session_id: UUID,
+    session_id: str,
     data: CashDrawerSessionUpdate,
     current_user: User = Depends(get_current_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """Edit cash drawer session (admin only)."""
+    sid = parse_uuid(session_id, "Session ID")
     session = await edit_cash_drawer_session(
         db,
         current_user.company_id,
-        session_id,
+        sid,
         current_user.id,
         data.start_cash_cents,
         data.end_cash_cents,
@@ -389,17 +391,18 @@ async def edit_cash_drawer_session_endpoint(
 @router.post("/{session_id}/review", response_model=CashDrawerSessionResponse)
 @handle_endpoint_errors(operation_name="review_cash_drawer_session")
 async def review_cash_drawer_session_endpoint(
-    session_id: UUID,
+    session_id: str,
     data: CashDrawerSessionReview,
     current_user: User = Depends(get_current_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """Review and update cash drawer session status."""
+    sid = parse_uuid(session_id, "Session ID")
     # After review, status should always be CLOSED
     session = await review_cash_drawer_session(
         db,
         current_user.company_id,
-        session_id,
+        sid,
         current_user.id,
         data.note,
         CashDrawerStatus.CLOSED,
@@ -456,15 +459,16 @@ async def review_cash_drawer_session_endpoint(
 @router.delete("/{session_id}", status_code=status.HTTP_204_NO_CONTENT)
 @handle_endpoint_errors(operation_name="delete_cash_drawer_session")
 async def delete_cash_drawer_session_endpoint(
-    session_id: UUID,
+    session_id: str,
     current_user: User = Depends(get_current_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """Delete a cash drawer session."""
+    sid = parse_uuid(session_id, "Session ID")
     await delete_cash_drawer_session(
         db,
         current_user.company_id,
-        session_id,
+        sid,
         current_user.id,
     )
     

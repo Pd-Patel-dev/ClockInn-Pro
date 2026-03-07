@@ -31,14 +31,17 @@ class ShiftTemplateType(str, enum.Enum):
 
 
 class Shift(Base):
-    """Individual shift assignment for an employee."""
+    """Individual shift assignment for an employee.
+    shift_date + start_time/end_time are wall-clock in company default timezone (no TZ stored).
+    See docs/SCHEDULE_FLAWS.md §4.1 for send-schedule/UI conversion notes.
+    """
     __tablename__ = "shifts"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     company_id = Column(UUID(as_uuid=True), ForeignKey("companies.id"), nullable=False, index=True)
     employee_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True)
     
-    # Shift details
+    # Shift details (wall-clock in company timezone; no timezone stored)
     shift_date = Column(Date, nullable=False, index=True)
     start_time = Column(Time, nullable=False)
     end_time = Column(Time, nullable=False)

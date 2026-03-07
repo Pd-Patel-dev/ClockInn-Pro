@@ -7,8 +7,10 @@ import api from '@/lib/api'
 import { getCurrentUser, User } from '@/lib/auth'
 import { format, parseISO, addDays } from 'date-fns'
 import logger from '@/lib/logger'
+import { parseTime24 } from '@/lib/time'
 import { useToast } from '@/components/Toast'
 import ConfirmationDialog from '@/components/ConfirmationDialog'
+import BackButton from '@/components/BackButton'
 
 interface Shift {
   id: string
@@ -63,9 +65,7 @@ export default function ShiftDetailPage() {
       }
     }
 
-    if (shiftId) {
-      fetchData()
-    }
+    if (shiftId) fetchData()
   }, [shiftId, router])
 
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
@@ -125,19 +125,18 @@ export default function ShiftDetailPage() {
 
   const normalizeShift = (shift: Shift) => {
     const shiftDate = parseISO(shift.shift_date)
-    const [startHour, startMinute] = shift.start_time.split(':').map(Number)
-    const [endHour, endMinute] = shift.end_time.split(':').map(Number)
-
-    const startAt = new Date(shiftDate)
-    startAt.setHours(startHour, startMinute, 0, 0)
-
-    let endAt = new Date(shiftDate)
-    endAt.setHours(endHour, endMinute, 0, 0)
-
-    if (endAt <= startAt) {
-      endAt = addDays(endAt, 1)
+    const startParsed = parseTime24(shift.start_time)
+    const endParsed = parseTime24(shift.end_time)
+    if (!startParsed || !endParsed) {
+      const fallback = new Date(shiftDate)
+      fallback.setHours(0, 0, 0, 0)
+      return { startAt: fallback, endAt: addDays(fallback, 1) }
     }
-
+    const startAt = new Date(shiftDate)
+    startAt.setHours(startParsed.hour, startParsed.minute, 0, 0)
+    let endAt = new Date(shiftDate)
+    endAt.setHours(endParsed.hour, endParsed.minute, 0, 0)
+    if (endAt <= startAt) endAt = addDays(endAt, 1)
     return { startAt, endAt }
   }
 
@@ -157,12 +156,9 @@ export default function ShiftDetailPage() {
         <div className="px-4 py-6 sm:px-0">
           <div className="bg-red-50 border border-red-200 rounded-lg p-4">
             <p className="text-red-800">{error || 'Shift not found'}</p>
-            <button
-              onClick={() => router.push('/schedules')}
-              className="mt-4 text-blue-600 hover:text-blue-800"
-            >
+            <BackButton fallbackHref="/schedules" className="mt-4 text-blue-600 hover:text-blue-800">
               ← Back to Schedules
-            </button>
+            </BackButton>
           </div>
         </div>
       </Layout>
@@ -181,15 +177,9 @@ export default function ShiftDetailPage() {
       <div className="px-4 py-6 sm:px-0">
         {/* Header */}
         <div className="mb-6">
-          <button
-            onClick={() => router.push('/schedules')}
-            className="text-blue-600 hover:text-blue-800 mb-4 flex items-center"
-          >
-            <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-            </svg>
+          <BackButton fallbackHref="/schedules" className="text-blue-600 hover:text-blue-800 mb-4 flex items-center gap-1.5">
             Back to Schedules
-          </button>
+          </BackButton>
           <div className="flex justify-between items-center">
             <div>
               <h1 className="text-2xl font-bold text-gray-900">Shift Details</h1>
@@ -198,7 +188,7 @@ export default function ShiftDetailPage() {
             {isAdmin && (
               <div className="flex space-x-2">
                 <button
-                  onClick={() => router.push(`/schedules/${shiftId}/edit`)}
+                  onClick={() => router.push(`/schedules/shift/${shiftId}/edit`)}
                   className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
                 >
                   Edit
@@ -312,7 +302,7 @@ export default function ShiftDetailPage() {
             {shift.notes && (
               <div className="mt-6 pt-6 border-t border-gray-200">
                 <label className="text-sm font-medium text-gray-500">Notes</label>
-                <p className="mt-2 text-gray-900 whitespace-pre-wrap">{shift.notes}</p>
+                <p className="mt-2 text-gray-900 whitespace-pre-wrap">{/* User text: React escapes */}{shift.notes}</p>
               </div>
             )}
           </div>
@@ -333,4 +323,3 @@ export default function ShiftDetailPage() {
     </Layout>
   )
 }
-

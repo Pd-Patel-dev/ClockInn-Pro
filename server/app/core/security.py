@@ -86,6 +86,9 @@ def validate_password_strength(password: str) -> tuple[bool, Optional[str]]:
         return False, "Password must contain at least one lowercase letter"
     if not any(c.isdigit() for c in password):
         return False, "Password must contain at least one number"
+    # At least one character that is not alphanumeric (e.g. !@#$%^&*)
+    if not any(not c.isalnum() for c in password):
+        return False, "Password must contain at least one special character (e.g. !@#$%)"
     return True, None
 
 

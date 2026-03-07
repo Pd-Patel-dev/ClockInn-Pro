@@ -8,6 +8,7 @@ import logger from '@/lib/logger'
 import { format, startOfWeek, endOfWeek, addDays, addWeeks, subWeeks, isSameDay, parseISO, startOfDay, endOfDay } from 'date-fns'
 import { getEmployeeColorStyles, getEmployeeColor } from '@/lib/employeeColors'
 import { getCurrentUser, User } from '@/lib/auth'
+import { parseTime24 } from '@/lib/time'
 import type { CSSProperties } from 'react'
 
 interface Shift {
@@ -93,24 +94,22 @@ export default function MySchedulePage() {
 
   /**
    * Normalize a shift into absolute datetime intervals.
-   * Handles overnight shifts correctly.
+   * Times from API are 24-hour (HH:MM). Handles overnight shifts correctly.
    */
   const normalizeShift = (shift: Shift): { startAt: Date; endAt: Date } => {
     const shiftDate = parseISO(shift.shift_date)
-    const [startHour, startMinute] = shift.start_time.split(':').map(Number)
-    const [endHour, endMinute] = shift.end_time.split(':').map(Number)
-    
-    const startAt = new Date(shiftDate)
-    startAt.setHours(startHour, startMinute, 0, 0)
-    
-    let endAt = new Date(shiftDate)
-    endAt.setHours(endHour, endMinute, 0, 0)
-    
-    // Handle overnight shifts: if end_time <= start_time, end is on next day
-    if (endAt <= startAt) {
-      endAt = addDays(endAt, 1)
+    const startParsed = parseTime24(shift.start_time)
+    const endParsed = parseTime24(shift.end_time)
+    if (!startParsed || !endParsed) {
+      const fallback = new Date(shiftDate)
+      fallback.setHours(0, 0, 0, 0)
+      return { startAt: fallback, endAt: addDays(fallback, 1) }
     }
-    
+    const startAt = new Date(shiftDate)
+    startAt.setHours(startParsed.hour, startParsed.minute, 0, 0)
+    let endAt = new Date(shiftDate)
+    endAt.setHours(endParsed.hour, endParsed.minute, 0, 0)
+    if (endAt <= startAt) endAt = addDays(endAt, 1)
     return { startAt, endAt }
   }
 
@@ -429,6 +428,7 @@ export default function MySchedulePage() {
                             )}
                             {shift.notes && (
                               <div className="mt-1 text-[10px] italic truncate opacity-80" style={{ color: currentUser?.id ? employeeColors?.textMuted : '#6b7280' }}>
+                                {/* User text: React text content (escaped) */}
                                 {shift.notes}
                               </div>
                             )}

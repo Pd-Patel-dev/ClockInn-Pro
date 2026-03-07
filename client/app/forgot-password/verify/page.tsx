@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import Link from 'next/link'
+import BackButton from '@/components/BackButton'
 import api from '@/lib/api'
 
 const OTP_STORAGE_KEY = 'forgot_password_otp'
@@ -179,9 +179,9 @@ function VerifyCodeContent() {
             </div>
 
             <div className="mt-6 text-center">
-              <Link href="/login" className="text-sm text-gray-500 hover:text-gray-700">
+              <BackButton fallbackHref="/login" className="text-sm text-gray-500 hover:text-gray-700">
                 Back to login
-              </Link>
+              </BackButton>
             </div>
 
             <p className="mt-6 text-xs text-gray-500 text-center">

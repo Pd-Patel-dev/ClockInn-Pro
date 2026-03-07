@@ -110,6 +110,37 @@ async def log_requests(request: Request, call_next):
         # Re-raise to let FastAPI handle it
         raise
 
+
+# Security headers (add before CORS so they apply to all responses)
+@app.middleware("http")
+async def add_security_headers(request: Request, call_next):
+    import os
+    from fastapi.responses import RedirectResponse
+
+    is_production = os.getenv("ENVIRONMENT", "").lower() in ["prod", "production"]
+    forwarded_proto = request.headers.get("x-forwarded-proto", "").strip().lower()
+
+    # HTTPS redirect in production when request came over HTTP (proxy should do this; app fallback)
+    if is_production and forwarded_proto == "http":
+        host = request.headers.get("x-forwarded-host") or request.headers.get("host", "localhost")
+        path = request.url.path or "/"
+        if request.url.query:
+            path = f"{path}?{request.url.query}"
+        return RedirectResponse(url=f"https://{host}{path}", status_code=301)
+
+    response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["X-XSS-Protection"] = "1; mode=block"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    response.headers["Permissions-Policy"] = "geolocation=(), microphone=(), camera=()"
+
+    # HSTS when request was forwarded over HTTPS
+    if is_production and forwarded_proto == "https":
+        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains; preload"
+
+    return response
+
 # CORS
 app.add_middleware(
     CORSMiddleware,

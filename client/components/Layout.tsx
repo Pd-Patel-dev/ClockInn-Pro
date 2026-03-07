@@ -158,6 +158,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   const employeeLinks = [
     { href: '/dashboard', label: 'Dashboard' },
     { href: '/punch-in-out', label: 'Punch In/Out' },
+    { href: '/my/shift-notepad', label: 'Shift Notepad' },
     { href: '/my-schedule', label: 'My Schedule' },
     { href: '/logs', label: 'My Logs' },
     { href: '/leave', label: 'Leave' },
@@ -187,7 +188,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       items: [
         { href: '/schedules', label: 'Schedules' },
         { href: '/time-entries', label: 'Time Entries' },
-        { href: '/admin/cash', label: 'Shift Log' },
+        { href: '/admin/shift-log', label: 'Shift Log' },
       ],
     },
     {

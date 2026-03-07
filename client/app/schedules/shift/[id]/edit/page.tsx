@@ -7,6 +7,9 @@ import api from '@/lib/api'
 import { getCurrentUser, User } from '@/lib/auth'
 import logger from '@/lib/logger'
 import { useToast } from '@/components/Toast'
+import BackButton from '@/components/BackButton'
+import { toApiTime24 } from '@/lib/time'
+import TimeInput12h from '@/components/TimeInput12h'
 
 interface Shift {
   id: string
@@ -42,16 +45,6 @@ function toTimeString(v: string | undefined): string {
     return `${h}:${m}`
   }
   return ''
-}
-
-/** Time for API: send HH:MM to match create-shift (backend accepts it) */
-function toApiTime(v: string): string {
-  const s = (v || '').trim()
-  if (/^\d{1,2}:\d{2}$/.test(s)) {
-    const [h, m] = s.split(':')
-    return `${h.padStart(2, '0')}:${m}`
-  }
-  return '00:00'
 }
 
 export default function EditShiftPage() {
@@ -129,18 +122,23 @@ export default function EditShiftPage() {
 
     setSaving(true)
     try {
-      await api.put(`/shifts/${shiftId}`, {
+      const response = await api.put(`/shifts/${shiftId}`, {
         shift_date: formData.shift_date || undefined,
-        start_time: toApiTime(formData.start_time),
-        end_time: toApiTime(formData.end_time),
+        start_time: toApiTime24(formData.start_time),
+        end_time: toApiTime24(formData.end_time),
         break_minutes: breakMinutes,
         notes: formData.notes.trim() || undefined,
         job_role: formData.job_role.trim() || undefined,
         status: formData.status,
         requires_approval: formData.requires_approval,
       })
+      const data = response.data as { shift?: unknown; conflicts?: Array<{ message?: string }> }
+      const conflicts = data?.conflicts ?? []
       toast.success('Shift updated successfully')
-      router.push(`/schedules/${shiftId}`)
+      if (conflicts.length > 0) {
+        toast.error(`Shift updated but overlaps with ${conflicts.length} existing shift(s). Check the schedule.`)
+      }
+      router.back()
     } catch (err: unknown) {
       const ax = err as { response?: { status: number; data?: { detail?: string | Array<{ loc?: (string | number)[]; msg?: string }> } } }
       logger.error('Failed to update shift', err as Error)
@@ -180,12 +178,9 @@ export default function EditShiftPage() {
         <div className="px-4 py-6">
           <div className="bg-red-50 border border-red-200 rounded-lg p-4">
             <p className="text-red-800">{error || 'Shift not found'}</p>
-            <button
-              onClick={() => router.push('/schedules')}
-              className="mt-4 text-blue-600 hover:text-blue-800"
-            >
+            <BackButton fallbackHref="/schedules" className="mt-4 text-blue-600 hover:text-blue-800">
               ← Back to Schedules
-            </button>
+            </BackButton>
           </div>
         </div>
       </Layout>
@@ -195,15 +190,9 @@ export default function EditShiftPage() {
   return (
     <Layout>
       <div className="px-4 py-6 sm:px-0 max-w-2xl">
-        <button
-          onClick={() => router.push(`/schedules/${shiftId}`)}
-          className="text-blue-600 hover:text-blue-800 mb-4 flex items-center"
-        >
-          <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-          </svg>
+        <BackButton className="text-blue-600 hover:text-blue-800 mb-4 flex items-center gap-1.5">
           Back to Shift
-        </button>
+        </BackButton>
 
         <h1 className="text-2xl font-bold text-gray-900 mb-2">Edit Shift</h1>
         <p className="text-sm text-gray-600 mb-6">{shift.employee_name}</p>
@@ -229,26 +218,22 @@ export default function EditShiftPage() {
 
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">Start Time</label>
-                <input
-                  type="time"
-                  value={formData.start_time}
-                  onChange={(e) => setFormData({ ...formData, start_time: e.target.value })}
-                  className={`block w-full px-4 py-2.5 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${fieldErrors.start_time ? 'border-red-500 bg-red-50' : 'border-gray-300'}`}
-                  required
+                <TimeInput12h
+                  label="Start Time"
+                  value={formData.start_time || '09:00'}
+                  onChange={(v) => setFormData({ ...formData, start_time: v })}
+                  className={`w-full ${fieldErrors.start_time ? 'border-red-500' : ''}`}
                 />
                 {fieldErrors.start_time && <p className="mt-1 text-sm text-red-600">{fieldErrors.start_time}</p>}
               </div>
               <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">End Time</label>
-                <input
-                  type="time"
-                  value={formData.end_time}
-                  onChange={(e) => setFormData({ ...formData, end_time: e.target.value })}
-                  className={`block w-full px-4 py-2.5 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${fieldErrors.end_time ? 'border-red-500 bg-red-50' : 'border-gray-300'}`}
-                  required
+                <TimeInput12h
+                  label="End Time"
+                  value={formData.end_time || '17:00'}
+                  onChange={(v) => setFormData({ ...formData, end_time: v })}
+                  className="w-full"
                 />
-                <p className="mt-1 text-xs text-gray-500">For overnight shifts use end time next day (e.g. 07:00)</p>
+                <p className="mt-1 text-xs text-gray-500">Overnight: use next day end time (e.g. 7:00 AM)</p>
                 {fieldErrors.end_time && <p className="mt-1 text-sm text-red-600">{fieldErrors.end_time}</p>}
               </div>
             </div>
@@ -318,7 +303,7 @@ export default function EditShiftPage() {
           <div className="px-6 py-4 bg-gray-50 border-t border-gray-200 flex justify-end gap-3">
             <button
               type="button"
-              onClick={() => router.push(`/schedules/${shiftId}`)}
+              onClick={() => router.back()}
               className="px-4 py-2.5 border border-gray-300 rounded-lg text-gray-700 font-medium hover:bg-gray-100"
             >
               Cancel

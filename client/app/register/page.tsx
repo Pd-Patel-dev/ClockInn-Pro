@@ -264,7 +264,7 @@ export default function RegisterPage() {
                     </p>
                   )}
                   <p className="mt-2 text-xs text-gray-500">
-                    Must be at least 8 characters with uppercase, lowercase, and number
+                    Must be at least 8 characters with uppercase, lowercase, number, and special character (e.g. !@#$%)
                   </p>
                 </div>
               </div>

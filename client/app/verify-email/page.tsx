@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import api from '@/lib/api'
 import logger from '@/lib/logger'
 import { getCurrentUser } from '@/lib/auth'
+import BackButton from '@/components/BackButton'
 
 function VerifyEmailContent() {
   const router = useRouter()
@@ -360,12 +361,9 @@ function VerifyEmailContent() {
             </div>
 
             <div className="text-center pt-4 border-t border-gray-200">
-              <button
-                onClick={() => router.push('/login')}
-                className="text-sm text-gray-500 hover:text-gray-700"
-              >
+              <BackButton fallbackHref="/login" className="text-sm text-gray-500 hover:text-gray-700">
                 Back to Login
-              </button>
+              </BackButton>
             </div>
           </div>
 

@@ -24,6 +24,9 @@ class CompanySettingsResponse(BaseModel):
     cash_drawer_require_manager_review: Optional[bool] = None
     schedule_day_start_hour: Optional[int] = 7  # 0-23, hour when schedule day starts (e.g. 7 = 7 AM)
     schedule_day_end_hour: Optional[int] = 7    # 0-23, hour when schedule day ends (same = 24h, e.g. 7 = 7 AM next day)
+    shift_notes_enabled: Optional[bool] = True
+    shift_notes_required_on_clock_out: Optional[bool] = False
+    shift_notes_allow_edit_after_clock_out: Optional[bool] = False
 
 
 class AdminInfo(BaseModel):
@@ -73,6 +76,9 @@ class CompanySettingsUpdate(BaseModel):
     cash_drawer_require_manager_review: Optional[bool] = Field(None, description="Require manager review for variances")
     schedule_day_start_hour: Optional[int] = Field(None, ge=0, le=23, description="Hour (0-23) when the schedule day starts (e.g. 7 = 7 AM)")
     schedule_day_end_hour: Optional[int] = Field(None, ge=0, le=23, description="Hour (0-23) when the schedule day ends (e.g. 7 = 7 AM next day; same as start = 24h day)")
+    shift_notes_enabled: Optional[bool] = Field(None, description="Enable shift notepad / common log")
+    shift_notes_required_on_clock_out: Optional[bool] = Field(None, description="Require shift note before clock out")
+    shift_notes_allow_edit_after_clock_out: Optional[bool] = Field(None, description="Allow editing shift note after clock out")
 
 
 class CompanyNameUpdate(BaseModel):

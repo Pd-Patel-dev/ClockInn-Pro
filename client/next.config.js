@@ -4,6 +4,11 @@ const nextConfig = {
   env: {
     NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000',
   },
+  async redirects() {
+    return [
+      { source: '/admin/cash', destination: '/admin/shift-log', permanent: true },
+    ]
+  },
   // Enable fast refresh and hot reload
   webpack: (config, { dev, isServer }) => {
     if (dev && !isServer) {

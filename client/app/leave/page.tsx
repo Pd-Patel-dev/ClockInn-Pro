@@ -214,6 +214,7 @@ export default function MyLeavePage() {
                   {request.review_comment && (
                     <div className="mt-3 pt-3 border-t border-gray-200">
                       <p className="text-xs text-gray-500 font-medium mb-1">Review Comment:</p>
+                      {/* User-supplied: React text content (escaped). Do not use dangerouslySetInnerHTML. */}
                       <p className="text-sm text-gray-700">{request.review_comment}</p>
                     </div>
                   )}

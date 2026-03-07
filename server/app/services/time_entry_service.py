@@ -160,6 +160,15 @@ async def punch(
                     beverages_cash_cents=beverages_cash_cents,
                 )
             
+            # Shift notepad: require note before clock-out if company setting is enabled
+            from app.services.shift_note_service import check_shift_note_required_for_clock_out
+            note_required_msg = await check_shift_note_required_for_clock_out(db, company_id, open_entry.id)
+            if note_required_msg:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=note_required_msg,
+                )
+            
             open_entry.clock_out_at = now
             open_entry.status = TimeEntryStatus.CLOSED
             # Store clock-out IP, user agent, and location

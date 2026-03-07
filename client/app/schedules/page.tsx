@@ -8,7 +8,9 @@ import { useToast } from '@/components/Toast'
 import logger from '@/lib/logger'
 import { format, startOfWeek, endOfWeek, addDays, addWeeks, subWeeks, parseISO } from 'date-fns'
 import { getEmployeeColor } from '@/lib/employeeColors'
+import { parseTime24, toApiTime24 } from '@/lib/time'
 import { ShiftTimeline } from '@/components/ShiftTimeline'
+import TimeInput12h from '@/components/TimeInput12h'
 
 interface Shift {
   id: string
@@ -26,6 +28,7 @@ interface Employee {
   id: string
   name: string
   email: string
+  role?: string
 }
 
 export default function SchedulesPage() {
@@ -35,16 +38,18 @@ export default function SchedulesPage() {
   const [employees, setEmployees] = useState<Employee[]>([])
   const [loading, setLoading] = useState(true)
   const [currentWeek, setCurrentWeek] = useState(new Date())
+  const [selectedDepartment, setSelectedDepartment] = useState<string>('')
   const [selectedEmployee, setSelectedEmployee] = useState<string>('')
   const [showCreateModal, setShowCreateModal] = useState(false)
+  const [sendingEmployeeId, setSendingEmployeeId] = useState<string | null>(null)
   const [authErrorOccurred, setAuthErrorOccurred] = useState(false)
   const [scheduleDayStartHour, setScheduleDayStartHour] = useState(7)
   const [scheduleDayEndHour, setScheduleDayEndHour] = useState(7)
   const [formData, setFormData] = useState({
     employee_id: '',
     shift_date: '',
-    start_time: '',
-    end_time: '',
+    start_time: '09:00',
+    end_time: '17:00',
     break_minutes: 0,
     notes: '',
   })
@@ -61,6 +66,56 @@ export default function SchedulesPage() {
   const weekStartStr = useMemo(() => format(fetchStartDate, 'yyyy-MM-dd'), [fetchStartDate])
   const weekEndStr = useMemo(() => format(fetchEndDate, 'yyyy-MM-dd'), [fetchEndDate])
 
+  // Department filter: map role to employees (role used as department)
+  const filteredEmployees = useMemo(() => {
+    if (!selectedDepartment) return employees
+    return employees.filter((emp) => emp.role === selectedDepartment)
+  }, [employees, selectedDepartment])
+
+  // Shifts to display: when department filter is on, only show shifts for employees in that department
+  const filteredShifts = useMemo(() => {
+    if (!selectedDepartment) return shifts
+    const ids = new Set(filteredEmployees.map((e) => e.id))
+    return shifts.filter((s) => ids.has(s.employee_id))
+  }, [shifts, selectedDepartment, filteredEmployees])
+
+  /**
+   * Normalize a shift into absolute datetime intervals (used for totals and conflicts).
+   * Times from API are 24-hour (HH:MM).
+   */
+  const normalizeShift = (shift: Shift): { startAt: Date; endAt: Date } => {
+    const shiftDate = parseISO(shift.shift_date)
+    const startParsed = parseTime24(shift.start_time)
+    const endParsed = parseTime24(shift.end_time)
+    if (!startParsed || !endParsed) {
+      const fallback = new Date(shiftDate)
+      fallback.setHours(0, 0, 0, 0)
+      return { startAt: fallback, endAt: addDays(fallback, 1) }
+    }
+    const startAt = new Date(shiftDate)
+    startAt.setHours(startParsed.hour, startParsed.minute, 0, 0)
+    let endAt = new Date(shiftDate)
+    endAt.setHours(endParsed.hour, endParsed.minute, 0, 0)
+    if (endAt <= startAt) endAt = addDays(endAt, 1)
+    return { startAt, endAt }
+  }
+
+  // Total hours per employee for the current week (Mon–Sun)
+  const employeeWeekTotals = useMemo(() => {
+    const weekStartStrOnly = format(weekStart, 'yyyy-MM-dd')
+    const weekEndStrOnly = format(weekEnd, 'yyyy-MM-dd')
+    const totals: Record<string, number> = {}
+    filteredEmployees.forEach((emp) => { totals[emp.id] = 0 })
+    filteredShifts.forEach((shift) => {
+      if (shift.shift_date < weekStartStrOnly || shift.shift_date > weekEndStrOnly) return
+      const { startAt, endAt } = normalizeShift(shift)
+      let minutes = (endAt.getTime() - startAt.getTime()) / (1000 * 60)
+      minutes -= shift.break_minutes || 0
+      totals[shift.employee_id] = (totals[shift.employee_id] ?? 0) + minutes
+    })
+    return totals
+  }, [filteredEmployees, filteredShifts, weekStart, weekEnd])
+
   // Refetch function that can be called from anywhere
   const refetchShifts = async () => {
     if (authErrorOccurred) {
@@ -73,6 +128,7 @@ export default function SchedulesPage() {
       const params = new URLSearchParams()
       params.append('start_date', weekStartStr)
       params.append('end_date', weekEndStr)
+      params.append('limit', '1000')
       if (selectedEmployee) {
         params.append('employee_id', selectedEmployee)
       }
@@ -145,6 +201,7 @@ export default function SchedulesPage() {
         const params = new URLSearchParams()
         params.append('start_date', weekStartStr)
         params.append('end_date', weekEndStr)
+        params.append('limit', '1000')
         if (selectedEmployee) {
           params.append('employee_id', selectedEmployee)
         }
@@ -230,32 +287,15 @@ export default function SchedulesPage() {
     }
     
     // Note: We allow overnight shifts (end_time < start_time indicates next day)
-    // Validation will happen on the backend with proper datetime handling
-    
-    // Check for conflicts before sending to backend
-    const conflicts = checkForConflicts({
-      shift_date: formData.shift_date,
-      start_time: formData.start_time,
-      end_time: formData.end_time,
-      employee_id: formData.employee_id,
-    })
-    
-    if (conflicts.length > 0) {
-      const conflictDetails = conflicts.map(c => {
-        const { startAt, endAt } = normalizeShift(c)
-        return `${formatTimeFromDate(startAt)}-${formatTimeFromDate(endAt)} on ${format(parseISO(c.shift_date), 'MMM d')}`
-      }).join(', ')
-      
-      toast.error(`Shift conflicts with existing shifts: ${conflictDetails}`)
-      return
-    }
+    // Validation and conflict detection happen on the backend; we rely on the create
+    // response to show any overlap warning (server has full data, pagination-safe).
     
     // Prepare payload - clean up empty strings and ensure proper types
     const payload: any = {
       employee_id: formData.employee_id, // UUID string (required)
       shift_date: formData.shift_date, // YYYY-MM-DD format (required)
-      start_time: formData.start_time, // HH:MM format (required)
-      end_time: formData.end_time, // HH:MM format (required)
+      start_time: toApiTime24(formData.start_time), // 24-hour HH:mm (e.g. 23:00 = 11 PM)
+      end_time: toApiTime24(formData.end_time), // 24-hour HH:mm (e.g. 07:00 = 7 AM)
       break_minutes: parseInt(formData.break_minutes.toString()) || 0, // int >= 0
     }
     
@@ -265,46 +305,20 @@ export default function SchedulesPage() {
     }
     // job_role and requires_approval are optional and have defaults on server
     
-    // Calculate actual datetimes for logging (overnight shift detection)
-    const startDate = new Date(formData.shift_date + 'T' + formData.start_time + ':00')
-    let endDate = new Date(formData.shift_date + 'T' + formData.end_time + ':00')
-    const isOvernight = formData.end_time <= formData.start_time
-    if (isOvernight) {
-      // End time is on next day
-      endDate = addDays(endDate, 1)
-    }
-    
-    // Log outgoing request with datetime calculations
-    console.log('=== CREATE SHIFT REQUEST (BEFORE API CALL) ===')
-    console.log('API Client Base URL:', process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000')
-    console.log('Request Path:', '/shifts')
-    console.log('Expected Full URL:', `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/v1/shifts`)
-    console.log('Method:', 'POST')
-    console.log('Payload:', JSON.stringify(payload, null, 2))
-    console.log('Form Data (raw):', formData)
-    console.log('--- DateTime Calculations ---')
-    console.log('Start DateTime:', startDate.toISOString())
-    console.log('End DateTime:', endDate.toISOString())
-    console.log('Is Overnight:', isOvernight)
-    console.log('Duration (hours):', (endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60))
-    
-    // Verify token availability before making request
-    const tokenCheck = (await import('@/lib/api')).getAccessToken()
-    console.log('Token Available Before Request:', !!tokenCheck)
-    console.log('Token Preview:', tokenCheck ? `${tokenCheck.substring(0, 20)}...` : 'MISSING')
-    
     try {
       const response = await api.post('/shifts', payload)
-      console.log('=== CREATE SHIFT SUCCESS ===')
-      console.log('Response:', response.data)
-      
+      const data = response.data as { shift?: unknown; conflicts?: Array<{ message?: string }> }
+      const conflicts = data?.conflicts ?? []
       toast.success('Shift created successfully')
+      if (conflicts.length > 0) {
+        toast.error(`Shift created but overlaps with ${conflicts.length} existing shift(s). Check the schedule.`)
+      }
       setShowCreateModal(false)
       setFormData({
         employee_id: '',
         shift_date: '',
-        start_time: '',
-        end_time: '',
+        start_time: '09:00',
+        end_time: '17:00',
         break_minutes: 0,
         notes: '',
       })
@@ -319,21 +333,23 @@ export default function SchedulesPage() {
       
       // Only log as error if it's NOT a 401 that was retried and succeeded
       // (401s that get retried successfully shouldn't reach here, but if they do, it's handled)
-      if (error.response?.status !== 401 || !error.config?._retry) {
-        console.error('=== CREATE SHIFT ERROR (FINAL) ===')
-        console.error('Status:', error.response?.status)
-        console.error('Status Text:', error.response?.statusText)
-        console.error('Response Headers:', error.response?.headers)
-        console.error('Response Data (FULL):', JSON.stringify(error.response?.data, null, 2))
-        console.error('Request Config URL:', error.config?.url)
-        console.error('Request Config Method:', error.config?.method)
-        console.error('Request Config Data (raw):', error.config?.data)
-        console.error('Request Config Headers:', error.config?.headers)
-        console.error('Was Retried:', error.config?._retry)
-        console.error('Full Error Object:', error)
-      } else {
-        console.warn('=== CREATE SHIFT: 401 ERROR (LIKELY RETRIED BY INTERCEPTOR) ===')
-        console.warn('This error may have been automatically retried. Check network tab for final request status.')
+      if (process.env.NODE_ENV !== 'production') {
+        if (error.response?.status !== 401 || !error.config?._retry) {
+          console.error('=== CREATE SHIFT ERROR (FINAL) ===')
+          console.error('Status:', error.response?.status)
+          console.error('Status Text:', error.response?.statusText)
+          console.error('Response Headers:', error.response?.headers)
+          console.error('Response Data (FULL):', JSON.stringify(error.response?.data, null, 2))
+          console.error('Request Config URL:', error.config?.url)
+          console.error('Request Config Method:', error.config?.method)
+          console.error('Request Config Data (raw):', error.config?.data)
+          console.error('Request Config Headers:', error.config?.headers)
+          console.error('Was Retried:', error.config?._retry)
+          console.error('Full Error Object:', error)
+        } else {
+          console.warn('=== CREATE SHIFT: 401 ERROR (LIKELY RETRIED BY INTERCEPTOR) ===')
+          console.warn('This error may have been automatically retried. Check network tab for final request status.')
+        }
       }
       
       logger.error('Failed to create shift', error as Error)
@@ -362,6 +378,27 @@ export default function SchedulesPage() {
     }
   }
 
+  const handleSendSchedule = async (employeeId: string) => {
+    const weekStartDateStr = format(weekStart, 'yyyy-MM-dd')
+    setSendingEmployeeId(employeeId)
+    try {
+      await api.post('/shifts/send-schedule', {
+        employee_id: employeeId,
+        week_start_date: weekStartDateStr,
+      })
+      toast.success('Schedule sent to employee')
+    } catch (error: any) {
+      if (error.response?.status === 401 || error.response?.status === 403) {
+        setAuthErrorOccurred(true)
+        return
+      }
+      const msg = error.response?.data?.detail ?? 'Failed to send schedule'
+      toast.error(typeof msg === 'string' ? msg : JSON.stringify(msg))
+    } finally {
+      setSendingEmployeeId(null)
+    }
+  }
+
   const getStatusColor = (status: string) => {
     switch (status.toUpperCase()) {
       case 'PUBLISHED':
@@ -378,35 +415,6 @@ export default function SchedulesPage() {
   }
 
   /**
-   * Normalize a shift into absolute datetime intervals.
-   * Handles overnight shifts correctly by converting shift_date + start_time/end_time
-   * into absolute Date objects that can be compared.
-   */
-  const normalizeShift = (shift: Shift): { startAt: Date; endAt: Date } => {
-    // Parse shift_date (YYYY-MM-DD format)
-    const shiftDate = parseISO(shift.shift_date)
-    
-    // Parse start_time and end_time (HH:MM format)
-    const [startHour, startMinute] = shift.start_time.split(':').map(Number)
-    const [endHour, endMinute] = shift.end_time.split(':').map(Number)
-    
-    // Combine date and time for start
-    const startAt = new Date(shiftDate)
-    startAt.setHours(startHour, startMinute, 0, 0)
-    
-    // Combine date and time for end
-    let endAt = new Date(shiftDate)
-    endAt.setHours(endHour, endMinute, 0, 0)
-    
-    // Handle overnight shifts: if end_time <= start_time, end is on next day
-    if (endAt <= startAt) {
-      endAt = addDays(endAt, 1)
-    }
-    
-    return { startAt, endAt }
-  }
-
-  /**
    * Format a Date object to time string (HH:MM) for display
    */
   const formatTimeFromDate = (date: Date) => {
@@ -420,8 +428,8 @@ export default function SchedulesPage() {
   /** Open print-friendly schedule in new window and trigger print (or Save as PDF). */
   const handlePrintSchedule = () => {
     const dayLabels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
-    // Use all employees so every person appears; show — for days with no shift
-    const sortedEmployees = [...employees]
+    // Use filtered employees (by department) so print matches current view
+    const sortedEmployees = [...filteredEmployees]
       .map((emp) => ({ id: emp.id, name: emp.name || 'Unknown' }))
       .sort((a, b) => a.name.localeCompare(b.name))
 
@@ -431,7 +439,7 @@ export default function SchedulesPage() {
     }
 
     const shiftsByEmployeeAndDay = new Map<string, Map<string, Shift[]>>()
-    shifts.forEach((shift) => {
+    filteredShifts.forEach((shift) => {
       if (!shiftsByEmployeeAndDay.has(shift.employee_id)) {
         shiftsByEmployeeAndDay.set(shift.employee_id, new Map())
       }
@@ -573,44 +581,17 @@ export default function SchedulesPage() {
   }
 
   function escapeHtml(text: string): string {
+    // Single place we inject user-supplied text into HTML (print iframe). Always escape;
+    // do not use dangerouslySetInnerHTML with unsanitized data elsewhere.
     const div = document.createElement('div')
     div.textContent = text
     return div.innerHTML
-  }
-  
-  /**
-   * Check if two datetime intervals overlap
-   */
-  const overlaps = (aStart: Date, aEnd: Date, bStart: Date, bEnd: Date): boolean => {
-    return aStart < bEnd && aEnd > bStart
-  }
-  
-  /**
-   * Check if a new shift would conflict with existing shifts
-   */
-  const checkForConflicts = (candidateShift: { shift_date: string; start_time: string; end_time: string; employee_id: string }): Shift[] => {
-    const candidate = normalizeShift(candidateShift as Shift)
-    const conflicts: Shift[] = []
-    
-    shifts.forEach(shift => {
-      // Only check conflicts with the same employee
-      if (shift.employee_id !== candidateShift.employee_id) return
-      
-      const existing = normalizeShift(shift)
-      
-      // Check for overlap
-      if (overlaps(candidate.startAt, candidate.endAt, existing.startAt, existing.endAt)) {
-        conflicts.push(shift)
-      }
-    })
-    
-    return conflicts
   }
 
   return (
     <Layout>
       <div className="min-h-screen bg-gradient-to-br from-slate-100 via-gray-50 to-indigo-50/30">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <div className="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 py-8">
           {/* Header */}
           <div className="mb-6">
             <div className="flex justify-between items-start">
@@ -635,7 +616,7 @@ export default function SchedulesPage() {
                   <svg className="h-5 w-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
                   </svg>
-                  Create Week Shifts
+                  Create Bulk Shift
                 </button>
                 <button
                   onClick={() => setShowCreateModal(true)}
@@ -653,7 +634,28 @@ export default function SchedulesPage() {
           {/* Filters & Navigation - glassmorphism */}
           <div className="bg-white/60 backdrop-blur-xl rounded-2xl border border-white/50 shadow-[0_8px_32px_rgba(0,0,0,0.06)] p-4 mb-4">
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 items-end">
-              <div className="lg:col-span-4">
+              <div className="lg:col-span-3">
+                <label className="block text-sm font-semibold text-gray-700 mb-2">Department</label>
+                <select
+                  value={selectedDepartment}
+                  onChange={(e) => {
+                    setSelectedDepartment(e.target.value)
+                    if (selectedEmployee && e.target.value) {
+                      const nextFiltered = employees.filter((emp: Employee) => emp.role === e.target.value)
+                      if (!nextFiltered.some((emp: Employee) => emp.id === selectedEmployee)) {
+                        setSelectedEmployee('')
+                      }
+                    }
+                  }}
+                  className="block w-full px-4 py-2.5 rounded-xl bg-white/80 border border-white/60 shadow-[inset_4px_4px_8px_rgba(0,0,0,0.04)] backdrop-blur-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-400/40 focus:border-blue-300/50 transition-all"
+                >
+                  <option value="">All Departments</option>
+                  <option value="FRONTDESK">Front Desk</option>
+                  <option value="HOUSEKEEPING">Housekeeping</option>
+                  <option value="MAINTENANCE">Maintenance</option>
+                </select>
+              </div>
+              <div className="lg:col-span-3">
                 <label className="block text-sm font-semibold text-gray-700 mb-2">Employee</label>
                 <select
                   value={selectedEmployee}
@@ -661,7 +663,7 @@ export default function SchedulesPage() {
                   className="block w-full px-4 py-2.5 rounded-xl bg-white/80 border border-white/60 shadow-[inset_4px_4px_8px_rgba(0,0,0,0.04)] backdrop-blur-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-400/40 focus:border-blue-300/50 transition-all"
                 >
                   <option value="">All Employees</option>
-                  {employees.map((emp) => (
+                  {filteredEmployees.map((emp) => (
                     <option key={emp.id} value={emp.id}>
                       {emp.name}
                     </option>
@@ -669,7 +671,7 @@ export default function SchedulesPage() {
                 </select>
               </div>
               
-              <div className="lg:col-span-6">
+              <div className="lg:col-span-4">
                 <label className="block text-sm font-semibold text-gray-700 mb-2">Week</label>
                 <div className="flex items-center">
                   <button
@@ -709,7 +711,7 @@ export default function SchedulesPage() {
             </div>
           </div>
 
-          {/* Calendar View */}
+          {/* Calendar View + Side panel */}
           {loading ? (
             <div className="bg-white/60 backdrop-blur-xl rounded-2xl border border-white/50 shadow-[0_8px_32px_rgba(0,0,0,0.06)] p-16">
               <div className="text-center">
@@ -718,17 +720,66 @@ export default function SchedulesPage() {
               </div>
             </div>
           ) : (
-            <div className="max-h-[calc(100vh-200px)] overflow-auto min-h-[540px] rounded-2xl shadow-[0_8px_32px_rgba(0,0,0,0.06)]">
-              {/* Timeline: 24h, duration-proportional, one continuous box per shift including overnight */}
-              <ShiftTimeline
-                shifts={shifts}
-                weekDays={weekDays}
-                onShiftClick={(s) => router.push(`/schedules/${s.id}`)}
-                loading={loading}
-                today={new Date()}
-                dayStartHour={scheduleDayStartHour}
-                dayEndHour={scheduleDayEndHour}
-              />
+            <div className="flex gap-4">
+              <div className="flex-1 min-w-0 max-h-[calc(100vh-200px)] overflow-auto min-h-[540px] rounded-2xl shadow-[0_8px_32px_rgba(0,0,0,0.06)]">
+                <ShiftTimeline
+                  shifts={filteredShifts}
+                  weekDays={weekDays}
+                  onShiftClick={(s) => router.push(`/schedules/shift/${s.id}`)}
+                  loading={loading}
+                  today={new Date()}
+                  dayStartHour={scheduleDayStartHour}
+                  dayEndHour={scheduleDayEndHour}
+                />
+              </div>
+              {/* Side panel: employees, week total, Edit, Send */}
+              <aside className="w-[240px] flex-shrink-0 bg-white/70 rounded-xl border border-gray-200/80 p-3 max-h-[calc(100vh-200px)] overflow-auto">
+                <p className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">Employees · Week total</p>
+                <ul className="space-y-1.5">
+                  {filteredEmployees.map((emp) => {
+                    const totalMinutes = employeeWeekTotals[emp.id] ?? 0
+                    const totalHours = totalMinutes / 60
+                    const hoursLabel = totalHours === 0 ? '0 h' : totalHours % 1 === 0 ? `${totalHours} h` : `${totalHours.toFixed(1)} h`
+                    return (
+                      <li
+                        key={emp.id}
+                        className="flex items-center gap-2 py-2 px-2 rounded-lg hover:bg-gray-50/80 border-b border-gray-100 last:border-0"
+                      >
+                        <div className="flex-1 min-w-0">
+                          <span className="block text-sm font-medium text-gray-900 truncate" title={emp.name}>{emp.name}</span>
+                          <span className="block text-xs text-gray-500">{hoursLabel}</span>
+                        </div>
+                        <div className="flex items-center gap-1 shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => router.push(`/schedules/week/edit?employee_id=${emp.id}&week_start=${format(weekStart, 'yyyy-MM-dd')}`)}
+                            className="p-1.5 rounded-md text-gray-500 hover:bg-gray-200 hover:text-gray-700 focus:outline-none focus:ring-1 focus:ring-gray-400"
+                            title="Edit shifts"
+                          >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                            </svg>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleSendSchedule(emp.id)}
+                            disabled={sendingEmployeeId === emp.id}
+                            className="p-1.5 rounded-md text-blue-600 hover:bg-blue-50 hover:text-blue-700 disabled:opacity-50 focus:outline-none focus:ring-1 focus:ring-blue-400"
+                            title="Send schedule"
+                          >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                            </svg>
+                          </button>
+                        </div>
+                      </li>
+                    )
+                  })}
+                </ul>
+                {filteredEmployees.length === 0 && (
+                  <p className="text-xs text-gray-500 py-2">No employees in this view.</p>
+                )}
+              </aside>
             </div>
           )}
 
@@ -772,7 +823,7 @@ export default function SchedulesPage() {
                         required
                       >
                         <option value="">Select Employee</option>
-                        {employees.map((emp) => (
+                        {filteredEmployees.map((emp) => (
                           <option key={emp.id} value={emp.id}>
                             {emp.name}
                           </option>
@@ -793,28 +844,21 @@ export default function SchedulesPage() {
                     </div>
                     <div className="grid grid-cols-2 gap-4">
                       <div>
-                        <label className="block text-sm font-semibold text-gray-700 mb-2">
-                          Start Time <span className="text-red-500">*</span>
-                        </label>
-                        <input
-                          type="time"
-                          value={formData.start_time}
-                          onChange={(e) => setFormData({ ...formData, start_time: e.target.value })}
-                          className="block w-full px-4 py-2.5 rounded-xl bg-white/90 border border-white/60 shadow-[inset_4px_4px_8px_rgba(0,0,0,0.04)] text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-400/40 focus:border-blue-300/50 transition-all"
-                          required
+                        <TimeInput12h
+                          label="Start Time *"
+                          value={formData.start_time || '09:00'}
+                          onChange={(v) => setFormData({ ...formData, start_time: v })}
+                          className="w-full"
                         />
                       </div>
                       <div>
-                        <label className="block text-sm font-semibold text-gray-700 mb-2">
-                          End Time <span className="text-red-500">*</span>
-                        </label>
-                        <input
-                          type="time"
-                          value={formData.end_time}
-                          onChange={(e) => setFormData({ ...formData, end_time: e.target.value })}
-                          className="block w-full px-4 py-2.5 rounded-xl bg-white/90 border border-white/60 shadow-[inset_4px_4px_8px_rgba(0,0,0,0.04)] text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-400/40 focus:border-blue-300/50 transition-all"
-                          required
+                        <TimeInput12h
+                          label="End Time *"
+                          value={formData.end_time || '17:00'}
+                          onChange={(v) => setFormData({ ...formData, end_time: v })}
+                          className="w-full"
                         />
+                        <p className="mt-1 text-xs text-gray-500">For overnight (e.g. 11 PM–7 AM) set end next day: 7:00 AM</p>
                       </div>
                     </div>
                     <div>

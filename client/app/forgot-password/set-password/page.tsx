@@ -2,7 +2,7 @@
 
 import { useState, useEffect, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import Link from 'next/link'
+import BackButton from '@/components/BackButton'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
@@ -195,9 +195,9 @@ function SetPasswordContent() {
             </form>
 
             <div className="mt-6 text-center">
-              <Link href="/login" className="text-sm text-gray-500 hover:text-gray-700">
+              <BackButton fallbackHref="/login" className="text-sm text-gray-500 hover:text-gray-700">
                 Back to login
-              </Link>
+              </BackButton>
             </div>
           </div>
         </div>

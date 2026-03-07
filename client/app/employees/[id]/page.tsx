@@ -14,6 +14,7 @@ import { useToast } from '@/components/Toast'
 import ConfirmationDialog from '@/components/ConfirmationDialog'
 import { FormField, Input, Select } from '@/components/FormField'
 import { ButtonSpinner } from '@/components/LoadingSpinner'
+import BackButton from '@/components/BackButton'
 
 interface Employee {
   id: string
@@ -373,12 +374,9 @@ export default function EmployeeDetailPage() {
       <div className="px-4 py-8 sm:px-6 lg:px-8">
         {/* Header */}
         <div className="mb-6">
-          <button
-            onClick={() => router.back()}
-            className="text-sm text-blue-600 hover:text-blue-700 mb-4"
-          >
+          <BackButton fallbackHref="/employees" className="text-sm text-blue-600 hover:text-blue-700 mb-4">
             ← Back
-          </button>
+          </BackButton>
           <h1 className="text-2xl font-semibold text-gray-900 mb-1">Employee Details</h1>
           <p className="text-sm text-gray-600">View and manage employee information and time entries</p>
         </div>

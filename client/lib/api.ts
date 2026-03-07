@@ -7,17 +7,17 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
 let tokenRefreshInterval: NodeJS.Timeout | null = null
 let refreshWarningShown = false
 
-// Create axios instance
+// Create axios instance (withCredentials so refresh token cookie is sent)
 const api = axios.create({
   baseURL: `${API_URL}/api/v1`,
   headers: {
     'Content-Type': 'application/json',
   },
+  withCredentials: true,
 })
 
-// Token storage (in-memory + localStorage for persistence)
+// Access token only in memory + localStorage. Refresh token is in HttpOnly cookie (not readable by JS).
 let accessToken: string | null = null
-let refreshToken: string | null = null
 
 // Helper function to validate JWT token format
 const isValidJWTFormat = (token: string | null): boolean => {
@@ -29,11 +29,10 @@ const isValidJWTFormat = (token: string | null): boolean => {
   return parts.every(part => part.length > 0)
 }
 
-// Initialize tokens from localStorage on module load
+// Initialize tokens from localStorage on module load (access token only; refresh is in HttpOnly cookie)
 if (typeof window !== 'undefined') {
   const storedAccess = localStorage.getItem('access_token')
-  const storedRefresh = localStorage.getItem('refresh_token')
-  
+
   // Only use tokens if they're in valid JWT format
   if (storedAccess && isValidJWTFormat(storedAccess)) {
     accessToken = storedAccess
@@ -41,37 +40,25 @@ if (typeof window !== 'undefined') {
     // Invalid token format, remove it
     localStorage.removeItem('access_token')
   }
-  
-  if (storedRefresh && isValidJWTFormat(storedRefresh)) {
-    refreshToken = storedRefresh
-  } else if (storedRefresh) {
-    // Invalid token format, remove it
-    localStorage.removeItem('refresh_token')
-  }
 }
 
-export const setTokens = (access: string, refresh: string) => {
-  // Validate token format before storing
-  if (!isValidJWTFormat(access) || !isValidJWTFormat(refresh)) {
-    console.error('Invalid token format detected, not storing tokens')
+export const setTokens = (access: string, refresh?: string | null) => {
+  // Validate token format before storing (refresh is in cookie, not stored here)
+  if (!isValidJWTFormat(access)) {
+    console.error('Invalid access token format detected, not storing')
     return
   }
-  
+
   accessToken = access
-  refreshToken = refresh
-  // Store both tokens in localStorage for persistence
   if (typeof window !== 'undefined') {
     localStorage.setItem('access_token', access)
-    localStorage.setItem('refresh_token', refresh)
   }
 }
 
 export const clearTokens = () => {
   accessToken = null
-  refreshToken = null
   if (typeof window !== 'undefined') {
     localStorage.removeItem('access_token')
-    localStorage.removeItem('refresh_token')
   }
 }
 
@@ -89,66 +76,48 @@ export const getAccessToken = () => {
   return null
 }
 
-export const getRefreshToken = () => {
-  if (refreshToken && isValidJWTFormat(refreshToken)) return refreshToken
-  if (typeof window !== 'undefined') {
-    const stored = localStorage.getItem('refresh_token')
-    if (stored && isValidJWTFormat(stored)) {
-      return stored
-    } else if (stored) {
-      // Invalid token, remove it
-      localStorage.removeItem('refresh_token')
-    }
-  }
+/** Refresh token is in HttpOnly cookie; not readable by JS. Used only to decide whether to call refresh endpoint. */
+export const getRefreshToken = (): string | null => {
   return null
 }
 
 /**
- * Proactively refresh access token if it's expiring soon
+ * Proactively refresh access token if it's expiring soon.
+ * Refresh token is sent via HttpOnly cookie (credentials: 'include').
  */
 async function refreshTokenIfNeeded(): Promise<boolean> {
   const currentAccessToken = getAccessToken()
-  const currentRefreshToken = getRefreshToken()
 
-  if (!currentAccessToken || !currentRefreshToken) {
-    return false
-  }
-
-  // Check if access token is expiring soon (within 2 minutes) or expired
-  if (!isTokenExpiringSoon(currentAccessToken, 2)) {
-    return true // Token is still valid
-  }
-
-  // Check if refresh token is expired
-  if (isTokenExpired(currentRefreshToken)) {
-    clearTokens()
-    if (typeof window !== 'undefined') {
-      window.location.href = '/login?expired=true'
-    }
-    return false
-  }
-
-  // Proactively refresh the access token
-  try {
-    const response = await axios.post(`${API_URL}/api/v1/auth/refresh`, {
-      refresh_token: currentRefreshToken,
-    }, {
-      headers: {
-        'Content-Type': 'application/json',
-      },
-    })
-
-    const { access_token, refresh_token } = response.data
-    accessToken = access_token
-    refreshToken = refresh_token
-    setTokens(access_token, refresh_token)
-    
-    // Reset warning flag when token is refreshed
-    refreshWarningShown = false
-    
+  // If we have a valid access token that's not expiring soon, nothing to do
+  if (currentAccessToken && !isTokenExpiringSoon(currentAccessToken, 2)) {
     return true
-  } catch (error) {
-    // Refresh failed - clear tokens and redirect
+  }
+
+  // Try to refresh using the HttpOnly cookie (no body)
+  try {
+    const response = await axios.post(
+      `${API_URL}/api/v1/auth/refresh`,
+      {},
+      {
+        headers: { 'Content-Type': 'application/json' },
+        withCredentials: true,
+      }
+    )
+
+    const { access_token } = response.data
+    if (!access_token || !isValidJWTFormat(access_token)) {
+      clearTokens()
+      if (typeof window !== 'undefined') {
+        window.location.href = '/login?expired=true'
+      }
+      return false
+    }
+
+    accessToken = access_token
+    setTokens(access_token)
+    refreshWarningShown = false
+    return true
+  } catch {
     clearTokens()
     if (typeof window !== 'undefined') {
       window.location.href = '/login?expired=true'
@@ -158,36 +127,27 @@ async function refreshTokenIfNeeded(): Promise<boolean> {
 }
 
 /**
- * Check refresh token expiration and show warning
+ * Check refresh token expiration and show warning.
+ * We cannot read the HttpOnly refresh cookie, so we only warn based on access token expiry or rely on 401 from refresh.
  */
 function checkRefreshTokenExpiration(): void {
   if (typeof window === 'undefined') return
 
-  const currentRefreshToken = getRefreshToken()
-  if (!currentRefreshToken) return
+  const currentAccessToken = getAccessToken()
+  if (!currentAccessToken) return
 
-  // Check if refresh token is expiring soon (within 1 day)
-  if (isTokenExpiringSoon(currentRefreshToken, 24 * 60)) {
-    const timeUntilExpiry = getTokenExpirationTime(currentRefreshToken)
-    if (timeUntilExpiry && !refreshWarningShown) {
-      const hoursUntilExpiry = Math.floor(timeUntilExpiry / 3600)
-      const daysUntilExpiry = Math.floor(hoursUntilExpiry / 24)
-
-      if (daysUntilExpiry <= 1 && hoursUntilExpiry <= 24) {
-        // Show warning notification (non-blocking)
-        console.warn(
-          `⚠️ Your session will expire in ${daysUntilExpiry > 0 ? `${daysUntilExpiry} day(s)` : `${hoursUntilExpiry} hour(s)`}. Please save your work and consider logging in again.`
-        )
-        refreshWarningShown = true
-      }
-    }
+  // If access token is expired, refresh will be attempted by refreshTokenIfNeeded
+  if (isTokenExpired(currentAccessToken)) {
+    // Let the next refresh attempt handle redirect
+    return
   }
 
-  // Check if refresh token is expired
-  if (isTokenExpired(currentRefreshToken)) {
-    clearTokens()
-    if (typeof window !== 'undefined') {
-      window.location.href = '/login?expired=true'
+  // Optionally warn when access token is getting close to expiry (session still valid until refresh cookie expires)
+  if (isTokenExpiringSoon(currentAccessToken, 5)) {
+    const timeUntilExpiry = getTokenExpirationTime(currentAccessToken)
+    if (timeUntilExpiry && timeUntilExpiry <= 300 && !refreshWarningShown) {
+      console.warn('Your session will refresh shortly. If you are redirected to login, your refresh session may have expired.')
+      refreshWarningShown = true
     }
   }
 }
@@ -227,43 +187,24 @@ export function stopTokenRefreshInterval(): void {
 // Function to initialize and refresh token if needed
 export const initializeAuth = async (): Promise<boolean> => {
   if (typeof window === 'undefined') return false
-  
+
   const storedAccess = localStorage.getItem('access_token')
-  const storedRefresh = localStorage.getItem('refresh_token')
-  
-  // Validate token format before using
-  if (storedAccess && isValidJWTFormat(storedAccess) && storedRefresh && isValidJWTFormat(storedRefresh)) {
-    // Restore tokens from localStorage
+
+  if (storedAccess && isValidJWTFormat(storedAccess)) {
     accessToken = storedAccess
-    refreshToken = storedRefresh
-    
-    // Check if tokens are expired
-    if (isTokenExpired(storedAccess)) {
-      // Access token expired, try to refresh
-      if (storedRefresh && !isTokenExpired(storedRefresh)) {
-        return await refreshTokenIfNeeded()
-      } else {
-        // Both expired, clear and return false
-        clearTokens()
-        return false
-      }
-    }
-    
-    // Start proactive refresh interval
-    startTokenRefreshInterval()
-    return true
-  }
-  
-  // If no access token but we have refresh token, try to refresh
-  if (storedRefresh && !isTokenExpired(storedRefresh)) {
-    const refreshed = await refreshTokenIfNeeded()
-    if (refreshed) {
+
+    if (!isTokenExpired(storedAccess)) {
       startTokenRefreshInterval()
+      return true
     }
-    return refreshed
   }
-  
-  return false
+
+  // No valid access token or expired: try refresh via HttpOnly cookie
+  const refreshed = await refreshTokenIfNeeded()
+  if (refreshed) {
+    startTokenRefreshInterval()
+  }
+  return refreshed
 }
 
     // Request interceptor to add access token
@@ -446,58 +387,48 @@ api.interceptors.response.use(
       originalRequest._retry = true
       isRefreshing = true
 
-      const refresh = getRefreshToken()
-      if (!refresh || isTokenExpired(refresh)) {
-        // No refresh token or expired - clear everything and redirect
-        clearTokens()
-        stopTokenRefreshInterval()
-        processQueue(error, null)
-        isRefreshing = false
-        refreshPromise = null
-        
-        // Use window.location for hard redirect (stops all execution)
-        if (typeof window !== 'undefined') {
-          window.location.href = '/login?expired=true'
-        }
-        return Promise.reject(error)
-      }
-
-      // Create refresh promise if it doesn't exist
+      // Refresh token is in HttpOnly cookie; no body needed
       if (!refreshPromise) {
         refreshPromise = (async () => {
           try {
-            const response = await axios.post(`${API_URL}/api/v1/auth/refresh`, {
-              refresh_token: refresh,
-            }, {
-              headers: {
-                'Content-Type': 'application/json',
-              },
-            })
+            const response = await axios.post(
+              `${API_URL}/api/v1/auth/refresh`,
+              {},
+              {
+                headers: { 'Content-Type': 'application/json' },
+                withCredentials: true,
+              }
+            )
 
-            const { access_token, refresh_token } = response.data
+            const { access_token } = response.data
+            if (!access_token || !isValidJWTFormat(access_token)) {
+              clearTokens()
+              processQueue(null, null)
+              stopTokenRefreshInterval()
+              if (typeof window !== 'undefined') {
+                window.location.href = '/login?expired=true'
+              }
+              throw new Error('Invalid refresh response')
+            }
+
             accessToken = access_token
-            refreshToken = refresh_token
-            setTokens(access_token, refresh_token)
-
-            // Reset warning flag
+            setTokens(access_token)
             refreshWarningShown = false
-
             return access_token
           } catch (refreshError: any) {
-            // Refresh failed - check if refresh token expired
-            const isExpired = refreshError.response?.status === 401 || 
-                             refreshError.response?.data?.detail?.includes('expired') ||
-                             refreshError.response?.data?.detail?.includes('Invalid')
-            
+            const isExpired =
+              refreshError.response?.status === 401 ||
+              refreshError.response?.data?.detail?.includes('expired') ||
+              refreshError.response?.data?.detail?.includes('Invalid')
+
             clearTokens()
             processQueue(refreshError as AxiosError, null)
             stopTokenRefreshInterval()
-            
-            // Use window.location for hard redirect with expired flag
+
             if (typeof window !== 'undefined') {
               window.location.href = isExpired ? '/login?expired=true' : '/login'
             }
-            
+
             throw refreshError
           } finally {
             isRefreshing = false

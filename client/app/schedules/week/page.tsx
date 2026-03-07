@@ -1,12 +1,15 @@
 'use client'
 
 import { useState, useEffect, useMemo } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import Layout from '@/components/Layout'
 import api from '@/lib/api'
 import { useToast } from '@/components/Toast'
 import logger from '@/lib/logger'
 import { format, startOfWeek, addWeeks, subWeeks, addDays } from 'date-fns'
+import BackButton from '@/components/BackButton'
+import { toApiTime24 } from '@/lib/time'
+import TimeInput12h from '@/components/TimeInput12h'
 
 interface Employee {
   id: string
@@ -44,6 +47,7 @@ interface BulkWeekShiftPreviewResponse {
 
 export default function BulkWeekShiftPage() {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const toast = useToast()
   const [employees, setEmployees] = useState<Employee[]>([])
   const [loading, setLoading] = useState(false)
@@ -113,6 +117,23 @@ export default function BulkWeekShiftPage() {
     }
     fetchEmployees()
   }, [toast])
+
+  // Prefill from query: ?employee_id=...&week_start=yyyy-MM-dd (e.g. from schedule page "Edit")
+  useEffect(() => {
+    const eid = searchParams.get('employee_id')
+    const wStart = searchParams.get('week_start')
+    if (employees.length === 0) return
+    if (eid && employees.some((e) => e.id === eid)) {
+      setSelectedEmployeeId(eid)
+    }
+    if (wStart) {
+      const d = new Date(wStart)
+      if (!isNaN(d.getTime())) {
+        const monday = startOfWeek(d, { weekStartsOn: 1 })
+        setCurrentWeek(monday)
+      }
+    }
+  }, [employees, searchParams])
   
   const updateDay = (dayKey: string, updates: Partial<DayTemplate>) => {
     setDays(prev => ({
@@ -146,17 +167,26 @@ export default function BulkWeekShiftPage() {
         employee_id: selectedEmployeeId,
         mode,
         template: {
-          start_time: template.start_time,
-          end_time: template.end_time,
+          start_time: toApiTime24(template.start_time),
+          end_time: toApiTime24(template.end_time),
           break_minutes: template.break_minutes,
           status: template.status,
           notes: template.notes || undefined,
           job_role: template.job_role || undefined,
         },
-        days,
+        days: Object.fromEntries(
+          Object.entries(days).map(([k, v]) => [
+            k,
+            {
+              ...v,
+              start_time: v.start_time ? toApiTime24(v.start_time) : undefined,
+              end_time: v.end_time ? toApiTime24(v.end_time) : undefined,
+            },
+          ])
+        ),
         conflict_policy: conflictPolicy,
       }
-      
+
       const response = await api.post('/shifts/bulk/week/preview', payload)
       setPreview(response.data)
       toast.success(`Preview: ${response.data.total_shifts} shifts, ${response.data.total_conflicts} conflicts`)
@@ -193,17 +223,26 @@ export default function BulkWeekShiftPage() {
         employee_id: selectedEmployeeId,
         mode,
         template: {
-          start_time: template.start_time,
-          end_time: template.end_time,
+          start_time: toApiTime24(template.start_time),
+          end_time: toApiTime24(template.end_time),
           break_minutes: template.break_minutes,
           status: template.status,
           notes: template.notes || undefined,
           job_role: template.job_role || undefined,
         },
-        days,
+        days: Object.fromEntries(
+          Object.entries(days).map(([k, v]) => [
+            k,
+            {
+              ...v,
+              start_time: v.start_time ? toApiTime24(v.start_time) : undefined,
+              end_time: v.end_time ? toApiTime24(v.end_time) : undefined,
+            },
+          ])
+        ),
         conflict_policy: conflictPolicy,
       }
-      
+
       const response = await api.post('/shifts/bulk/week', payload)
       toast.success(
         `Created ${response.data.created_count} shifts. ` +
@@ -228,6 +267,9 @@ export default function BulkWeekShiftPage() {
     <Layout>
       <div className="container mx-auto px-4 py-8 max-w-7xl">
         <div className="mb-8">
+          <BackButton fallbackHref="/schedules" className="mb-4 inline-flex items-center gap-1.5 text-gray-600 hover:text-gray-900">
+            Back to Schedule
+          </BackButton>
           <h1 className="text-3xl font-bold text-gray-900 mb-2">Create Shifts for Week</h1>
           <p className="text-gray-600">Create shifts for an employee for an entire week</p>
         </div>
@@ -342,21 +384,19 @@ export default function BulkWeekShiftPage() {
           {mode === 'same_each_day' && (
             <div className="mb-6 grid grid-cols-2 md:grid-cols-4 gap-4">
               <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">Start Time</label>
-                <input
-                  type="time"
+                <TimeInput12h
+                  label="Start Time"
                   value={template.start_time}
-                  onChange={(e) => setTemplate({ ...template, start_time: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                  onChange={(v) => setTemplate({ ...template, start_time: v })}
+                  className="w-full"
                 />
               </div>
               <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">End Time</label>
-                <input
-                  type="time"
+                <TimeInput12h
+                  label="End Time"
                   value={template.end_time}
-                  onChange={(e) => setTemplate({ ...template, end_time: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                  onChange={(v) => setTemplate({ ...template, end_time: v })}
+                  className="w-full"
                 />
               </div>
               <div>
@@ -402,20 +442,16 @@ export default function BulkWeekShiftPage() {
                     </label>
                     {days[key].enabled && (
                       <>
-                        <input
-                          type="time"
-                          placeholder="Start"
-                          value={days[key].start_time || ''}
-                          onChange={(e) => updateDay(key, { start_time: e.target.value })}
-                          className="px-3 py-1.5 border border-gray-300 rounded text-sm"
+                        <TimeInput12h
+                          value={days[key].start_time || '09:00'}
+                          onChange={(v) => updateDay(key, { start_time: v })}
+                          className="flex-shrink-0"
                         />
-                        <span className="text-gray-400">-</span>
-                        <input
-                          type="time"
-                          placeholder="End"
-                          value={days[key].end_time || ''}
-                          onChange={(e) => updateDay(key, { end_time: e.target.value })}
-                          className="px-3 py-1.5 border border-gray-300 rounded text-sm"
+                        <span className="text-gray-400">–</span>
+                        <TimeInput12h
+                          value={days[key].end_time || '17:00'}
+                          onChange={(v) => updateDay(key, { end_time: v })}
+                          className="flex-shrink-0"
                         />
                         <input
                           type="number"
@@ -476,7 +512,7 @@ export default function BulkWeekShiftPage() {
               className="w-full md:w-64 px-3 py-2 border border-gray-300 rounded-lg"
               placeholder="America/Chicago"
             />
-            <p className="text-xs text-gray-500 mt-1">IANA timezone identifier (e.g., America/Chicago)</p>
+            <p className="text-xs text-gray-500 mt-1">IANA timezone identifier (e.g., America/Chicago). Sent with the request for context; shift dates and times are created as entered (no conversion applied yet).</p>
           </div>
           
           {/* Actions */}

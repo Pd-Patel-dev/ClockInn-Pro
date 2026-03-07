@@ -41,6 +41,7 @@ function LoginContent() {
   const {
     register,
     handleSubmit,
+    reset,
     formState: { errors },
   } = useForm<LoginForm>({
     resolver: zodResolver(loginSchema),
@@ -52,6 +53,8 @@ function LoginContent() {
     setLoading(true)
     try {
       await login(data)
+      // Clear password from form state immediately after successful auth
+      reset({ email: data.email, password: '' })
       // Start proactive token refresh after login
       startTokenRefreshInterval()
       
@@ -74,6 +77,15 @@ function LoginContent() {
         router.push('/dashboard')
       }
     } catch (err: any) {
+      // Clear password field on any error so it is not left in memory longer than needed
+      reset(undefined, { keepValues: false })
+      // Handle rate limiting (429)
+      if (err.response?.status === 429) {
+        const msg = err.response?.data?.detail?.message || err.response?.data?.message
+        setError(msg || 'Too many failed attempts. Please try again in a few minutes.')
+        setLoading(false)
+        return
+      }
       // Handle network errors (server not responding)
       if (!err.response) {
         if (err.code === 'ERR_NETWORK' || err.message?.includes('Network Error') || err.message?.includes('ERR_EMPTY_RESPONSE')) {
@@ -116,13 +128,10 @@ function LoginContent() {
       const responseData = err.response?.data
       const detail = responseData?.detail
       
-      // Log error for debugging
+      // Log error for debugging (never log credentials or tokens)
       if (process.env.NODE_ENV === 'development') {
-        console.error('Login error:', {
-          status: err.response?.status,
-          data: responseData,
-          detail: detail,
-        })
+        const safeDetail = typeof detail === 'string' ? detail : (detail && typeof detail === 'object' && !('access_token' in (detail as object)) && !('refresh_token' in (detail as object)) ? detail : '[redacted]')
+        console.error('Login error:', { status: err.response?.status, detail: safeDetail })
       }
       
       // Handle validation errors (422 or 400 with errors array)
@@ -206,7 +215,15 @@ function LoginContent() {
               <p className="text-gray-600">Sign in to your account to continue</p>
             </div>
 
-            <form className="space-y-6" onSubmit={handleSubmit(onSubmit)}>
+            <form
+              className="space-y-6"
+              method="post"
+              action="#"
+              onSubmit={(e) => {
+                e.preventDefault()
+                handleSubmit(onSubmit)(e)
+              }}
+            >
               {sessionExpired && (
                 <div className="rounded-lg bg-yellow-50 border border-yellow-200 p-4 animate-in fade-in duration-200">
                   <div className="flex items-center">

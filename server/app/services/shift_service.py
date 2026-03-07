@@ -5,14 +5,15 @@ Handles shift creation, conflict detection, template generation, and swap reques
 """
 from typing import List, Optional, Tuple
 from uuid import UUID, uuid4
-from datetime import date, time, datetime, timedelta
+from datetime import date, time, datetime, timedelta, timezone
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_, or_, func, case, delete
+from sqlalchemy import select, and_, or_, func, case
 from sqlalchemy.orm import selectinload
 from fastapi import HTTPException, status
 
 from app.models.shift import Shift, ShiftTemplate, ScheduleSwap, ShiftStatus, ShiftTemplateType
 from app.models.user import User, UserRole, UserStatus
+from app.core.config import settings
 from app.schemas.shift import (
     ShiftCreate, ShiftUpdate, ShiftConflict,
     ShiftTemplateCreate, ShiftTemplateUpdate,
@@ -54,6 +55,44 @@ def check_shift_overlap(
     
     # Check for overlap: shifts overlap if one starts before the other ends
     return dt1_start < dt2_end and dt2_start < dt1_end
+
+
+def shift_overlaps_date_range(
+    shift_date: date,
+    start_time: time,
+    end_time: time,
+    range_start: date,
+    range_end: date,
+) -> bool:
+    """Return True if a shift (possibly overnight) overlaps the inclusive date range [range_start, range_end].
+    
+    Rule: shift has start = (shift_date, start_time) and end = (shift_date, end_time), or
+    (shift_date + 1 day, end_time) if overnight (end_time <= start_time). The shift is included
+    when this interval overlaps [range_start 00:00, range_end 24:00). Use this helper whenever
+    "in range" semantics must account for overnight shifts (e.g. list_shifts date filter).
+    """
+    shift_start = datetime.combine(shift_date, start_time)
+    shift_end = datetime.combine(shift_date, end_time)
+    if shift_end <= shift_start:
+        shift_end += timedelta(days=1)
+    range_start_dt = datetime.combine(range_start, time.min)
+    range_end_dt = datetime.combine(range_end, time.min) + timedelta(days=1)
+    return shift_start < range_end_dt and shift_end > range_start_dt
+
+
+def _shift_duration_minutes(start_time: time, end_time: time) -> int:
+    """Return shift duration in minutes; end_time <= start_time is treated as overnight (+24h)."""
+    start_m = start_time.hour * 60 + start_time.minute
+    end_m = end_time.hour * 60 + end_time.minute
+    if end_m <= start_m:
+        end_m += 24 * 60
+    return end_m - start_m
+
+
+def _shift_eligible_roles() -> list:
+    """Roles that can be assigned shifts (from config; new roles can be added without code change)."""
+    role_values = {e.value for e in UserRole}
+    return [UserRole(r) for r in settings.SHIFT_ELIGIBLE_ROLES if r in role_values]
 
 
 async def detect_shift_conflicts(
@@ -105,16 +144,16 @@ async def detect_shift_conflicts(
     result = await db.execute(query)
     existing_shifts = result.scalars().all()
     
+    # Load employee once (same for all conflicting shifts) to avoid N+1
+    emp_result = await db.execute(select(User).where(User.id == employee_id))
+    employee = emp_result.scalar_one_or_none()
+    employee_name = employee.name if employee else "Unknown"
+    
     for existing_shift in existing_shifts:
         if check_shift_overlap(
             shift_date, start_time, end_time,
             existing_shift.shift_date, existing_shift.start_time, existing_shift.end_time
         ):
-            # Get employee name
-            emp_result = await db.execute(select(User).where(User.id == employee_id))
-            employee = emp_result.scalar_one_or_none()
-            employee_name = employee.name if employee else "Unknown"
-            
             conflicts.append(ShiftConflict(
                 conflict_type="overlap",
                 conflicting_shift_id=existing_shift.id,
@@ -134,13 +173,16 @@ async def create_shift(
     created_by: Optional[UUID] = None,
 ) -> Tuple[Shift, List[ShiftConflict]]:
     """Create a new shift with conflict detection."""
-    # Verify employee exists and belongs to company (any role except ADMIN/DEVELOPER)
+    # Verify employee exists and belongs to company (role must be in shift-eligible list from config)
+    allowed_roles = _shift_eligible_roles()
+    if not allowed_roles:
+        allowed_roles = [UserRole.MAINTENANCE, UserRole.FRONTDESK, UserRole.HOUSEKEEPING]
     result = await db.execute(
         select(User).where(
             and_(
                 User.id == data.employee_id,
                 User.company_id == company_id,
-                User.role.in_([UserRole.MAINTENANCE, UserRole.FRONTDESK, UserRole.HOUSEKEEPING]),
+                User.role.in_(allowed_roles),
             )
         )
     )
@@ -205,6 +247,13 @@ async def update_shift(
     new_date = data.shift_date if data.shift_date is not None else shift.shift_date
     new_start = data.start_time if data.start_time is not None else shift.start_time
     new_end = data.end_time if data.end_time is not None else shift.end_time
+    new_break = data.break_minutes if data.break_minutes is not None else shift.break_minutes
+    duration = _shift_duration_minutes(new_start, new_end)
+    if new_break >= duration:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"break_minutes ({new_break}) must be less than shift duration ({duration} minutes).",
+        )
     
     # Check for conflicts (excluding current shift)
     conflicts = await detect_shift_conflicts(
@@ -273,13 +322,18 @@ async def list_shifts(
 ) -> Tuple[List[Shift], int]:
     """List shifts with filters.
     
-    Handles overnight shifts correctly:
-    - Includes shifts that start on or before end_date
-    - Includes shifts that are overnight and end on or after start_date
-    - For date range filtering, we need to check:
-      1. shift_date is within range (normal case)
-      2. shift is overnight and end_date (shift_date + 1) falls within range
-    - Excludes CANCELLED shifts by default (unless explicitly requested)
+    Date range filtering (start_date, end_date) uses extended bounds so overnight shifts
+    are included. Rule:
+    - We query shift_date in [start_date - 1 day, end_date + 1 day] (extended range).
+    - A shift's "day" is shift_date (the calendar day it starts). Overnight shifts
+      (end_time <= start_time) end on shift_date + 1. So e.g. Mon 11PM–Tue 7AM has
+      shift_date=Monday and is included when the range includes Monday (or Tuesday).
+    - The ±1 day extension ensures: (1) shifts that start the day before range_start
+      but end on range_start (e.g. Sun 11PM–Mon 7AM) are included when range includes
+      Monday; (2) shifts that start on range_end and end the next day are included.
+    - To test whether a shift actually overlaps [start_date, end_date], use
+      shift_overlaps_date_range(shift_date, start_time, end_time, start_date, end_date).
+    - Excludes CANCELLED shifts by default (unless status filter is set).
     """
     query = select(Shift).where(Shift.company_id == company_id)
     
@@ -300,13 +354,9 @@ async def list_shifts(
         query = query.where(Shift.employee_id == employee_id)
     
     if start_date or end_date:
-        # Build filter for overnight shifts
-        # Strategy: Extend the date range to include shifts that might spill into our range
-        # We check:
-        # 1. shift_date falls within the extended range (includes 1 day before and after)
-        # 2. Then filter in Python for actual overlaps (this is more reliable than complex SQL)
-        
-        # Extend range by 1 day on each side to catch overnight shifts
+        # Date range: use extended bounds so overnight shifts are included.
+        # Rule: shift_date in [start_date - 1, end_date + 1]. See docstring and
+        # shift_overlaps_date_range() for "shift overlaps [start_date, end_date]" semantics.
         extended_start = start_date - timedelta(days=1) if start_date else None
         extended_end = end_date + timedelta(days=1) if end_date else None
         
@@ -411,7 +461,12 @@ async def generate_shifts_from_template(
     company_id: UUID,
     data: GenerateShiftsFromTemplate,
 ) -> Tuple[List[Shift], List[ShiftConflict]]:
-    """Generate shifts from a template."""
+    """Generate shifts from a template.
+    
+    Policy: Shifts that would conflict with existing shifts are not created. Conflicts are
+    collected and returned so the caller can report which (employee, date) were skipped.
+    Only non-conflicting shifts are committed.
+    """
     # Get template
     result = await db.execute(
         select(ShiftTemplate).where(
@@ -476,13 +531,14 @@ async def generate_shifts_from_template(
     
     for shift_date in dates_to_create:
         for employee_id in employee_ids:
-            # Check for conflicts
+            # Check for conflicts; skip creating this shift if any
             conflicts = await detect_shift_conflicts(
                 db, company_id, employee_id, shift_date, template.start_time, template.end_time
             )
-            all_conflicts.extend(conflicts)
-            
-            # Create shift
+            if conflicts:
+                all_conflicts.extend(conflicts)
+                continue
+            # No conflict: create shift
             shift = Shift(
                 id=uuid4(),
                 company_id=company_id,
@@ -524,7 +580,7 @@ async def approve_shift(
     
     shift.status = ShiftStatus.APPROVED
     shift.approved_by = approved_by
-    shift.approved_at = datetime.utcnow()
+    shift.approved_at = datetime.now(timezone.utc)
     
     await db.commit()
     await db.refresh(shift)
@@ -536,23 +592,20 @@ async def delete_shift(
     db: AsyncSession,
     shift_id: UUID,
     company_id: UUID,
+    deleted_by: Optional[UUID] = None,
 ) -> None:
-    """Delete a shift (permanently removes it from the database)."""
+    """Soft-delete a shift by setting status to CANCELLED. Preserves record for audit; list/get exclude CANCELLED by default."""
     shift = await get_shift(db, shift_id, company_id)
     if not shift:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Shift not found",
         )
-    
-    # Actually delete the shift from the database
-    await db.execute(
-        delete(Shift).where(
-            and_(
-                Shift.id == shift_id,
-                Shift.company_id == company_id,
-            )
-        )
-    )
+    audit_note = f" [Deleted on {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M')} UTC"
+    if deleted_by:
+        audit_note += f" by user {deleted_by}"
+    audit_note += "]"
+    shift.status = ShiftStatus.CANCELLED
+    shift.notes = (shift.notes or "").strip() + audit_note
     await db.commit()
 

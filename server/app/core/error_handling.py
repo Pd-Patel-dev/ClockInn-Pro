@@ -1,9 +1,13 @@
 """
 Standardized error handling utilities for API endpoints.
+
+Production safety: responses must never include stack traces, internal paths, or
+raw exception messages. The generic handler returns a fixed message in production.
 """
 from functools import wraps
 from typing import Callable, Any
 from uuid import UUID
+import os
 from fastapi import HTTPException, status
 import logging
 
@@ -62,23 +66,26 @@ def handle_endpoint_errors(
                 raise
             except ValueError as e:
                 # Handle value errors (e.g., invalid enum values, invalid dates)
+                is_dev = os.getenv("ENVIRONMENT", "").lower() not in ["prod", "production"]
                 if log_error:
                     logger.warning(f"Value error in {op_name}: {str(e)}")
+                # In production, do not send str(e) to client (may contain paths or internal details)
+                detail = f"Invalid input: {str(e)}" if is_dev else "Invalid input."
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=f"Invalid input: {str(e)}",
+                    detail=detail,
                 )
             except Exception as e:
-                # Catch all other unexpected exceptions
+                # Catch all other unexpected exceptions. Never send stack traces or internal paths to client in production.
                 error_detail = str(e)
                 error_type = type(e).__name__
-                
-                # Check for common database errors and provide more helpful messages
+
+                # Check for common database errors and provide more helpful messages (dev only; production gets generic message below)
                 if "does not exist" in error_detail.lower() or "relation" in error_detail.lower():
                     error_detail = f"Database schema issue detected. Please ensure all migrations have been run. Original error: {error_detail}"
                 elif "column" in error_detail.lower() and ("does not exist" in error_detail.lower() or "not found" in error_detail.lower()):
                     error_detail = f"Database column missing. Please ensure all migrations have been run. Original error: {error_detail}"
-                
+
                 if log_error:
                     logger.error(
                         f"Unexpected error in {op_name}",
@@ -89,16 +96,15 @@ def handle_endpoint_errors(
                             "error_type": error_type
                         }
                     )
-                
-                # In development, return more detailed error messages
-                import os
+
                 is_dev = os.getenv("ENVIRONMENT", "").lower() not in ["prod", "production"]
-                
+
                 if is_dev:
                     detail_msg = f"Error in {op_name}: {error_type}: {error_detail}"
                 else:
-                    detail_msg = f"An unexpected error occurred while processing your request. Please try again later."
-                
+                    # Production: fixed message only; no exception text, stack traces, or paths
+                    detail_msg = "An unexpected error occurred while processing your request. Please try again later."
+
                 raise HTTPException(
                     status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                     detail=detail_msg,

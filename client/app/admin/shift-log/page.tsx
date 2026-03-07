@@ -43,7 +43,7 @@ const editSchema = z.object({
 
 type EditForm = z.infer<typeof editSchema>
 
-export default function AdminCashDrawerPage() {
+export default function AdminShiftLogPage() {
   const router = useRouter()
   const toast = useToast()
   const [user, setUser] = useState<User | null>(null)
@@ -60,6 +60,15 @@ export default function AdminCashDrawerPage() {
   const [reviewNote, setReviewNote] = useState('')
   const [exporting, setExporting] = useState(false)
   const [deleting, setDeleting] = useState(false)
+  const [showDetailPanel, setShowDetailPanel] = useState(false)
+  const [detailSession, setDetailSession] = useState<CashDrawerSession | null>(null)
+  const [shiftNoteDetail, setShiftNoteDetail] = useState<{
+    content: string
+    beverage_sold?: number | null
+    clock_in_at: string | null
+    clock_out_at: string | null
+  } | null>(null)
+  const [loadingDetail, setLoadingDetail] = useState(false)
 
   const editForm = useForm<EditForm>({
     resolver: zodResolver(editSchema),
@@ -129,13 +138,33 @@ export default function AdminCashDrawerPage() {
     setShowDeleteDialog(true)
   }
 
+  const handleViewFullDetails = async (session: CashDrawerSession) => {
+    setDetailSession(session)
+    setShiftNoteDetail(null)
+    setShowDetailPanel(true)
+    setLoadingDetail(true)
+    try {
+      const res = await api.get(`/admin/shift-notes/by-time-entry/${session.time_entry_id}`)
+      setShiftNoteDetail({
+        content: (res.data as any).content ?? '',
+        beverage_sold: (res.data as any).beverage_sold,
+        clock_in_at: (res.data as any).clock_in_at ?? null,
+        clock_out_at: (res.data as any).clock_out_at ?? null,
+      })
+    } catch {
+      setShiftNoteDetail(null)
+    } finally {
+      setLoadingDetail(false)
+    }
+  }
+
   const onSubmitDelete = async () => {
     if (!selectedSession) return
 
     setDeleting(true)
     try {
       await api.delete(`/admin/cash-drawers/${selectedSession.id}`)
-      toast.success('Cash drawer session deleted successfully')
+      toast.success('Shift session deleted successfully')
       setShowDeleteDialog(false)
       setSelectedSession(null)
       fetchSessions()
@@ -161,7 +190,7 @@ export default function AdminCashDrawerPage() {
       }
 
       await api.put(`/admin/cash-drawers/${selectedSession.id}`, updateData)
-      toast.success('Cash drawer session updated successfully')
+      toast.success('Shift session updated successfully')
       setShowEditDialog(false)
       setSelectedSession(null)
       fetchSessions()
@@ -178,7 +207,7 @@ export default function AdminCashDrawerPage() {
         note: reviewNote,
         status: 'CLOSED',
       })
-      toast.success('Cash drawer session reviewed successfully')
+      toast.success('Shift session reviewed successfully')
       setShowReviewDialog(false)
       setSelectedSession(null)
       setReviewNote('')
@@ -191,24 +220,19 @@ export default function AdminCashDrawerPage() {
   const handleExport = async (format: 'pdf' | 'xlsx') => {
     setExporting(true)
     try {
-      // Validate dates before making request
       if (!fromDate || !toDate) {
         toast.error('Please select both start and end dates')
         return
       }
 
-      // Use Axios params object instead of manual query string construction
       const params: Record<string, string> = {
         format,
         from_date: fromDate,
         to_date: toDate,
       }
-      
       if (statusFilter) {
         params.status = statusFilter
       }
-
-      console.log('Export request params:', params)
 
       const response = await api.get('/admin/cash-drawers/export', {
         params,
@@ -218,13 +242,13 @@ export default function AdminCashDrawerPage() {
       const url = window.URL.createObjectURL(new Blob([response.data]))
       const link = document.createElement('a')
       link.href = url
-      link.setAttribute('download', `cash_drawer_${fromDate}_${toDate}.${format === 'pdf' ? 'pdf' : 'xlsx'}`)
+      link.setAttribute('download', `shift_log_${fromDate}_${toDate}.${format === 'pdf' ? 'pdf' : 'xlsx'}`)
       document.body.appendChild(link)
       link.click()
       link.remove()
-      toast.success(`Cash drawer report exported as ${format.toUpperCase()}`)
+      toast.success(`Shift log exported as ${format.toUpperCase()}`)
     } catch (error: any) {
-      toast.error(error.response?.data?.detail || 'Failed to export shift report')
+      toast.error(error.response?.data?.detail || 'Failed to export shift log')
     } finally {
       setExporting(false)
     }
@@ -235,17 +259,9 @@ export default function AdminCashDrawerPage() {
     return `$${(cents / 100).toFixed(2)}`
   }
 
-  /** Format cents for optional fields (e.g. drop). Null/legacy shown as $0.00. */
   const formatCurrencyOptional = (cents: number | null) => {
     if (cents === null || cents === undefined) return '$0.00'
     return `$${(cents / 100).toFixed(2)}`
-  }
-
-  const getDeltaLabel = (deltaCents: number | null) => {
-    if (deltaCents === null) return 'N/A'
-    if (deltaCents > 0) return 'Over'
-    if (deltaCents < 0) return 'Short'
-    return 'Even'
   }
 
   const getDeltaColor = (deltaCents: number | null) => {
@@ -280,7 +296,7 @@ export default function AdminCashDrawerPage() {
         <div className="max-w-6xl mx-auto">
           <div className="mb-6">
             <h1 className="text-2xl font-semibold text-gray-900 mb-1">Shift Log</h1>
-            <p className="text-sm text-gray-600">View and manage shift sessions</p>
+            <p className="text-sm text-gray-600">View everything for each shift. Click a row to open full details (clock in/out, cash drawer, beverages, shift notes).</p>
           </div>
 
           {/* Filters */}
@@ -370,7 +386,11 @@ export default function AdminCashDrawerPage() {
                   </tr>
                 ) : (
                   sessions.map((session) => (
-                    <tr key={session.id} className="hover:bg-gray-50">
+                    <tr
+                      key={session.id}
+                      onClick={() => handleViewFullDetails(session)}
+                      className="hover:bg-gray-50 cursor-pointer"
+                    >
                       <td className="px-3 py-2 text-sm text-gray-900">
                         {format(new Date(session.start_counted_at), 'MM/dd/yy')}
                       </td>
@@ -417,10 +437,20 @@ export default function AdminCashDrawerPage() {
                           {session.status === 'REVIEW_NEEDED' ? 'Review' : session.status}
                         </span>
                       </td>
-                      <td className="px-3 py-2 text-center">
+                      <td className="px-3 py-2 text-center" onClick={(e) => e.stopPropagation()}>
                         <div className="flex gap-1 justify-center">
                           <button
-                            onClick={() => handleEdit(session)}
+                            onClick={(e) => { e.stopPropagation(); handleViewFullDetails(session); }}
+                            className="p-1 text-gray-600 hover:bg-gray-100 rounded"
+                            title="View full shift details"
+                          >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                            </svg>
+                          </button>
+                          <button
+                            onClick={(e) => { e.stopPropagation(); handleEdit(session); }}
                             className="p-1 text-blue-600 hover:bg-blue-50 rounded"
                             title="Edit"
                           >
@@ -430,7 +460,7 @@ export default function AdminCashDrawerPage() {
                           </button>
                           {session.status === 'REVIEW_NEEDED' && (
                             <button
-                              onClick={() => handleReview(session)}
+                              onClick={(e) => { e.stopPropagation(); handleReview(session); }}
                               className="p-1 text-green-600 hover:bg-green-50 rounded"
                               title="Review"
                             >
@@ -440,7 +470,7 @@ export default function AdminCashDrawerPage() {
                             </button>
                           )}
                           <button
-                            onClick={() => handleDelete(session)}
+                            onClick={(e) => { e.stopPropagation(); handleDelete(session); }}
                             className="p-1 text-red-600 hover:bg-red-50 rounded"
                             title="Delete"
                           >
@@ -456,6 +486,103 @@ export default function AdminCashDrawerPage() {
               </tbody>
             </table>
           </div>
+
+          {/* Full shift details panel */}
+          {showDetailPanel && detailSession && (
+            <div className="fixed inset-0 z-50 overflow-hidden">
+              <div className="absolute inset-0 bg-gray-600 bg-opacity-50" onClick={() => { setShowDetailPanel(false); setDetailSession(null); setShiftNoteDetail(null); }} />
+              <div className="fixed inset-y-0 right-0 flex max-w-full pl-10">
+                <div className="w-screen max-w-lg bg-white shadow-xl overflow-y-auto">
+                  <div className="flex items-center justify-between border-b border-gray-200 px-6 py-4">
+                    <h2 className="text-lg font-semibold text-gray-900">Shift details</h2>
+                    <button
+                      type="button"
+                      onClick={() => { setShowDetailPanel(false); setDetailSession(null); setShiftNoteDetail(null); }}
+                      className="text-gray-400 hover:text-gray-600 rounded p-1"
+                    >
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                    </button>
+                  </div>
+                  <div className="px-6 py-4 space-y-6">
+                    <div>
+                      <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Employee &amp; date</h3>
+                      <p className="text-base font-medium text-gray-900">{detailSession.employee_name}</p>
+                      <p className="text-sm text-gray-600">{format(new Date(detailSession.start_counted_at), 'EEEE, MMM d, yyyy')}</p>
+                    </div>
+                    <div>
+                      <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Clock in / Clock out</h3>
+                      <p className="text-sm text-gray-900">
+                        {detailSession.clock_in_at ? (
+                          <>
+                            <span className="font-medium">{format(new Date(detailSession.clock_in_at), 'h:mm a')}</span>
+                            <span className="text-gray-500"> – </span>
+                            {detailSession.clock_out_at ? (
+                              <span className="font-medium">{format(new Date(detailSession.clock_out_at), 'h:mm a')}</span>
+                            ) : (
+                              <span className="text-amber-600">Open</span>
+                            )}
+                          </>
+                        ) : '—'}
+                      </p>
+                    </div>
+                    <div>
+                      <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Cash drawer</h3>
+                      <dl className="grid grid-cols-1 gap-2 text-sm">
+                        <div className="flex justify-between">
+                          <dt className="text-gray-600">Starting balance</dt>
+                          <dd className="font-medium text-gray-900">{formatCurrency(detailSession.start_cash_cents)}</dd>
+                        </div>
+                        <div className="flex justify-between">
+                          <dt className="text-gray-600">Cash collected</dt>
+                          <dd className="font-medium text-gray-900">{formatCurrency(detailSession.collected_cash_cents)}</dd>
+                        </div>
+                        <div className="flex justify-between">
+                          <dt className="text-gray-600">Drop amount</dt>
+                          <dd className="font-medium text-gray-900">{formatCurrencyOptional(detailSession.drop_amount_cents)}</dd>
+                        </div>
+                        <div className="flex justify-between">
+                          <dt className="text-gray-600">Ending balance</dt>
+                          <dd className="font-medium text-gray-900">{formatCurrency(detailSession.end_cash_cents)}</dd>
+                        </div>
+                        <div className="flex justify-between pt-1 border-t border-gray-100">
+                          <dt className="text-gray-600">Difference (+/-)</dt>
+                          <dd className={`font-medium ${getDeltaColor(detailSession.delta_cents)}`}>
+                            {detailSession.delta_cents != null ? (
+                              detailSession.delta_cents > 0 ? `+${formatCurrency(detailSession.delta_cents)}` : formatCurrency(detailSession.delta_cents)
+                            ) : '—'}
+                          </dd>
+                        </div>
+                      </dl>
+                    </div>
+                    <div>
+                      <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Beverages sold</h3>
+                      <p className="text-sm text-gray-900">
+                        {formatCurrency(detailSession.beverages_cash_cents)}
+                        {shiftNoteDetail?.beverage_sold != null && Number(shiftNoteDetail.beverage_sold) > 0 && (
+                          <span className="text-gray-500 ml-2">({shiftNoteDetail.beverage_sold} count in note)</span>
+                        )}
+                      </p>
+                    </div>
+                    <div>
+                      <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Shift notes</h3>
+                      {loadingDetail ? (
+                        <div className="py-8 flex justify-center">
+                          <div className="animate-spin rounded-full h-8 w-8 border-2 border-blue-600 border-t-transparent" />
+                        </div>
+                      ) : shiftNoteDetail?.content ? (
+                        <pre className="whitespace-pre-wrap break-words font-sans text-sm text-gray-800 bg-gray-50 rounded-lg p-4 border border-gray-200 max-h-64 overflow-y-auto overflow-x-hidden">
+                          {/* User-supplied: text only (React escapes). Do not use dangerouslySetInnerHTML. */}
+                          {shiftNoteDetail.content}
+                        </pre>
+                      ) : (
+                        <p className="text-sm text-gray-500 italic">No shift note for this shift.</p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Edit Dialog */}
           {showEditDialog && selectedSession && (
@@ -529,7 +656,6 @@ export default function AdminCashDrawerPage() {
             </div>
           )}
 
-          {/* Delete Confirmation Dialog */}
           <ConfirmationDialog
             isOpen={showDeleteDialog}
             onCancel={() => {
@@ -538,13 +664,12 @@ export default function AdminCashDrawerPage() {
             }}
             onConfirm={onSubmitDelete}
             title="Delete Shift Session"
-            message={`Are you sure you want to delete this shift session? This action cannot be undone.`}
+            message="Are you sure you want to delete this shift session? This action cannot be undone."
             confirmText="Delete"
             cancelText="Cancel"
             type="error"
           />
 
-          {/* Review Dialog */}
           {showReviewDialog && selectedSession && (
             <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center p-4">
               <div className="relative bg-white rounded-xl shadow-2xl w-full max-w-md m-4">

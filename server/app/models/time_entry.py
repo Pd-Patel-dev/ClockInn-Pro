@@ -58,6 +58,7 @@ class TimeEntry(Base):
     editor = relationship("User", foreign_keys=[edited_by])
     # Lazy loading to avoid issues if column doesn't exist yet
     shift = relationship("Shift", foreign_keys=[shift_id], lazy="select", viewonly=False)
+    shift_note = relationship("ShiftNote", back_populates="time_entry", uselist=False, foreign_keys="ShiftNote.time_entry_id")
 
     __table_args__ = (
         Index("idx_time_entries_employee_company", "employee_id", "company_id"),
