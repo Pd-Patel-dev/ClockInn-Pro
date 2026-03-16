@@ -287,6 +287,7 @@ async def get_company_admin_emails(db: AsyncSession, company_id: UUID) -> List[s
             User.email.isnot(None),
         )
     )
-    rows = result.scalars().all()
-    return [r[0] for r in rows if r[0]]
+    # select(User.email).scalars().all() returns list of str (one scalar per row), not list of Row
+    emails = list(result.scalars().all())
+    return [e for e in emails if e and str(e).strip()]
 

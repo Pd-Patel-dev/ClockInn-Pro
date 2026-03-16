@@ -54,7 +54,13 @@ async def _check_kiosk_network(
         return
     client_ip = get_client_ip(request)
     if not is_ip_in_allowed_list(client_ip, allowed):
+        import logging
+        _log = logging.getLogger(__name__)
         admin_emails = await get_company_admin_emails(db, company.id)
+        if not admin_emails:
+            _log.warning("Kiosk network blocked: no admin emails found for company_id=%s to send warning", company.id)
+        else:
+            _log.info("Kiosk network blocked: sending warning to %d admin(s) for company %s", len(admin_emails), company.name)
         if admin_emails:
             user_agent = request.headers.get("User-Agent")
             await email_service.send_punch_violation_warning(

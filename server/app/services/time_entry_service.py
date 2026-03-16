@@ -138,10 +138,15 @@ async def punch(
         from app.core.geo import haversine_distance_meters
         distance_m = haversine_distance_meters(office_lat, office_lon, lat_f, lon_f)
         if distance_m > radius_m:
+            import logging
+            _log = logging.getLogger(__name__)
             from app.services.company_service import get_company_admin_emails
             from app.services.email_service import email_service
             admin_emails = await get_company_admin_emails(db, company_id)
-            if admin_emails:
+            if not admin_emails:
+                _log.warning("Punch blocked (geofence): no admin emails found for company_id=%s to send warning", company_id)
+            else:
+                _log.info("Punch blocked (geofence): sending warning to %d admin(s) for company %s", len(admin_emails), company.name)
                 await email_service.send_punch_violation_warning(
                     to_emails=admin_emails,
                     company_name=company.name,

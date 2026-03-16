@@ -1013,10 +1013,12 @@ ClockIn Pro"""
             True if at least one email was sent, False otherwise.
         """
         if not to_emails:
+            logger.debug("send_punch_violation_warning: no recipients, skipping")
             return True
         if not self._refresh_token_if_needed() or not self.service:
-            logger.warning("Gmail not configured or unavailable; skipping punch violation warning email.")
+            logger.warning("Gmail not configured or unavailable; skipping punch violation warning email. Configure GMAIL_CREDENTIALS_JSON and GMAIL_TOKEN_JSON.")
             return False
+        logger.info("Sending punch violation warning (%s) to %d admin(s)", violation_type, len(to_emails))
 
         def _safe(s: Optional[str], default: str = "N/A", max_len: int = 300) -> str:
             if s is None:
