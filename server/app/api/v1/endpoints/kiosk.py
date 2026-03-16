@@ -42,8 +42,10 @@ async def _check_kiosk_network(
     company,
     db: AsyncSession,
     employee: Optional[User] = None,
+    send_warning_email: bool = False,
 ) -> None:
-    """Raise 403 if kiosk network restriction is enabled and client IP is not in allowlist. Sends admin warning email on violation."""
+    """Raise 403 if kiosk network restriction is enabled and client IP is not in allowlist.
+    When send_warning_email is True (actual punch attempt), also send admin warning email."""
     from app.services.company_service import get_company_settings, get_company_admin_emails
     from app.services.email_service import email_service
     settings = get_company_settings(company)
@@ -54,25 +56,25 @@ async def _check_kiosk_network(
         return
     client_ip = get_client_ip(request)
     if not is_ip_in_allowed_list(client_ip, allowed):
-        import logging
-        _log = logging.getLogger(__name__)
-        admin_emails = await get_company_admin_emails(db, company.id)
-        if not admin_emails:
-            _log.warning("Kiosk network blocked: no admin emails found for company_id=%s to send warning", company.id)
-        else:
-            _log.info("Kiosk network blocked: sending warning to %d admin(s) for company %s", len(admin_emails), company.name)
-        if admin_emails:
-            user_agent = request.headers.get("User-Agent")
-            await email_service.send_punch_violation_warning(
-                to_emails=admin_emails,
-                company_name=company.name,
-                violation_type="network",
-                employee_name=employee.name if employee else None,
-                employee_email=employee.email if employee else None,
-                ip_address=client_ip,
-                user_agent=user_agent,
-                attempted_at=datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC"),
-            )
+        if send_warning_email:
+            import logging
+            _log = logging.getLogger(__name__)
+            admin_emails = await get_company_admin_emails(db, company.id)
+            if not admin_emails:
+                _log.warning("Kiosk network blocked (punch attempt): no admin emails found for company_id=%s to send warning", company.id)
+            else:
+                _log.info("Kiosk network blocked (punch attempt): sending warning to %d admin(s) for company %s", len(admin_emails), company.name)
+                user_agent = request.headers.get("User-Agent")
+                await email_service.send_punch_violation_warning(
+                    to_emails=admin_emails,
+                    company_name=company.name,
+                    violation_type="network",
+                    employee_name=employee.name if employee else None,
+                    employee_email=employee.email if employee else None,
+                    ip_address=client_ip,
+                    user_agent=user_agent,
+                    attempted_at=datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC"),
+                )
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail=KIOSK_NETWORK_MESSAGE,
@@ -319,8 +321,8 @@ async def kiosk_clock(
             detail="Invalid PIN",
         )
     
-    # Check kiosk network after we know who is punching — so we can include employee in the warning email
-    await _check_kiosk_network(request, company, db, employee=matching_employee)
+    # Check kiosk network after we know who is punching — block if wrong network, send warning email only on actual punch attempt
+    await _check_kiosk_network(request, company, db, employee=matching_employee, send_warning_email=True)
     
     # Check if employee's email is verified (respects company email_verification_required)
     from app.services.verification_service import check_verification_required_for_user
