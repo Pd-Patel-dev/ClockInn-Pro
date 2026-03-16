@@ -139,9 +139,9 @@ async def send_verification_pin_endpoint(
     db: AsyncSession = Depends(get_db),
 ):
     """Send verification PIN to the registered email only (current user's email)."""
-    from app.services.verification_service import check_verification_required
+    from app.services.verification_service import check_verification_required_for_user
 
-    if not check_verification_required(current_user):
+    if not await check_verification_required_for_user(db, current_user):
         return {"message": "Email is already verified."}
 
     success, error_msg = await send_verification_pin(db, current_user)

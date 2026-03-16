@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field
-from typing import Optional
+from typing import Optional, List
 from datetime import date
 from decimal import Decimal
 
@@ -27,6 +27,15 @@ class CompanySettingsResponse(BaseModel):
     shift_notes_enabled: Optional[bool] = True
     shift_notes_required_on_clock_out: Optional[bool] = False
     shift_notes_allow_edit_after_clock_out: Optional[bool] = False
+    email_verification_required: Optional[bool] = True  # If False, users in this company can use the app without verifying email
+    # Geofence: require punch in/out only when at office
+    geofence_enabled: Optional[bool] = False
+    office_latitude: Optional[float] = None
+    office_longitude: Optional[float] = None
+    geofence_radius_meters: Optional[int] = 100
+    # Kiosk: only allow on office network (IP allowlist)
+    kiosk_network_restriction_enabled: Optional[bool] = False
+    kiosk_allowed_ips: Optional[List[str]] = None
 
 
 class AdminInfo(BaseModel):
@@ -79,6 +88,13 @@ class CompanySettingsUpdate(BaseModel):
     shift_notes_enabled: Optional[bool] = Field(None, description="Enable shift notepad / common log")
     shift_notes_required_on_clock_out: Optional[bool] = Field(None, description="Require shift note before clock out")
     shift_notes_allow_edit_after_clock_out: Optional[bool] = Field(None, description="Allow editing shift note after clock out")
+    email_verification_required: Optional[bool] = Field(None, description="If False, users in this company can use the app without email verification")
+    geofence_enabled: Optional[bool] = Field(None, description="Require employees to be within office radius to punch in/out")
+    office_latitude: Optional[float] = Field(None, ge=-90, le=90, description="Office location latitude")
+    office_longitude: Optional[float] = Field(None, ge=-180, le=180, description="Office location longitude")
+    geofence_radius_meters: Optional[int] = Field(None, ge=10, le=5000, description="Allowed radius in meters (e.g. 100)")
+    kiosk_network_restriction_enabled: Optional[bool] = Field(None, description="Restrict kiosk to office network only (IP allowlist)")
+    kiosk_allowed_ips: Optional[List[str]] = Field(None, description="Allowed IPs or CIDR ranges (e.g. ['192.168.1.0/24', '10.0.0.1'])")
 
 
 class CompanyNameUpdate(BaseModel):

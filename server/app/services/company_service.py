@@ -39,6 +39,16 @@ DEFAULT_SHIFT_NOTES_REQUIRED_ON_CLOCK_OUT = False
 DEFAULT_SHIFT_NOTES_ALLOW_EDIT_AFTER_CLOCK_OUT = False
 MIN_SHIFT_NOTE_LENGTH_REQUIRED = 10
 
+# Email verification: when True, users must verify email before using the app
+DEFAULT_EMAIL_VERIFICATION_REQUIRED = True
+
+# Geofence: when True, employees must be within office radius to punch in/out
+DEFAULT_GEOFENCE_ENABLED = False
+DEFAULT_GEOFENCE_RADIUS_METERS = 100
+
+# Kiosk: when True, kiosk only works from allowed IPs (office network)
+DEFAULT_KIOSK_NETWORK_RESTRICTION_ENABLED = False
+
 
 def get_company_settings(company: Company) -> Dict:
     """Get company settings with defaults."""
@@ -67,6 +77,13 @@ def get_company_settings(company: Company) -> Dict:
         "shift_notes_enabled": settings.get("shift_notes_enabled", DEFAULT_SHIFT_NOTES_ENABLED),
         "shift_notes_required_on_clock_out": settings.get("shift_notes_required_on_clock_out", DEFAULT_SHIFT_NOTES_REQUIRED_ON_CLOCK_OUT),
         "shift_notes_allow_edit_after_clock_out": settings.get("shift_notes_allow_edit_after_clock_out", DEFAULT_SHIFT_NOTES_ALLOW_EDIT_AFTER_CLOCK_OUT),
+        "email_verification_required": settings.get("email_verification_required", DEFAULT_EMAIL_VERIFICATION_REQUIRED),
+        "geofence_enabled": settings.get("geofence_enabled", DEFAULT_GEOFENCE_ENABLED),
+        "office_latitude": settings.get("office_latitude"),
+        "office_longitude": settings.get("office_longitude"),
+        "geofence_radius_meters": settings.get("geofence_radius_meters", DEFAULT_GEOFENCE_RADIUS_METERS),
+        "kiosk_network_restriction_enabled": settings.get("kiosk_network_restriction_enabled", DEFAULT_KIOSK_NETWORK_RESTRICTION_ENABLED),
+        "kiosk_allowed_ips": settings.get("kiosk_allowed_ips") or [],
     }
 
 
@@ -189,6 +206,20 @@ async def update_company_settings(
         current_settings["shift_notes_required_on_clock_out"] = data.shift_notes_required_on_clock_out
     if data.shift_notes_allow_edit_after_clock_out is not None:
         current_settings["shift_notes_allow_edit_after_clock_out"] = data.shift_notes_allow_edit_after_clock_out
+    if data.email_verification_required is not None:
+        current_settings["email_verification_required"] = data.email_verification_required
+    if data.geofence_enabled is not None:
+        current_settings["geofence_enabled"] = data.geofence_enabled
+    if data.office_latitude is not None:
+        current_settings["office_latitude"] = data.office_latitude
+    if data.office_longitude is not None:
+        current_settings["office_longitude"] = data.office_longitude
+    if data.geofence_radius_meters is not None:
+        current_settings["geofence_radius_meters"] = data.geofence_radius_meters
+    if data.kiosk_network_restriction_enabled is not None:
+        current_settings["kiosk_network_restriction_enabled"] = data.kiosk_network_restriction_enabled
+    if data.kiosk_allowed_ips is not None:
+        current_settings["kiosk_allowed_ips"] = data.kiosk_allowed_ips
 
     logger.info(f"Settings after update: {current_settings}")
     

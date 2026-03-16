@@ -29,6 +29,7 @@ export default function PunchInOutPage() {
   const [message, setMessage] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [cashDrawerRequired, setCashDrawerRequired] = useState(false)
+  const [geofenceRequired, setGeofenceRequired] = useState(false)
   const [cashAmount, setCashAmount] = useState('')
   const [collectedCash, setCollectedCash] = useState('')
   const [dropAmount, setDropAmount] = useState('')
@@ -43,13 +44,11 @@ export default function PunchInOutPage() {
   // Shift note (when clocked in)
   const [shiftNote, setShiftNote] = useState<ShiftNoteCurrent | null>(null)
   const [shiftNoteContent, setShiftNoteContent] = useState('')
-  const [shiftNoteBeverageSold, setShiftNoteBeverageSold] = useState('')
   const [shiftNoteLoading, setShiftNoteLoading] = useState(false)
   const [shiftNoteSaveStatus, setShiftNoteSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle')
   const [shiftNoteSavedAt, setShiftNoteSavedAt] = useState<Date | null>(null)
   const shiftNoteSaveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const lastSavedContentRef = useRef('')
-  const lastSavedBeverageRef = useRef<number | null>(null)
   const SHIFT_NOTE_DEBOUNCE_MS = 800
 
   const fetchStatusAndEntries = useCallback(async () => {
@@ -84,9 +83,7 @@ export default function PunchInOutPage() {
       const data = res.data as ShiftNoteCurrent
       setShiftNote(data)
       setShiftNoteContent(data.content ?? '')
-      setShiftNoteBeverageSold(data.beverage_sold != null ? String(data.beverage_sold) : '')
       lastSavedContentRef.current = data.content ?? ''
-      lastSavedBeverageRef.current = data.beverage_sold ?? null
     } catch {
       setShiftNote(null)
       setShiftNoteContent('')
@@ -95,18 +92,12 @@ export default function PunchInOutPage() {
     }
   }, [])
 
-  const saveShiftNote = useCallback(async (content: string, beverageStr: string) => {
-    const bevNum = beverageStr === '' ? null : parseInt(beverageStr, 10)
-    const bevSafe = beverageStr === '' ? null : (Number.isNaN(bevNum) ? lastSavedBeverageRef.current : bevNum)
-    if (content === lastSavedContentRef.current && bevSafe === lastSavedBeverageRef.current) return
+  const saveShiftNote = useCallback(async (content: string) => {
+    if (content === lastSavedContentRef.current) return
     setShiftNoteSaveStatus('saving')
     try {
-      await api.put('/shift-notes/current', {
-        content,
-        beverage_sold: bevSafe ?? undefined,
-      })
+      await api.put('/shift-notes/current', { content })
       lastSavedContentRef.current = content
-      lastSavedBeverageRef.current = bevSafe
       setShiftNoteSavedAt(new Date())
       setShiftNoteSaveStatus('saved')
     } catch {
@@ -120,7 +111,6 @@ export default function PunchInOutPage() {
     } else {
       setShiftNote(null)
       setShiftNoteContent('')
-      setShiftNoteBeverageSold('')
     }
   }, [currentStatus, fetchShiftNote])
 
@@ -128,13 +118,13 @@ export default function PunchInOutPage() {
     if (!shiftNote?.can_edit || shiftNoteSaveStatus === 'saving') return
     if (shiftNoteSaveTimeoutRef.current) clearTimeout(shiftNoteSaveTimeoutRef.current)
     shiftNoteSaveTimeoutRef.current = setTimeout(() => {
-      saveShiftNote(shiftNoteContent, shiftNoteBeverageSold)
+      saveShiftNote(shiftNoteContent)
       shiftNoteSaveTimeoutRef.current = null
     }, SHIFT_NOTE_DEBOUNCE_MS)
     return () => {
       if (shiftNoteSaveTimeoutRef.current) clearTimeout(shiftNoteSaveTimeoutRef.current)
     }
-  }, [shiftNoteContent, shiftNoteBeverageSold, shiftNote?.can_edit, saveShiftNote])
+  }, [shiftNoteContent, shiftNote?.can_edit, saveShiftNote])
 
   useEffect(() => {
     const getLocation = () => {
@@ -181,8 +171,10 @@ export default function PunchInOutPage() {
           } else {
             setCashDrawerRequired(false)
           }
+          setGeofenceRequired(settings.geofence_enabled === true)
         } catch {
           setCashDrawerRequired(false)
+          setGeofenceRequired(false)
         }
         await fetchStatusAndEntries()
       } catch {
@@ -221,6 +213,11 @@ export default function PunchInOutPage() {
       if (!currentLocation) {
         currentLocation = await getCurrentLocation()
         if (currentLocation) setLocation(currentLocation)
+      }
+      if (geofenceRequired && !currentLocation) {
+        setError('Location is required to punch at the office. Please enable location access and try again.')
+        setLoading(false)
+        return
       }
       const cashStartCents =
         cashDrawerRequired && currentStatus === 'out'
@@ -265,9 +262,14 @@ export default function PunchInOutPage() {
       await fetchStatusAndEntries()
       setTimeout(() => setMessage(null), 4000)
     } catch (err: unknown) {
-      const ax = err as { response?: { data?: { detail?: string } } }
+      const ax = err as { response?: { data?: { detail?: string | { message?: string } } } }
       const detail = ax.response?.data?.detail
-      const errorMessage = typeof detail === 'string' ? detail : 'Punch failed. Please try again.'
+      const errorMessage =
+        typeof detail === 'string'
+          ? detail
+          : detail && typeof detail === 'object' && typeof (detail as { message?: string }).message === 'string'
+            ? (detail as { message: string }).message
+            : 'Punch failed. Please try again.'
       if (errorMessage.toLowerCase().includes('cash')) {
         setCashDrawerRequired(true)
         setPendingPunch(true)
@@ -286,7 +288,7 @@ export default function PunchInOutPage() {
     } finally {
       setLoading(false)
     }
-  }, [location, cashDrawerRequired, currentStatus, cashAmount, collectedCash, dropAmount, beveragesCash, fetchStatusAndEntries])
+  }, [location, geofenceRequired, cashDrawerRequired, currentStatus, cashAmount, collectedCash, dropAmount, beveragesCash, fetchStatusAndEntries])
 
   const handlePunch = () => {
     setError(null)
@@ -377,6 +379,11 @@ export default function PunchInOutPage() {
         <p className="text-sm text-gray-600 mb-4">{user.name}</p>
 
         {/* Location status */}
+        {geofenceRequired && (
+          <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-3">
+            Punch in/out is only allowed when you are at the office.
+          </p>
+        )}
         <div
           className={`mb-4 rounded-lg p-3 border flex items-center justify-center gap-2 text-sm ${
             locationLoading
@@ -471,17 +478,6 @@ export default function PunchInOutPage() {
             ) : shiftNote ? (
               <>
                 <div className="px-4 py-2 border-b border-gray-100 flex items-center gap-3 flex-wrap">
-                  <label className="flex items-center gap-2 text-xs text-gray-600">
-                    <span>Beverages sold:</span>
-                    <input
-                      type="number"
-                      min={0}
-                      value={shiftNoteBeverageSold}
-                      onChange={(e) => setShiftNoteBeverageSold(e.target.value)}
-                      disabled={!shiftNote.can_edit}
-                      className="w-16 rounded border border-gray-300 px-2 py-1 text-sm disabled:bg-gray-100"
-                    />
-                  </label>
                   <span className="text-xs text-gray-500">
                     {shiftNoteSaveStatus === 'saving' && 'Saving...'}
                     {shiftNoteSaveStatus === 'saved' && shiftNoteSavedAt && `Saved at ${format(shiftNoteSavedAt, 'h:mm a')}`}
@@ -649,7 +645,7 @@ export default function PunchInOutPage() {
                     </div>
                     <div>
                       <label className="block text-sm font-semibold text-gray-700 mb-3">
-                        Beverages Sold (Total) <span className="text-red-500">*</span>
+                        Amount of beverages sold <span className="text-red-500">*</span>
                       </label>
                       <div className="relative">
                         <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">

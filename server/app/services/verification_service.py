@@ -60,8 +60,8 @@ async def send_verification_pin(
         logger.error(f"Failed to lock user record for PIN generation: {e}")
         return False, "Unable to process verification request. Please try again in a moment."
     
-    # Check if user is already verified and doesn't need re-verification
-    if not check_verification_required(user):
+    # Check if user is already verified and doesn't need re-verification (respects company email_verification_required)
+    if not await check_verification_required_for_user(db, user):
         logger.info(
             f"Verification PIN send requested for already verified user",
             extra={
@@ -379,6 +379,24 @@ def check_verification_required(user: User) -> bool:
         return True
     
     return False
+
+
+async def check_verification_required_for_user(db: AsyncSession, user: User) -> bool:
+    """
+    Check if user requires email verification, taking into account company setting.
+    If the user's company has email_verification_required=False, returns False (no verification needed).
+    Otherwise returns check_verification_required(user).
+    """
+    from app.models.company import Company
+    from app.services.company_service import get_company_settings
+    result = await db.execute(select(Company).where(Company.id == user.company_id))
+    company = result.scalar_one_or_none()
+    if not company:
+        return check_verification_required(user)
+    settings = get_company_settings(company)
+    if not settings.get("email_verification_required", True):
+        return False
+    return check_verification_required(user)
 
 
 async def cleanup_expired_verification_data(

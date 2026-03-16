@@ -70,3 +70,45 @@ class UserMeResponse(BaseModel):
     class Config:
         from_attributes = True
 
+
+class DeveloperUserResponse(BaseModel):
+    """User response for developer portal (includes verification fields)."""
+    id: UUID
+    company_id: UUID
+    company_name: str
+    name: str
+    email: str
+    role: UserRole
+    status: UserStatus
+    email_verified: bool
+    verification_required: bool
+    created_at: datetime
+    last_login_at: Optional[datetime] = None
+    has_pin: bool = False
+    pay_rate: Optional[float] = None
+
+    class Config:
+        from_attributes = True
+
+
+class DeveloperUserUpdate(BaseModel):
+    """Developer-only user update (includes verification and all important fields)."""
+    name: Optional[str] = Field(None, min_length=1, max_length=255)
+    email: Optional[EmailStr] = None
+    role: Optional[UserRole] = None
+    status: Optional[UserStatus] = None
+    email_verified: Optional[bool] = None
+    verification_required: Optional[bool] = None
+    pin: Optional[str] = Field(None, min_length=0, max_length=4)
+    pay_rate: Optional[float] = Field(None, ge=0)
+    
+    @field_validator('pin')
+    @classmethod
+    def validate_pin(cls, v: Optional[str]) -> Optional[str]:
+        if v is None or v == "":
+            return v
+        if not v.isdigit() or len(v) != 4:
+            raise ValueError("PIN must be exactly 4 numeric digits")
+        return v
+
+

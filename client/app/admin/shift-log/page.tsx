@@ -357,16 +357,16 @@ export default function AdminShiftLogPage() {
             <table className="w-full">
               <thead className="bg-gray-50 border-b">
                 <tr>
-                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
-                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Employee</th>
-                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Shift</th>
-                  <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase">Start</th>
-                  <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase">End</th>
-                  <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase">Cash collected</th>
-                  <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase">Drop</th>
-                  <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase" title="Total beverage sales for the shift (all payment types)">Beverages sold</th>
-                  <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase" title="Start + Collected - Drop (beverages not included)">Balance</th>
-                  <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase">+/-</th>
+                  <th className="px-3 py-2 text-center text-xs font-medium text-gray-500 uppercase">Date</th>
+                  <th className="px-3 py-2 text-center text-xs font-medium text-gray-500 uppercase">Employee</th>
+                  <th className="px-3 py-2 text-center text-xs font-medium text-gray-500 uppercase">Shift</th>
+                  <th className="px-3 py-2 text-center text-xs font-medium text-gray-500 uppercase">Start</th>
+                  <th className="px-3 py-2 text-center text-xs font-medium text-gray-500 uppercase">End</th>
+                  <th className="px-3 py-2 text-center text-xs font-medium text-gray-500 uppercase">Cash collected</th>
+                  <th className="px-3 py-2 text-center text-xs font-medium text-gray-500 uppercase">Drop</th>
+                  <th className="px-3 py-2 text-center text-xs font-medium text-gray-500 uppercase" title="Total beverage sales for the shift (all payment types)">Beverages Sold</th>
+                  <th className="px-3 py-2 text-center text-xs font-medium text-gray-500 uppercase" title="Start + Collected - Drop (beverages not included)">Balance</th>
+                  <th className="px-3 py-2 text-center text-xs font-medium text-gray-500 uppercase">+/-</th>
                   <th className="px-3 py-2 text-center text-xs font-medium text-gray-500 uppercase">Status</th>
                   <th className="px-3 py-2 text-center text-xs font-medium text-gray-500 uppercase">Actions</th>
                 </tr>
@@ -391,13 +391,13 @@ export default function AdminShiftLogPage() {
                       onClick={() => handleViewFullDetails(session)}
                       className="hover:bg-gray-50 cursor-pointer"
                     >
-                      <td className="px-3 py-2 text-sm text-gray-900">
+                      <td className="px-3 py-2 text-sm text-gray-900 text-center">
                         {format(new Date(session.start_counted_at), 'MM/dd/yy')}
                       </td>
-                      <td className="px-3 py-2 text-sm font-medium text-gray-900">
+                      <td className="px-3 py-2 text-sm font-medium text-gray-900 text-center">
                         {session.employee_name}
                       </td>
-                      <td className="px-3 py-2 text-xs text-gray-600">
+                      <td className="px-3 py-2 text-xs text-gray-600 text-center">
                         {session.clock_in_at ? (
                           <>
                             {format(new Date(session.clock_in_at), 'h:mma')}
@@ -409,25 +409,25 @@ export default function AdminShiftLogPage() {
                           </>
                         ) : '-'}
                       </td>
-                      <td className="px-3 py-2 text-sm text-gray-900 text-right">
+                      <td className="px-3 py-2 text-sm text-gray-900 text-center">
                         {formatCurrency(session.start_cash_cents)}
                       </td>
-                      <td className="px-3 py-2 text-sm text-gray-900 text-right">
+                      <td className="px-3 py-2 text-sm text-gray-900 text-center">
                         {formatCurrency(session.end_cash_cents)}
                       </td>
-                      <td className="px-3 py-2 text-sm text-gray-900 text-right">
+                      <td className="px-3 py-2 text-sm text-gray-900 text-center">
                         {formatCurrency(session.collected_cash_cents)}
                       </td>
-                      <td className="px-3 py-2 text-sm text-gray-900 text-right">
+                      <td className="px-3 py-2 text-sm text-gray-900 text-center">
                         {formatCurrencyOptional(session.drop_amount_cents)}
                       </td>
-                      <td className="px-3 py-2 text-sm text-gray-900 text-right">
+                      <td className="px-3 py-2 text-sm text-gray-900 text-center">
                         {formatCurrency(session.beverages_cash_cents)}
                       </td>
-                      <td className="px-3 py-2 text-sm text-gray-900 text-right font-medium" title="Start + Collected - Drop">
+                      <td className="px-3 py-2 text-sm text-gray-900 text-center font-medium" title="Start + Collected - Drop">
                         {formatCurrency(session.expected_balance_cents)}
                       </td>
-                      <td className={`px-3 py-2 text-sm font-medium text-right ${getDeltaColor(session.delta_cents)}`}>
+                      <td className={`px-3 py-2 text-sm font-medium text-center ${getDeltaColor(session.delta_cents)}`}>
                         {session.delta_cents !== null ? (
                           session.delta_cents > 0 ? `+${formatCurrency(session.delta_cents)}` : formatCurrency(session.delta_cents)
                         ) : '-'}
@@ -541,6 +541,10 @@ export default function AdminShiftLogPage() {
                           <dd className="font-medium text-gray-900">{formatCurrencyOptional(detailSession.drop_amount_cents)}</dd>
                         </div>
                         <div className="flex justify-between">
+                          <dt className="text-gray-600">Amount of beverages sold</dt>
+                          <dd className="font-medium text-gray-900">{formatCurrency(detailSession.beverages_cash_cents)}</dd>
+                        </div>
+                        <div className="flex justify-between">
                           <dt className="text-gray-600">Ending balance</dt>
                           <dd className="font-medium text-gray-900">{formatCurrency(detailSession.end_cash_cents)}</dd>
                         </div>
@@ -553,15 +557,6 @@ export default function AdminShiftLogPage() {
                           </dd>
                         </div>
                       </dl>
-                    </div>
-                    <div>
-                      <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Beverages sold</h3>
-                      <p className="text-sm text-gray-900">
-                        {formatCurrency(detailSession.beverages_cash_cents)}
-                        {shiftNoteDetail?.beverage_sold != null && Number(shiftNoteDetail.beverage_sold) > 0 && (
-                          <span className="text-gray-500 ml-2">({shiftNoteDetail.beverage_sold} count in note)</span>
-                        )}
-                      </p>
                     </div>
                     <div>
                       <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Shift notes</h3>

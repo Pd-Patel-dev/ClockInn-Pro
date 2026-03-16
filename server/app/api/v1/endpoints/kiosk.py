@@ -9,6 +9,7 @@ from typing import Optional
 
 from app.core.database import get_db
 from app.core.error_handling import handle_endpoint_errors
+from app.core.network import get_client_ip, is_ip_in_allowed_list
 from app.models.company import Company
 from app.models.user import User, UserRole, UserStatus
 from app.models.time_entry import TimeEntry, TimeEntrySource, TimeEntryStatus
@@ -32,10 +33,31 @@ class KioskCompanyInfoResponse(BaseModel):
     cash_drawer_starting_amount_cents: int = 0
 
 
+KIOSK_NETWORK_MESSAGE = "Kiosk is only available on the office network. Please connect to the office network and try again."
+
+
+def _check_kiosk_network(request: Request, company) -> None:
+    """Raise 403 if kiosk network restriction is enabled and client IP is not in allowlist."""
+    from app.services.company_service import get_company_settings
+    settings = get_company_settings(company)
+    if not settings.get("kiosk_network_restriction_enabled"):
+        return
+    allowed = settings.get("kiosk_allowed_ips") or []
+    if not allowed:
+        return
+    client_ip = get_client_ip(request)
+    if not is_ip_in_allowed_list(client_ip, allowed):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=KIOSK_NETWORK_MESSAGE,
+        )
+
+
 @router.get("/{slug}/info", response_model=KioskCompanyInfoResponse)
 @handle_endpoint_errors(operation_name="get_kiosk_company_info")
 async def get_kiosk_company_info(
     slug: str,
+    request: Request,
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -52,6 +74,21 @@ async def get_kiosk_company_info(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Company not found",
         )
+    
+    if not company.kiosk_enabled:
+        from app.services.company_service import get_company_settings
+        settings = get_company_settings(company)
+        return KioskCompanyInfoResponse(
+            name=company.name,
+            slug=company.slug,
+            kiosk_enabled=False,
+            cash_drawer_enabled=settings.get("cash_drawer_enabled", False),
+            cash_drawer_required_for_all=settings.get("cash_drawer_required_for_all", False),
+            cash_drawer_required_roles=settings.get("cash_drawer_required_roles", []),
+            cash_drawer_starting_amount_cents=settings.get("cash_drawer_starting_amount_cents", 0),
+        )
+    
+    _check_kiosk_network(request, company)
     
     # Get company settings for cash drawer
     from app.services.company_service import get_company_settings
@@ -89,6 +126,7 @@ class KioskPinCheckResponse(BaseModel):
 @handle_endpoint_errors(operation_name="check_kiosk_pin")
 async def check_kiosk_pin(
     data: KioskPinCheckRequest,
+    request: Request,
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -108,6 +146,8 @@ async def check_kiosk_pin(
     # Check if kiosk is enabled
     if not company.kiosk_enabled:
         return KioskPinCheckResponse(valid=False)
+    
+    _check_kiosk_network(request, company)
     
     # Find active employees with PINs in this company (any role except ADMIN/DEVELOPER)
     result = await db.execute(
@@ -132,9 +172,9 @@ async def check_kiosk_pin(
     if not matching_employee:
         return KioskPinCheckResponse(valid=False)
     
-    # Check if employee's email is verified
-    from app.services.verification_service import check_verification_required
-    if check_verification_required(matching_employee):
+    # Check if employee's email is verified (respects company email_verification_required)
+    from app.services.verification_service import check_verification_required_for_user
+    if await check_verification_required_for_user(db, matching_employee):
         return KioskPinCheckResponse(
             valid=True,
             employee_name=matching_employee.name,
@@ -225,6 +265,8 @@ async def kiosk_clock(
             detail="Kiosk is disabled for this company",
         )
     
+    _check_kiosk_network(request, company)
+    
     # Find active employees with PINs in this company (any role except ADMIN/DEVELOPER)
     result = await db.execute(
         select(User).where(
@@ -251,9 +293,9 @@ async def kiosk_clock(
             detail="Invalid PIN",
         )
     
-    # Check if employee's email is verified
-    from app.services.verification_service import check_verification_required
-    if check_verification_required(matching_employee):
+    # Check if employee's email is verified (respects company email_verification_required)
+    from app.services.verification_service import check_verification_required_for_user
+    if await check_verification_required_for_user(db, matching_employee):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail={

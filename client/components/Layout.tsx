@@ -11,9 +11,22 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
   const [user, setUser] = useState<User | null>(null)
   const [loading, setLoading] = useState(true)
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+  const [sideMenuOpen, setSideMenuOpen] = useState(false)
   const [openDropdown, setOpenDropdown] = useState<string | null>(null)
   const dropdownRefs = useRef<{ [key: string]: HTMLDivElement | null }>({})
+
+  // Lock body scroll when side menu is open (below 950px)
+  useEffect(() => {
+    if (sideMenuOpen && typeof window !== 'undefined') {
+      const w = document.documentElement.clientWidth
+      if (w < 950) {
+        document.body.style.overflow = 'hidden'
+      }
+    }
+    return () => {
+      document.body.style.overflow = ''
+    }
+  }, [sideMenuOpen])
 
   useEffect(() => {
     // Don't fetch user on login, verify-email, set-password, or register pages
@@ -231,8 +244,8 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                   ClockInn
                 </Link>
               </div>
-              {/* Desktop Navigation */}
-              <div className="hidden md:ml-8 md:flex md:space-x-1 md:items-center">
+              {/* Desktop Navigation - from 950px */}
+              <div className="hidden min-[950px]:ml-8 min-[950px]:flex min-[950px]:space-x-1 min-[950px]:items-center">
                 {isAdmin ? (
                   adminNavGroups.map((group, idx) => {
                     if (group.type === 'single') {
@@ -325,10 +338,10 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                 )}
               </div>
             </div>
-            {/* User Menu */}
-            <div className="flex items-center space-x-3">
+            {/* User Menu + Hamburger (responsive) */}
+            <div className="flex items-center gap-2 sm:gap-3">
               <div className="hidden sm:block">
-                <p className="text-sm text-gray-700">{user.name}</p>
+                <p className="text-sm text-gray-700 truncate max-w-[120px] lg:max-w-[180px]">{user.name}</p>
               </div>
               <button
                 onClick={handleLogout}
@@ -336,13 +349,17 @@ export default function Layout({ children }: { children: React.ReactNode }) {
               >
                 Logout
               </button>
-              {/* Mobile menu button */}
+              {/* Hamburger - visible below 950px, opens side menu */}
               <button
-                onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-                className="md:hidden inline-flex items-center justify-center p-2 rounded-md text-gray-700 hover:text-gray-900 hover:bg-gray-100"
+                type="button"
+                onClick={() => setSideMenuOpen(!sideMenuOpen)}
+                className="min-[950px]:hidden inline-flex items-center justify-center p-2 rounded-md text-gray-700 hover:text-gray-900 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-blue-500"
+                aria-expanded={sideMenuOpen}
+                aria-label={sideMenuOpen ? 'Close menu' : 'Open menu'}
               >
-                <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  {mobileMenuOpen ? (
+                <span className="sr-only">{sideMenuOpen ? 'Close menu' : 'Open menu'}</span>
+                <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                  {sideMenuOpen ? (
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                   ) : (
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
@@ -352,10 +369,42 @@ export default function Layout({ children }: { children: React.ReactNode }) {
             </div>
           </div>
         </div>
-        {/* Mobile Navigation */}
-        {mobileMenuOpen && (
-          <div className="md:hidden border-t border-gray-200 bg-white">
-            <div className="px-2 pt-2 pb-3 space-y-1">
+      </nav>
+
+      {/* Side menu overlay - below 950px only */}
+      <div
+        role="presentation"
+        className={`fixed inset-0 z-40 bg-black/50 transition-opacity duration-200 min-[950px]:hidden ${
+          sideMenuOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'
+        }`}
+        onClick={() => setSideMenuOpen(false)}
+        aria-hidden="true"
+      />
+
+      {/* Side menu drawer - below 950px only */}
+      <aside
+        className={`fixed top-0 left-0 z-50 h-full w-72 max-w-[85vw] bg-white shadow-xl transition-transform duration-200 ease-out min-[950px]:hidden ${
+          sideMenuOpen ? 'translate-x-0' : '-translate-x-full'
+        }`}
+        aria-modal="true"
+        aria-label="Main navigation"
+      >
+        <div className="flex flex-col h-full">
+          <div className="flex items-center justify-between h-14 px-4 border-b border-gray-200">
+            <span className="text-lg font-semibold text-gray-900">Menu</span>
+            <button
+              type="button"
+              onClick={() => setSideMenuOpen(false)}
+              className="p-2 rounded-md text-gray-500 hover:text-gray-700 hover:bg-gray-100"
+              aria-label="Close menu"
+            >
+              <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+          <nav className="flex-1 overflow-y-auto py-4 px-2">
+            <div className="space-y-1">
               {isAdmin ? (
                 adminNavGroups.map((group, idx) => {
                   if (group.type === 'single') {
@@ -363,33 +412,32 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                       <Link
                         key={item.href}
                         href={item.href}
-                        onClick={() => setMobileMenuOpen(false)}
-                        className={`block px-3 py-2 text-sm font-medium border-l-4 transition-colors ${
+                        onClick={() => setSideMenuOpen(false)}
+                        className={`block px-3 py-2.5 text-sm font-medium rounded-lg transition-colors ${
                           isActive(item.href)
-                            ? 'border-blue-600 text-blue-600 bg-blue-50'
-                            : 'border-transparent text-gray-700 hover:bg-gray-100'
+                            ? 'bg-blue-100 text-blue-700'
+                            : 'text-gray-700 hover:bg-gray-100'
                         }`}
                       >
                         {item.label}
                       </Link>
                     ))
                   } else {
-                    const dropdownId = `mobile-dropdown-${idx}`
+                    const dropdownId = `side-dropdown-${idx}`
                     return (
-                      <div key={dropdownId}>
+                      <div key={dropdownId} className="space-y-0.5">
                         <button
+                          type="button"
                           onClick={() => setOpenDropdown(openDropdown === dropdownId ? null : dropdownId)}
-                          className={`w-full flex items-center justify-between px-3 py-2 text-sm font-medium border-l-4 transition-colors ${
+                          className={`w-full flex items-center justify-between px-3 py-2.5 text-sm font-medium rounded-lg transition-colors ${
                             isDropdownActive(group.items)
-                              ? 'border-blue-600 text-blue-600 bg-blue-50'
-                              : 'border-transparent text-gray-700 hover:bg-gray-100'
+                              ? 'bg-blue-100 text-blue-700'
+                              : 'text-gray-700 hover:bg-gray-100'
                           }`}
                         >
                           {group.label}
                           <svg
-                            className={`h-4 w-4 transition-transform ${
-                              openDropdown === dropdownId ? 'rotate-180' : ''
-                            }`}
+                            className={`h-4 w-4 transition-transform ${openDropdown === dropdownId ? 'rotate-180' : ''}`}
                             fill="none"
                             stroke="currentColor"
                             viewBox="0 0 24 24"
@@ -397,51 +445,52 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                           </svg>
                         </button>
-                        {openDropdown === dropdownId && (
-                          <div className="pl-4 space-y-1">
-                            {group.items.map((item) => (
-                              <Link
-                                key={item.href}
-                                href={item.href}
-                                onClick={() => {
-                                  setMobileMenuOpen(false)
-                                  setOpenDropdown(null)
-                                }}
-                                className={`block px-3 py-2 text-sm transition-colors ${
-                                  isActive(item.href)
-                                    ? 'text-blue-600 font-medium bg-blue-50'
-                                    : 'text-gray-600 hover:bg-gray-50'
-                                }`}
-                              >
-                                {item.label}
-                              </Link>
-                            ))}
-                          </div>
-                        )}
+                        <div className={openDropdown === dropdownId ? 'pl-3 space-y-0.5' : 'hidden'}>
+                          {group.items.map((item) => (
+                            <Link
+                              key={item.href}
+                              href={item.href}
+                              onClick={() => {
+                                setSideMenuOpen(false)
+                                setOpenDropdown(null)
+                              }}
+                              className={`block px-3 py-2 text-sm rounded-lg transition-colors ${
+                                isActive(item.href)
+                                  ? 'bg-blue-50 text-blue-600 font-medium'
+                                  : 'text-gray-600 hover:bg-gray-50'
+                              }`}
+                            >
+                              {item.label}
+                            </Link>
+                          ))}
+                        </div>
                       </div>
                     )
                   }
                 })
               ) : (
                 (links as Array<{ href: string; label: string }>).map((link) => (
-                <Link
-                  key={link.href}
-                  href={link.href}
-                  onClick={() => setMobileMenuOpen(false)}
-                  className={`block px-3 py-2 text-sm font-medium border-l-4 transition-colors ${
-                    isActive(link.href)
-                      ? 'border-blue-600 text-blue-600 bg-blue-50'
-                      : 'border-transparent text-gray-700 hover:bg-gray-100'
-                  }`}
-                >
-                  {link.label}
-                </Link>
+                  <Link
+                    key={link.href}
+                    href={link.href}
+                    onClick={() => setSideMenuOpen(false)}
+                    className={`block px-3 py-2.5 text-sm font-medium rounded-lg transition-colors ${
+                      isActive(link.href)
+                        ? 'bg-blue-100 text-blue-700'
+                        : 'text-gray-700 hover:bg-gray-100'
+                    }`}
+                  >
+                    {link.label}
+                  </Link>
                 ))
               )}
             </div>
+          </nav>
+          <div className="border-t border-gray-200 p-3">
+            <p className="text-xs text-gray-500 truncate px-2">{user.name}</p>
           </div>
-        )}
-      </nav>
+        </div>
+      </aside>
       <main className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">{children}</main>
     </div>
   )

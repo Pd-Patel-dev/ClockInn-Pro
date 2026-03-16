@@ -174,8 +174,8 @@ async def login(
         )
     
     # Check verification status and update if needed (but still allow login so they can verify)
-    from app.services.verification_service import check_verification_required
-    if check_verification_required(user):
+    from app.services.verification_service import check_verification_required_for_user
+    if await check_verification_required_for_user(db, user):
         user.verification_required = True
         db.add(user)
         await db.flush()
@@ -290,8 +290,8 @@ async def refresh_access_token(
         )
     
     # Check verification status - block token refresh if verification required
-    from app.services.verification_service import check_verification_required
-    if check_verification_required(user):
+    from app.services.verification_service import check_verification_required_for_user
+    if await check_verification_required_for_user(db, user):
         # Update database
         user.verification_required = True
         db.add(user)

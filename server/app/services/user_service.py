@@ -14,7 +14,7 @@ from app.core.security import (
     normalize_email,
     validate_password_strength,
 )
-from app.schemas.user import UserCreate, UserUpdate
+from app.schemas.user import UserCreate, UserUpdate, DeveloperUserUpdate
 import uuid
 
 logger = logging.getLogger(__name__)
@@ -30,6 +30,21 @@ async def get_user_by_id(
         select(User).where(
             and_(User.id == user_id, User.company_id == company_id)
         )
+    )
+    return result.scalar_one_or_none()
+
+
+async def get_user_by_id_any(
+    db: AsyncSession,
+    user_id: UUID,
+) -> Optional[User]:
+    """Get any user by ID (no company scope). For developer use only."""
+    from sqlalchemy.orm import selectinload
+    from app.models.company import Company
+    result = await db.execute(
+        select(User)
+        .options(selectinload(User.company))
+        .where(User.id == user_id)
     )
     return result.scalar_one_or_none()
 
@@ -327,6 +342,93 @@ async def update_employee(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to update employee: {str(e)}",
+        )
+
+
+async def update_user_developer(
+    db: AsyncSession,
+    user_id: UUID,
+    data: DeveloperUserUpdate,
+    actor_user_id: Optional[UUID] = None,
+) -> User:
+    """Update any user by ID (developer only). Supports verification and all fields."""
+    user = await get_user_by_id_any(db, user_id)
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found",
+        )
+    company_id = user.company_id
+
+    if data.name is not None:
+        user.name = data.name
+    if data.email is not None:
+        normalized = normalize_email(data.email)
+        if normalized != user.email:
+            result = await db.execute(
+                select(User).where(
+                    and_(
+                        User.company_id == company_id,
+                        User.email == normalized,
+                        User.id != user_id,
+                    )
+                )
+            )
+            if result.scalar_one_or_none():
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Email already exists in this company",
+                )
+            user.email = normalized
+    if data.role is not None:
+        user.role = data.role
+    if data.status is not None:
+        user.status = UserStatus(data.status.value) if isinstance(data.status, UserStatus) else data.status
+    if data.email_verified is not None:
+        user.email_verified = data.email_verified
+        if data.email_verified:
+            user.verification_required = False
+    if data.verification_required is not None:
+        user.verification_required = data.verification_required
+    if data.pin is not None:
+        if data.pin == "":
+            user.pin_hash = None
+        else:
+            new_pin_hash = get_pin_hash(data.pin)
+            result = await db.execute(
+                select(User).where(
+                    and_(
+                        User.company_id == company_id,
+                        User.pin_hash == new_pin_hash,
+                        User.id != user_id,
+                        User.role.in_([UserRole.MAINTENANCE, UserRole.FRONTDESK, UserRole.HOUSEKEEPING]),
+                    )
+                )
+            )
+            if result.scalar_one_or_none():
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="PIN already in use in this company",
+                )
+            user.pin_hash = new_pin_hash
+    if data.pay_rate is not None:
+        user.pay_rate = data.pay_rate
+
+    try:
+        await db.commit()
+        await db.refresh(user)
+        return user
+    except Exception as e:
+        await db.rollback()
+        error_str = str(e).lower()
+        if "pin_hash" in error_str or "unique" in error_str or "uq_user_company_email" in error_str:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="PIN or email already in use in this company",
+            )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to update user",
         )
 
 

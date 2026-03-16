@@ -1,8 +1,9 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from datetime import date as date_type
 
 from app.core.dependencies import get_db, get_current_admin, get_current_user
+from app.core.network import get_client_ip
 from app.core.error_handling import handle_endpoint_errors
 from app.models.user import User, UserRole
 from app.schemas.company import (
@@ -21,6 +22,17 @@ from app.services.company_service import (
 )
 
 router = APIRouter()
+
+
+@router.get("/company/my-ip")
+@handle_endpoint_errors(operation_name="get_my_ip")
+async def get_my_ip(
+    request: Request,
+    current_user: User = Depends(get_current_user),
+):
+    """Return the client IP of the current request (for adding to kiosk allowlist)."""
+    ip = get_client_ip(request)
+    return {"ip": ip or "unknown"}
 
 
 @router.get("/company/info", response_model=CompanyInfoResponse)
@@ -86,6 +98,16 @@ async def get_company_info_public_endpoint(
             cash_drawer_require_manager_review=settings.get("cash_drawer_require_manager_review", False),
             schedule_day_start_hour=settings.get("schedule_day_start_hour", 7),
             schedule_day_end_hour=settings.get("schedule_day_end_hour", 7),
+            shift_notes_enabled=settings.get("shift_notes_enabled", True),
+            shift_notes_required_on_clock_out=settings.get("shift_notes_required_on_clock_out", False),
+            shift_notes_allow_edit_after_clock_out=settings.get("shift_notes_allow_edit_after_clock_out", False),
+            email_verification_required=settings.get("email_verification_required", True),
+            geofence_enabled=settings.get("geofence_enabled", False),
+            office_latitude=settings.get("office_latitude"),
+            office_longitude=settings.get("office_longitude"),
+            geofence_radius_meters=settings.get("geofence_radius_meters", 100),
+            kiosk_network_restriction_enabled=settings.get("kiosk_network_restriction_enabled", False),
+            kiosk_allowed_ips=settings.get("kiosk_allowed_ips") or [],
         ),
         admin=admin_info,
     )
@@ -153,6 +175,16 @@ async def get_company_info_endpoint(
             cash_drawer_require_manager_review=settings.get("cash_drawer_require_manager_review", False),
             schedule_day_start_hour=settings.get("schedule_day_start_hour", 7),
             schedule_day_end_hour=settings.get("schedule_day_end_hour", 7),
+            shift_notes_enabled=settings.get("shift_notes_enabled", True),
+            shift_notes_required_on_clock_out=settings.get("shift_notes_required_on_clock_out", False),
+            shift_notes_allow_edit_after_clock_out=settings.get("shift_notes_allow_edit_after_clock_out", False),
+            email_verification_required=settings.get("email_verification_required", True),
+            geofence_enabled=settings.get("geofence_enabled", False),
+            office_latitude=settings.get("office_latitude"),
+            office_longitude=settings.get("office_longitude"),
+            geofence_radius_meters=settings.get("geofence_radius_meters", 100),
+            kiosk_network_restriction_enabled=settings.get("kiosk_network_restriction_enabled", False),
+            kiosk_allowed_ips=settings.get("kiosk_allowed_ips") or [],
         ),
         admin=admin_info,
     )
@@ -226,6 +258,16 @@ async def update_company_name_endpoint(
             cash_drawer_require_manager_review=settings.get("cash_drawer_require_manager_review", False),
             schedule_day_start_hour=settings.get("schedule_day_start_hour", 7),
             schedule_day_end_hour=settings.get("schedule_day_end_hour", 7),
+            shift_notes_enabled=settings.get("shift_notes_enabled", True),
+            shift_notes_required_on_clock_out=settings.get("shift_notes_required_on_clock_out", False),
+            shift_notes_allow_edit_after_clock_out=settings.get("shift_notes_allow_edit_after_clock_out", False),
+            email_verification_required=settings.get("email_verification_required", True),
+            geofence_enabled=settings.get("geofence_enabled", False),
+            office_latitude=settings.get("office_latitude"),
+            office_longitude=settings.get("office_longitude"),
+            geofence_radius_meters=settings.get("geofence_radius_meters", 100),
+            kiosk_network_restriction_enabled=settings.get("kiosk_network_restriction_enabled", False),
+            kiosk_allowed_ips=settings.get("kiosk_allowed_ips") or [],
         ),
         admin=admin_info,
     )
@@ -304,6 +346,16 @@ async def update_company_settings_endpoint(
             cash_drawer_require_manager_review=settings.get("cash_drawer_require_manager_review", False),
             schedule_day_start_hour=settings.get("schedule_day_start_hour", 7),
             schedule_day_end_hour=settings.get("schedule_day_end_hour", 7),
+            shift_notes_enabled=settings.get("shift_notes_enabled", True),
+            shift_notes_required_on_clock_out=settings.get("shift_notes_required_on_clock_out", False),
+            shift_notes_allow_edit_after_clock_out=settings.get("shift_notes_allow_edit_after_clock_out", False),
+            email_verification_required=settings.get("email_verification_required", True),
+            geofence_enabled=settings.get("geofence_enabled", False),
+            office_latitude=settings.get("office_latitude"),
+            office_longitude=settings.get("office_longitude"),
+            geofence_radius_meters=settings.get("geofence_radius_meters", 100),
+            kiosk_network_restriction_enabled=settings.get("kiosk_network_restriction_enabled", False),
+            kiosk_allowed_ips=settings.get("kiosk_allowed_ips") or [],
         ),
         admin=admin_info,
     )

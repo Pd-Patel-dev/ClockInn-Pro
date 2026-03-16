@@ -87,7 +87,13 @@ export default function KioskSlugPage() {
           setError('Kiosk is disabled for this company')
         }
       } catch (err: any) {
-        setError(err.response?.data?.detail || 'Company not found')
+        const detail = err.response?.data?.detail
+        const msg = typeof detail === 'string' ? detail : detail?.message || 'Company not found'
+        if (err.response?.status === 403 && msg.includes('office network')) {
+          setError('Kiosk is only available on the office network. Please connect to the office network and try again.')
+        } else {
+          setError(msg)
+        }
       } finally {
         setLoadingCompany(false)
       }
@@ -209,10 +215,16 @@ export default function KioskSlugPage() {
       const errorDetail = err.response?.data?.detail
       
       // Check if verification is required
-      if (err.response?.status === 403 && 
-          (errorDetail?.error === 'EMAIL_VERIFICATION_REQUIRED' || 
+      if (err.response?.status === 403 &&
+          (errorDetail?.error === 'EMAIL_VERIFICATION_REQUIRED' ||
            (typeof errorDetail === 'object' && errorDetail?.error === 'EMAIL_VERIFICATION_REQUIRED'))) {
         setMessage(errorDetail?.message || 'Your email must be verified to use the kiosk. Please verify your email first by logging into your account.')
+        setSuccess(false)
+        setPinDisplay('')
+        setPendingPunch(false)
+        setShowCashDialog(false)
+      } else if (err.response?.status === 403 && (typeof errorDetail === 'string' && errorDetail.includes('office network'))) {
+        setMessage('Kiosk is only available on the office network. Please connect to the office network and try again.')
         setSuccess(false)
         setPinDisplay('')
         setPendingPunch(false)
@@ -334,7 +346,11 @@ export default function KioskSlugPage() {
     } catch (err: any) {
       const errorDetail = err.response?.data?.detail
       const errorMessage = typeof errorDetail === 'string' ? errorDetail : errorDetail?.message || 'Invalid PIN. Please try again.'
-      setMessage(errorMessage)
+      if (err.response?.status === 403 && typeof errorDetail === 'string' && errorDetail.includes('office network')) {
+        setMessage('Kiosk is only available on the office network. Please connect to the office network and try again.')
+      } else {
+        setMessage(errorMessage)
+      }
       setSuccess(false)
       setPinDisplay('')
     } finally {

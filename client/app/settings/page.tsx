@@ -44,9 +44,31 @@ const cashDrawerSettingsSchema = z.object({
   cash_drawer_require_manager_review: z.boolean(),
 })
 
+const geofenceSettingsSchema = z.object({
+  geofence_enabled: z.boolean(),
+  office_latitude: z.union([
+    z.string().transform((s) => (s === '' ? undefined : parseFloat(s))),
+    z.number(),
+  ]).optional().nullable(),
+  office_longitude: z.union([
+    z.string().transform((s) => (s === '' ? undefined : parseFloat(s))),
+    z.number(),
+  ]).optional().nullable(),
+  geofence_radius_meters: z.number().int().min(10).max(5000),
+}).refine(
+  (data) => {
+    if (!data.geofence_enabled) return true
+    const lat = typeof data.office_latitude === 'number' ? data.office_latitude : parseFloat(String(data.office_latitude || ''))
+    const lon = typeof data.office_longitude === 'number' ? data.office_longitude : parseFloat(String(data.office_longitude || ''))
+    return !Number.isNaN(lat) && lat >= -90 && lat <= 90 && !Number.isNaN(lon) && lon >= -180 && lon <= 180
+  },
+  { message: 'When location check is enabled, enter valid office latitude and longitude.', path: ['office_latitude'] }
+)
+
 type CompanyNameForm = z.infer<typeof companyNameSchema>
 type CompanySettingsForm = z.infer<typeof companySettingsSchema>
 type CashDrawerSettingsForm = z.infer<typeof cashDrawerSettingsSchema>
+type GeofenceSettingsForm = z.infer<typeof geofenceSettingsSchema>
 
 interface CompanySettings {
   timezone: string
@@ -67,6 +89,12 @@ interface CompanySettings {
   cash_drawer_require_manager_review?: boolean
   schedule_day_start_hour?: number
   schedule_day_end_hour?: number
+  geofence_enabled?: boolean
+  office_latitude?: number | null
+  office_longitude?: number | null
+  geofence_radius_meters?: number
+  kiosk_network_restriction_enabled?: boolean
+  kiosk_allowed_ips?: string[]
 }
 
 interface AdminInfo {
@@ -93,10 +121,14 @@ export default function AdminSettingsPage() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [companyInfo, setCompanyInfo] = useState<CompanyInfo | null>(null)
-  const [activeTab, setActiveTab] = useState<'info' | 'payroll' | 'cash' | 'email'>('info')
+  const [activeTab, setActiveTab] = useState<'info' | 'payroll' | 'cash' | 'location' | 'kiosk' | 'email'>('info')
+  const [geofenceGettingLocation, setGeofenceGettingLocation] = useState(false)
   const [gmailHealth, setGmailHealth] = useState<any>(null)
   const [checkingGmail, setCheckingGmail] = useState(false)
   const [kioskUrl, setKioskUrl] = useState<string>('')
+  const [kioskNetworkRestrictionEnabled, setKioskNetworkRestrictionEnabled] = useState(false)
+  const [kioskAllowedIpsText, setKioskAllowedIpsText] = useState('')
+  const [kioskFetchingMyIp, setKioskFetchingMyIp] = useState(false)
 
   const {
     register: registerName,
@@ -129,6 +161,22 @@ export default function AdminSettingsPage() {
   
   const cashDrawerEnabled = watchCashDrawer('cash_drawer_enabled')
   const cashDrawerRequiredForAll = watchCashDrawer('cash_drawer_required_for_all')
+
+  const {
+    control: controlGeofence,
+    handleSubmit: handleSubmitGeofence,
+    formState: { errors: geofenceErrors },
+    reset: resetGeofence,
+    setValue: setValueGeofence,
+  } = useForm<GeofenceSettingsForm>({
+    resolver: zodResolver(geofenceSettingsSchema),
+    defaultValues: {
+      geofence_enabled: false,
+      office_latitude: undefined,
+      office_longitude: undefined,
+      geofence_radius_meters: 100,
+    },
+  })
 
   const [user, setUser] = useState<any>(null)
 
@@ -237,6 +285,14 @@ export default function AdminSettingsPage() {
           cash_drawer_allow_edit: response.data.settings.cash_drawer_allow_edit ?? true,
           cash_drawer_require_manager_review: response.data.settings.cash_drawer_require_manager_review ?? false,
         })
+        resetGeofence({
+          geofence_enabled: response.data.settings.geofence_enabled ?? false,
+          office_latitude: response.data.settings.office_latitude ?? undefined,
+          office_longitude: response.data.settings.office_longitude ?? undefined,
+          geofence_radius_meters: response.data.settings.geofence_radius_meters ?? 100,
+        })
+        setKioskNetworkRestrictionEnabled(response.data.settings.kiosk_network_restriction_enabled ?? false)
+        setKioskAllowedIpsText((response.data.settings.kiosk_allowed_ips || []).join('\n'))
         
         setValueName('name', response.data.name)
       }
@@ -373,6 +429,62 @@ export default function AdminSettingsPage() {
     }
   }
 
+  const onSubmitGeofence = async (data: GeofenceSettingsForm) => {
+    setSaving(true)
+    try {
+      const updateData: any = {
+        geofence_enabled: data.geofence_enabled,
+        geofence_radius_meters: data.geofence_radius_meters,
+      }
+      if (data.geofence_enabled) {
+        const lat = typeof data.office_latitude === 'number' ? data.office_latitude : parseFloat(String(data.office_latitude ?? ''))
+        const lon = typeof data.office_longitude === 'number' ? data.office_longitude : parseFloat(String(data.office_longitude ?? ''))
+        if (!Number.isNaN(lat)) updateData.office_latitude = lat
+        if (!Number.isNaN(lon)) updateData.office_longitude = lon
+      } else {
+        updateData.office_latitude = null
+        updateData.office_longitude = null
+      }
+      const response = await api.put('/admin/company/settings', updateData)
+      setCompanyInfo(response.data)
+      resetGeofence({
+        geofence_enabled: response.data.settings.geofence_enabled ?? false,
+        office_latitude: response.data.settings.office_latitude ?? undefined,
+        office_longitude: response.data.settings.office_longitude ?? undefined,
+        geofence_radius_meters: response.data.settings.geofence_radius_meters ?? 100,
+      }, { keepDefaultValues: false })
+      toast.success('Punch location settings updated successfully!')
+    } catch (error: any) {
+      logger.error('Failed to update geofence settings', error as Error)
+      toast.error(error.response?.data?.detail || 'Failed to update punch location settings')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const onSubmitKioskNetwork = async () => {
+    setSaving(true)
+    try {
+      const ips = kioskAllowedIpsText
+        .split('\n')
+        .map((s) => s.trim())
+        .filter(Boolean)
+      const response = await api.put('/admin/company/settings', {
+        kiosk_network_restriction_enabled: kioskNetworkRestrictionEnabled,
+        kiosk_allowed_ips: ips,
+      })
+      setCompanyInfo(response.data)
+      setKioskNetworkRestrictionEnabled(response.data.settings.kiosk_network_restriction_enabled ?? false)
+      setKioskAllowedIpsText((response.data.settings.kiosk_allowed_ips || []).join('\n'))
+      toast.success('Kiosk network settings updated successfully!')
+    } catch (error: any) {
+      logger.error('Failed to update kiosk network settings', error as Error)
+      toast.error(error.response?.data?.detail || 'Failed to update kiosk network settings')
+    } finally {
+      setSaving(false)
+    }
+  }
+
   const weekDays = [
     { value: 0, label: 'Monday' },
     { value: 1, label: 'Tuesday' },
@@ -459,6 +571,26 @@ export default function AdminSettingsPage() {
                   }`}
                 >
                   Cash Drawer
+                </button>
+                <button
+                  onClick={() => setActiveTab('location')}
+                  className={`py-4 px-1 border-b-2 font-medium text-sm ${
+                    activeTab === 'location'
+                      ? 'border-primary-500 text-primary-600'
+                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                  }`}
+                >
+                  Punch Location
+                </button>
+                <button
+                  onClick={() => setActiveTab('kiosk')}
+                  className={`py-4 px-1 border-b-2 font-medium text-sm ${
+                    activeTab === 'kiosk'
+                      ? 'border-primary-500 text-primary-600'
+                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                  }`}
+                >
+                  Kiosk Network
                 </button>
               </>
             )}
@@ -1231,6 +1363,207 @@ export default function AdminSettingsPage() {
                 </button>
               </div>
             </form>
+          </div>
+        )}
+
+        {/* Punch Location (Geofence) Tab - Admin Only */}
+        {activeTab === 'location' && user?.role === 'ADMIN' && (
+          <div className="bg-white shadow rounded-lg p-6">
+            <h2 className="text-xl font-semibold mb-4">Punch Location</h2>
+            <p className="text-sm text-gray-600 mb-6">
+              Require employees to be at the office to punch in or out. When enabled, punch requests are only accepted when the employee&apos;s device is within the configured radius of the office location.
+            </p>
+            <form onSubmit={handleSubmitGeofence(onSubmitGeofence)} className="space-y-6">
+              <div>
+                <Controller
+                  name="geofence_enabled"
+                  control={controlGeofence}
+                  render={({ field }) => (
+                    <label className="flex items-center">
+                      <input
+                        type="checkbox"
+                        checked={field.value}
+                        onChange={(e) => field.onChange(e.target.checked)}
+                        onBlur={field.onBlur}
+                        className="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                      />
+                      <span className="ml-2 text-sm text-gray-700">Require punch at office location</span>
+                    </label>
+                  )}
+                />
+                <p className="mt-1 text-xs text-gray-500">When enabled, employees must be within the radius below to clock in/out</p>
+              </div>
+              <div className="flex flex-wrap items-center gap-3 mb-2">
+                <button
+                  type="button"
+                  disabled={geofenceGettingLocation || (typeof navigator !== 'undefined' && !navigator.geolocation)}
+                  onClick={() => {
+                    if (typeof navigator === 'undefined' || !navigator.geolocation) return
+                    setGeofenceGettingLocation(true)
+                    navigator.geolocation.getCurrentPosition(
+                      (position) => {
+                        setValueGeofence('office_latitude', position.coords.latitude)
+                        setValueGeofence('office_longitude', position.coords.longitude)
+                        setGeofenceGettingLocation(false)
+                      },
+                      () => setGeofenceGettingLocation(false),
+                      { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 }
+                    )
+                  }}
+                  className="px-3 py-1.5 text-sm bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200 disabled:opacity-50 border border-gray-300"
+                >
+                  {geofenceGettingLocation ? 'Getting location…' : 'Use current location'}
+                </button>
+                {typeof navigator !== 'undefined' && !navigator.geolocation && (
+                  <span className="text-xs text-gray-500">Location not available in this browser</span>
+                )}
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">Office latitude</label>
+                  <Controller
+                    name="office_latitude"
+                    control={controlGeofence}
+                    render={({ field }) => (
+                      <input
+                        type="number"
+                        step="any"
+                        placeholder="e.g. 40.7128"
+                        value={field.value ?? ''}
+                        onChange={(e) => field.onChange(e.target.value === '' ? undefined : e.target.value)}
+                        onBlur={field.onBlur}
+                        className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm"
+                      />
+                    )}
+                  />
+                  <p className="mt-1 text-xs text-gray-500">-90 to 90</p>
+                  {geofenceErrors.office_latitude && (
+                    <p className="mt-1 text-sm text-red-600">{geofenceErrors.office_latitude.message}</p>
+                  )}
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">Office longitude</label>
+                  <Controller
+                    name="office_longitude"
+                    control={controlGeofence}
+                    render={({ field }) => (
+                      <input
+                        type="number"
+                        step="any"
+                        placeholder="e.g. -74.0060"
+                        value={field.value ?? ''}
+                        onChange={(e) => field.onChange(e.target.value === '' ? undefined : e.target.value)}
+                        onBlur={field.onBlur}
+                        className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm"
+                      />
+                    )}
+                  />
+                  <p className="mt-1 text-xs text-gray-500">-180 to 180</p>
+                  {geofenceErrors.office_longitude && (
+                    <p className="mt-1 text-sm text-red-600">{geofenceErrors.office_longitude.message}</p>
+                  )}
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700">Allowed radius (meters)</label>
+                <Controller
+                  name="geofence_radius_meters"
+                  control={controlGeofence}
+                  render={({ field }) => (
+                    <input
+                      {...field}
+                      type="number"
+                      min={10}
+                      max={5000}
+                      className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm"
+                    />
+                  )}
+                />
+                <p className="mt-1 text-xs text-gray-500">Employees must be within this distance of the office to punch (10–5000 m)</p>
+                {geofenceErrors.geofence_radius_meters && (
+                  <p className="mt-1 text-sm text-red-600">{geofenceErrors.geofence_radius_meters.message}</p>
+                )}
+              </div>
+              <div className="flex justify-end">
+                <button
+                  type="submit"
+                  disabled={saving}
+                  className="px-4 py-2 bg-primary-600 text-white rounded-md hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {saving ? 'Saving...' : 'Save Settings'}
+                </button>
+              </div>
+            </form>
+          </div>
+        )}
+
+        {/* Kiosk Network Tab - Admin Only */}
+        {activeTab === 'kiosk' && user?.role === 'ADMIN' && (
+          <div className="bg-white shadow rounded-lg p-6">
+            <h2 className="text-xl font-semibold mb-4">Kiosk Network</h2>
+            <p className="text-sm text-gray-600 mb-6">
+              Restrict the kiosk so it only works when opened from the office network. Add the office IP range or specific IPs below. Requests from other networks will be blocked.
+            </p>
+            <div className="space-y-6">
+              <label className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={kioskNetworkRestrictionEnabled}
+                  onChange={(e) => setKioskNetworkRestrictionEnabled(e.target.checked)}
+                  className="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                />
+                <span className="text-sm font-medium text-gray-700">Restrict kiosk to office network only</span>
+              </label>
+              <p className="text-xs text-gray-500">When enabled, the kiosk page and clock-in/out will only work from the IPs or ranges listed below.</p>
+              <div>
+                <div className="flex items-center justify-between gap-2 mb-1">
+                  <label className="block text-sm font-medium text-gray-700">Allowed IPs or CIDR ranges (one per line)</label>
+                  <button
+                    type="button"
+                    disabled={kioskFetchingMyIp}
+                    onClick={async () => {
+                      setKioskFetchingMyIp(true)
+                      try {
+                        const res = await api.get('/company/my-ip')
+                        const ip = res.data?.ip
+                        if (ip && ip !== 'unknown') {
+                          setKioskAllowedIpsText((prev) => (prev.trim() ? `${prev.trim()}\n${ip}` : ip))
+                          toast.success(`Added ${ip}`)
+                        } else {
+                          toast.error('Could not get current IP')
+                        }
+                      } catch (e: any) {
+                        toast.error(e.response?.data?.detail || 'Could not get current IP')
+                      } finally {
+                        setKioskFetchingMyIp(false)
+                      }
+                    }}
+                    className="px-3 py-1.5 text-sm bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200 disabled:opacity-50 border border-gray-300"
+                  >
+                    {kioskFetchingMyIp ? 'Getting…' : 'Add my current IP'}
+                  </button>
+                </div>
+                <textarea
+                  value={kioskAllowedIpsText}
+                  onChange={(e) => setKioskAllowedIpsText(e.target.value)}
+                  placeholder={'192.168.1.0/24\n10.0.0.1'}
+                  rows={5}
+                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm font-mono"
+                />
+                <p className="mt-1 text-xs text-gray-500">Examples: 192.168.1.0/24 (entire subnet), 10.0.0.1 (single IP). Use “Add my current IP” when at the office to add this device.</p>
+                <p className="mt-1 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1">If the same IP is added from different networks, configure your reverse proxy to send the real client IP (e.g. nginx: <code className="bg-amber-100 px-1">proxy_set_header X-Real-IP $remote_addr</code>; Cloudflare uses CF-Connecting-IP automatically).</p>
+              </div>
+              <div className="flex justify-end">
+                <button
+                  type="button"
+                  onClick={onSubmitKioskNetwork}
+                  disabled={saving}
+                  className="px-4 py-2 bg-primary-600 text-white rounded-md hover:bg-primary-700 disabled:opacity-50"
+                >
+                  {saving ? 'Saving...' : 'Save Settings'}
+                </button>
+              </div>
+            </div>
           </div>
         )}
       </div>

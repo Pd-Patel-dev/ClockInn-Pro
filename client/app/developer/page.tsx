@@ -2,10 +2,12 @@
 
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 import Layout from '@/components/Layout'
 import api from '@/lib/api'
 import { getCurrentUser, User } from '@/lib/auth'
 import logger from '@/lib/logger'
+import { useToast } from '@/components/Toast'
 
 interface SystemStats {
   total_users: number
@@ -96,8 +98,13 @@ export default function DeveloperPortalPage() {
   const [systemInfo, setSystemInfo] = useState<SystemInfo | null>(null)
   const [healthStatus, setHealthStatus] = useState<HealthStatus | null>(null)
   const [recentActivity, setRecentActivity] = useState<RecentActivity | null>(null)
-  const [activeTab, setActiveTab] = useState<'overview' | 'stats' | 'system' | 'activity' | 'email'>('overview')
+  const [activeTab, setActiveTab] = useState<'overview' | 'stats' | 'system' | 'activity' | 'email' | 'companies' | 'add-developer'>('overview')
   const [refreshing, setRefreshing] = useState(false)
+  const [companies, setCompanies] = useState<Array<{ id: string; name: string; slug: string; created_at: string | null; user_count: number }>>([])
+  const toast = useToast()
+  const [addDevForm, setAddDevForm] = useState({ name: '', email: '', password: '', confirmPassword: '' })
+  const [addDevSubmitting, setAddDevSubmitting] = useState(false)
+  const [addDevError, setAddDevError] = useState<string | null>(null)
 
   useEffect(() => {
     const checkDeveloperAndFetch = async () => {
@@ -120,6 +127,42 @@ export default function DeveloperPortalPage() {
     }
     checkDeveloperAndFetch()
   }, [router])
+
+  useEffect(() => {
+    if (activeTab === 'companies' && user?.role === 'DEVELOPER') {
+      api.get('/developer/companies').then((res) => setCompanies(res.data || [])).catch(() => setCompanies([]))
+    }
+  }, [activeTab, user?.role])
+
+  const handleAddDeveloperSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setAddDevError(null)
+    if (addDevForm.password !== addDevForm.confirmPassword) {
+      setAddDevError('Passwords do not match')
+      return
+    }
+    if (addDevForm.password.length < 8) {
+      setAddDevError('Password must be at least 8 characters')
+      return
+    }
+    setAddDevSubmitting(true)
+    try {
+      await api.post('/developer/accounts', {
+        name: addDevForm.name.trim(),
+        email: addDevForm.email.trim(),
+        password: addDevForm.password,
+      })
+      toast.success('Developer account created. They can log in with the email and password you set.')
+      setAddDevForm({ name: '', email: '', password: '', confirmPassword: '' })
+      fetchAllData()
+    } catch (err: any) {
+      const msg = err.response?.data?.detail || err.message || 'Failed to create developer account'
+      setAddDevError(typeof msg === 'string' ? msg : JSON.stringify(msg))
+      toast.error(typeof msg === 'string' ? msg : 'Failed to create developer account')
+    } finally {
+      setAddDevSubmitting(false)
+    }
+  }
 
   const [gmailHealth, setGmailHealth] = useState<any>(null)
 
@@ -185,7 +228,7 @@ export default function DeveloperPortalPage() {
         {/* Tabs */}
         <div className="border-b border-gray-200 mb-6">
           <nav className="-mb-px flex space-x-8">
-            {['overview', 'stats', 'system', 'activity', 'email'].map((tab) => (
+            {['overview', 'stats', 'system', 'activity', 'email', 'companies', 'add-developer'].map((tab) => (
               <button
                 key={tab}
                 onClick={() => setActiveTab(tab as any)}
@@ -195,7 +238,7 @@ export default function DeveloperPortalPage() {
                     : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                 }`}
               >
-                {tab === 'overview' ? 'Overview' : tab}
+                {tab === 'overview' ? 'Overview' : tab === 'add-developer' ? 'Add developer' : tab}
               </button>
             ))}
           </nav>
@@ -663,6 +706,117 @@ export default function DeveloperPortalPage() {
                 <p className="text-sm text-yellow-800">Email service data is not available. Please try refreshing the page.</p>
               </div>
             )}
+          </div>
+        )}
+
+        {/* Companies Tab */}
+        {activeTab === 'companies' && (
+          <div className="bg-white rounded-lg shadow p-6">
+            <h3 className="text-lg font-semibold mb-4">All Companies</h3>
+            <p className="text-sm text-gray-600 mb-4">Click a company name to view full info and manage users (developer only).</p>
+            {companies.length === 0 && !refreshing ? (
+              <p className="text-gray-500">No companies or loading…</p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-gray-200">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-4 py-2 text-left text-xs font-medium text-gray-700 uppercase">Name</th>
+                      <th className="px-4 py-2 text-left text-xs font-medium text-gray-700 uppercase">Slug</th>
+                      <th className="px-4 py-2 text-left text-xs font-medium text-gray-700 uppercase">Users</th>
+                      <th className="px-4 py-2 text-left text-xs font-medium text-gray-700 uppercase">Created</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-200">
+                    {companies.map((c) => (
+                      <tr key={c.id} className="hover:bg-gray-50">
+                        <td className="px-4 py-3">
+                          <Link
+                            href={`/developer/companies/${c.id}`}
+                            className="text-blue-600 hover:text-blue-800 font-medium"
+                          >
+                            {c.name}
+                          </Link>
+                        </td>
+                        <td className="px-4 py-3 text-sm text-gray-600">{c.slug}</td>
+                        <td className="px-4 py-3 text-sm text-gray-600">{c.user_count}</td>
+                        <td className="px-4 py-3 text-sm text-gray-500">
+                          {c.created_at ? new Date(c.created_at).toLocaleDateString() : '—'}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Add developer Tab */}
+        {activeTab === 'add-developer' && (
+          <div className="bg-white rounded-lg shadow p-6 max-w-md">
+            <h3 className="text-lg font-semibold mb-2">Add developer account</h3>
+            <p className="text-sm text-gray-600 mb-4">Create a new developer (super account). They can log in and access the Developer Portal.</p>
+            {addDevError && (
+              <div className="mb-4 p-3 rounded-lg bg-red-50 border border-red-200 text-red-800 text-sm">
+                {addDevError}
+              </div>
+            )}
+            <form onSubmit={handleAddDeveloperSubmit} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Name</label>
+                <input
+                  type="text"
+                  required
+                  value={addDevForm.name}
+                  onChange={(e) => setAddDevForm((f) => ({ ...f, name: e.target.value }))}
+                  className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 text-sm"
+                  placeholder="Developer name"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+                <input
+                  type="email"
+                  required
+                  value={addDevForm.email}
+                  onChange={(e) => setAddDevForm((f) => ({ ...f, email: e.target.value }))}
+                  className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 text-sm"
+                  placeholder="developer@example.com"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
+                <input
+                  type="password"
+                  required
+                  minLength={8}
+                  value={addDevForm.password}
+                  onChange={(e) => setAddDevForm((f) => ({ ...f, password: e.target.value }))}
+                  className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 text-sm"
+                  placeholder="Min 8 characters"
+                />
+                <p className="mt-1 text-xs text-gray-500">At least 8 characters; use letters, numbers, and symbols for strength.</p>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Confirm password</label>
+                <input
+                  type="password"
+                  required
+                  value={addDevForm.confirmPassword}
+                  onChange={(e) => setAddDevForm((f) => ({ ...f, confirmPassword: e.target.value }))}
+                  className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 text-sm"
+                  placeholder="Repeat password"
+                />
+              </div>
+              <button
+                type="submit"
+                disabled={addDevSubmitting}
+                className="w-full px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 text-sm font-medium"
+              >
+                {addDevSubmitting ? 'Creating…' : 'Create developer account'}
+              </button>
+            </form>
           </div>
         )}
       </div>

@@ -46,6 +46,16 @@ async def get_me(
     company_name = ""
     if user.company:
         company_name = user.company.name
+
+    # If company has email verification disabled, report as verified so app does not redirect to verify-email
+    from app.services.company_service import get_company_settings
+    email_verified = user.email_verified
+    verification_required = user.verification_required
+    if user.company:
+        settings = get_company_settings(user.company)
+        if not settings.get("email_verification_required", True):
+            email_verified = True
+            verification_required = False
     
     return UserMeResponse(
         id=user.id,
@@ -55,8 +65,8 @@ async def get_me(
         role=user.role,
         status=user.status,
         company_name=company_name,
-        email_verified=user.email_verified,
-        verification_required=user.verification_required,
+        email_verified=email_verified,
+        verification_required=verification_required,
     )
 
 

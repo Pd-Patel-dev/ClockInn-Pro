@@ -21,7 +21,6 @@ export default function ShiftNotepadPage() {
   const [user, setUser] = useState<User | null>(null)
   const [note, setNote] = useState<ShiftNoteCurrent | null>(null)
   const [content, setContent] = useState('')
-  const [beverageSold, setBeverageSold] = useState<string>('') // '' or number string
   const [loading, setLoading] = useState(true)
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle')
   const [savedAt, setSavedAt] = useState<Date | null>(null)
@@ -29,7 +28,6 @@ export default function ShiftNotepadPage() {
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const lastSavedContentRef = useRef('')
-  const lastSavedBeverageRef = useRef<number | null>(null)
 
   const loadCurrent = useCallback(async () => {
     try {
@@ -37,9 +35,7 @@ export default function ShiftNotepadPage() {
       const data = res.data as ShiftNoteCurrent
       setNote(data)
       setContent(data.content ?? '')
-      setBeverageSold(data.beverage_sold != null ? String(data.beverage_sold) : '')
       lastSavedContentRef.current = data.content ?? ''
-      lastSavedBeverageRef.current = data.beverage_sold ?? null
     } catch (err: unknown) {
       const status = (err as { response?: { status: number; data?: { detail?: string } } })?.response?.status
       const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail
@@ -76,18 +72,12 @@ export default function ShiftNotepadPage() {
     init()
   }, [router, loadCurrent])
 
-  const saveContent = useCallback(async (value: string, beverageValue: string) => {
-    const bevNum = beverageValue === '' ? null : parseInt(beverageValue, 10)
-    const bevSafe = beverageValue === '' ? null : (Number.isNaN(bevNum) ? lastSavedBeverageRef.current : bevNum)
-    if (value === lastSavedContentRef.current && bevSafe === lastSavedBeverageRef.current) return
+  const saveContent = useCallback(async (value: string) => {
+    if (value === lastSavedContentRef.current) return
     setSaveStatus('saving')
     try {
-      await api.put('/shift-notes/current', {
-        content: value,
-        beverage_sold: bevSafe ?? undefined,
-      })
+      await api.put('/shift-notes/current', { content: value })
       lastSavedContentRef.current = value
-      lastSavedBeverageRef.current = bevSafe
       setSavedAt(new Date())
       setSaveStatus('saved')
     } catch {
@@ -99,13 +89,13 @@ export default function ShiftNotepadPage() {
     if (!note?.can_edit || saveStatus === 'saving') return
     if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current)
     saveTimeoutRef.current = setTimeout(() => {
-      saveContent(content, beverageSold)
+      saveContent(content)
       saveTimeoutRef.current = null
     }, DEBOUNCE_MS)
     return () => {
       if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current)
     }
-  }, [content, beverageSold, note?.can_edit, saveContent])
+  }, [content, note?.can_edit, saveContent])
 
   const insertTimestamp = () => {
     const ta = textareaRef.current
@@ -164,17 +154,6 @@ export default function ShiftNotepadPage() {
                     : 'Current shift'}
                 </span>
                 <div className="flex items-center gap-3">
-                  <label className="flex items-center gap-2 text-sm text-gray-700">
-                    <span>Beverages sold:</span>
-                    <input
-                      type="number"
-                      min={0}
-                      value={beverageSold}
-                      onChange={(e) => setBeverageSold(e.target.value)}
-                      disabled={!note.can_edit}
-                      className="w-20 rounded border border-gray-300 px-2 py-1 text-sm disabled:bg-gray-100 disabled:cursor-not-allowed"
-                    />
-                  </label>
                   <button
                     type="button"
                     onClick={insertTimestamp}

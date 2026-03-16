@@ -116,6 +116,33 @@ async def punch(
     employee_role_str = employee.role.value if hasattr(employee.role, 'value') else str(employee.role)
     cash_required = requires_cash_drawer(company_settings, employee_role_str)
     
+    # Geofence: require employee to be within office radius to punch
+    geofence_enabled = company_settings.get("geofence_enabled", False)
+    office_lat = company_settings.get("office_latitude")
+    office_lon = company_settings.get("office_longitude")
+    radius_m = company_settings.get("geofence_radius_meters", 100)
+    if geofence_enabled and office_lat is not None and office_lon is not None and radius_m is not None:
+        if not latitude or not longitude:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Location is required to punch in/out. Please enable location access and try again.",
+            )
+        try:
+            lat_f = float(latitude)
+            lon_f = float(longitude)
+        except (TypeError, ValueError):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid location. Please enable location and try again.",
+            )
+        from app.core.geo import haversine_distance_meters
+        distance_m = haversine_distance_meters(office_lat, office_lon, lat_f, lon_f)
+        if distance_m > radius_m:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You must be at the office to punch in/out. You are currently outside the allowed area.",
+            )
+    
     # Check for open entry
     result = await db.execute(
         select(TimeEntry).where(

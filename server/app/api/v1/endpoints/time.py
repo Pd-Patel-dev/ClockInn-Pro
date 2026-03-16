@@ -142,9 +142,9 @@ async def punch_endpoint(
             detail="Employee not found",
         )
     
-    # Check if employee's email is verified
-    from app.services.verification_service import check_verification_required
-    if check_verification_required(employee):
+    # Check if employee's email is verified (respects company email_verification_required)
+    from app.services.verification_service import check_verification_required_for_user
+    if await check_verification_required_for_user(db, employee):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail={
@@ -218,9 +218,9 @@ async def punch_by_pin_endpoint(
             detail="Invalid PIN",
         )
     
-    # Check if employee's email is verified
-    from app.services.verification_service import check_verification_required
-    if check_verification_required(matching_employee):
+    # Check if employee's email is verified (respects company email_verification_required)
+    from app.services.verification_service import check_verification_required_for_user
+    if await check_verification_required_for_user(db, matching_employee):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail={

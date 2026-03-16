@@ -1,5 +1,9 @@
+# Docs (do not push to GitHub)
+docs/
+
 # Dependencies
 node_modules/
+__pycache__/
 __pycache__/
 *.py[cod]
 *$py.class
