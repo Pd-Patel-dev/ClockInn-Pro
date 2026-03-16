@@ -1,4 +1,4 @@
-from typing import Dict
+from typing import Dict, List
 from uuid import UUID
 from decimal import Decimal
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -7,6 +7,7 @@ from sqlalchemy.orm import selectinload
 from fastapi import HTTPException, status
 
 from app.models.company import Company
+from app.models.user import User, UserRole
 from app.models.audit_log import AuditLog
 from app.schemas.company import CompanySettingsUpdate, CompanyNameUpdate
 import uuid
@@ -275,4 +276,17 @@ async def update_company_settings(
     logger.info(f"Company settings_json after commit (from fresh query): {fresh_company.settings_json}")
     
     return fresh_company
+
+
+async def get_company_admin_emails(db: AsyncSession, company_id: UUID) -> List[str]:
+    """Return list of admin email addresses for the company (for notifications)."""
+    result = await db.execute(
+        select(User.email).where(
+            User.company_id == company_id,
+            User.role == UserRole.ADMIN,
+            User.email.isnot(None),
+        )
+    )
+    rows = result.scalars().all()
+    return [r[0] for r in rows if r[0]]
 

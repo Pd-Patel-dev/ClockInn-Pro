@@ -981,6 +981,90 @@ ClockIn Pro"""
             logger.error(f"Unexpected error sending schedule notification: {e}")
             return False
 
+    async def send_punch_violation_warning(
+        self,
+        to_emails: List[str],
+        company_name: str,
+        violation_type: str,
+        employee_name: Optional[str] = None,
+        employee_email: Optional[str] = None,
+        ip_address: Optional[str] = None,
+        user_agent: Optional[str] = None,
+        latitude: Optional[str] = None,
+        longitude: Optional[str] = None,
+        distance_meters: Optional[float] = None,
+        allowed_radius_meters: Optional[int] = None,
+        attempted_at: Optional[str] = None,
+    ) -> bool:
+        """
+        Send a security warning to company admins when a punch attempt is blocked
+        (geofence: outside office area, or network: kiosk access from disallowed IP).
+
+        Args:
+            to_emails: Admin email addresses to notify.
+            company_name: Company name.
+            violation_type: "geofence" or "network".
+            employee_name, employee_email: User who attempted (optional for network).
+            ip_address, user_agent: Client IP and User-Agent.
+            latitude, longitude, distance_meters, allowed_radius_meters: For geofence.
+            attempted_at: Human-readable timestamp of the attempt.
+
+        Returns:
+            True if at least one email was sent, False otherwise.
+        """
+        if not to_emails:
+            return True
+        if not self._refresh_token_if_needed() or not self.service:
+            logger.warning("Gmail not configured or unavailable; skipping punch violation warning email.")
+            return False
+
+        def _safe(s: Optional[str], default: str = "N/A", max_len: int = 300) -> str:
+            if s is None:
+                return default
+            return (str(s).strip()[:max_len]) or default
+
+        if violation_type == "geofence":
+            subject = "ClockIn Pro — Punch blocked: attempt outside office area"
+            lines = [
+                "A clock-in/out attempt was blocked because the employee was outside the allowed office area.",
+                "",
+                f"Company: {_safe(company_name, 'Unknown')}",
+                f"Employee: {_safe(employee_name, 'Unknown')}",
+                f"Employee email: {_safe(employee_email)}",
+                f"Attempted at: {_safe(attempted_at)}",
+                f"Location: {_safe(latitude)}, {_safe(longitude)}",
+                (f"Distance from office: {distance_meters:.0f} m (allowed: {allowed_radius_meters} m)"
+                 if distance_meters is not None and allowed_radius_meters is not None else ""),
+                f"IP address: {_safe(ip_address)}",
+                f"User-Agent: {_safe(user_agent, max_len=200)}",
+            ]
+        else:
+            subject = "ClockIn Pro — Punch blocked: kiosk access from unauthorized network"
+            lines = [
+                "A kiosk access or punch attempt was blocked because the request came from a network that is not on the allowed list.",
+                "",
+                f"Company: {_safe(company_name, 'Unknown')}",
+                f"Employee: {_safe(employee_name)}",
+                f"Employee email: {_safe(employee_email)}",
+                f"Attempted at: {_safe(attempted_at)}",
+                f"IP address: {_safe(ip_address)}",
+                f"User-Agent: {_safe(user_agent, max_len=200)}",
+            ]
+        body = "\n".join(l for l in lines if l)
+
+        sent = False
+        for to_email in to_emails:
+            if not to_email or not to_email.strip():
+                continue
+            try:
+                message = self._create_message(to_email.strip(), subject, body, subtype="plain")
+                result = self.service.users().messages().send(userId="me", body=message).execute()
+                logger.info("Punch violation warning sent to %s (message id: %s)", to_email, result.get("id"))
+                sent = True
+            except Exception as e:
+                logger.warning("Failed to send punch violation warning to %s: %s", to_email, e)
+        return sent
+
 
 # Global email service instance
 email_service = EmailService()

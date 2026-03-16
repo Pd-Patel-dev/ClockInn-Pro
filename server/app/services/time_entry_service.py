@@ -138,6 +138,24 @@ async def punch(
         from app.core.geo import haversine_distance_meters
         distance_m = haversine_distance_meters(office_lat, office_lon, lat_f, lon_f)
         if distance_m > radius_m:
+            from app.services.company_service import get_company_admin_emails
+            from app.services.email_service import email_service
+            admin_emails = await get_company_admin_emails(db, company_id)
+            if admin_emails:
+                await email_service.send_punch_violation_warning(
+                    to_emails=admin_emails,
+                    company_name=company.name,
+                    violation_type="geofence",
+                    employee_name=employee.name,
+                    employee_email=employee.email,
+                    ip_address=ip_address,
+                    user_agent=user_agent,
+                    latitude=latitude,
+                    longitude=longitude,
+                    distance_meters=distance_m,
+                    allowed_radius_meters=radius_m,
+                    attempted_at=datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC"),
+                )
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="You must be at the office to punch in/out. You are currently outside the allowed area.",

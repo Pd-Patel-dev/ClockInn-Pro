@@ -12,6 +12,7 @@ interface CompanyInfo {
   cash_drawer_required_for_all?: boolean
   cash_drawer_required_roles?: string[]
   cash_drawer_starting_amount_cents?: number
+  geofence_enabled?: boolean
 }
 
 export default function KioskSlugPage() {
@@ -44,13 +45,17 @@ export default function KioskSlugPage() {
     clockInAt?: string
   } | null>(null)
   const [location, setLocation] = useState<{ latitude: string; longitude: string } | null>(null)
+  const [locationError, setLocationError] = useState<string | null>(null)
   const [locationLoading, setLocationLoading] = useState(false)
 
-  // Request location when page loads
+  // Request location when page loads (needed for geofence when punching)
   useEffect(() => {
     const getLocation = () => {
-      if (!navigator.geolocation) return
-      
+      if (!navigator.geolocation) {
+        setLocationError('Location not supported')
+        return
+      }
+      setLocationError(null)
       setLocationLoading(true)
       navigator.geolocation.getCurrentPosition(
         (position) => {
@@ -58,9 +63,11 @@ export default function KioskSlugPage() {
             latitude: position.coords.latitude.toString(),
             longitude: position.coords.longitude.toString(),
           })
+          setLocationError(null)
           setLocationLoading(false)
         },
         () => {
+          setLocationError('Could not get location')
           setLocationLoading(false)
         },
         { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 }
@@ -156,16 +163,18 @@ export default function KioskSlugPage() {
     setShowCashDialog(false)
     
     try {
-      // Try to get fresh location if not already available
+      // When geofence is on, location is required (same as in-site punching)
       let currentLocation = location
       if (!currentLocation) {
         currentLocation = await getCurrentLocation()
-        if (currentLocation) {
-          setLocation(currentLocation)
-        }
+        if (currentLocation) setLocation(currentLocation)
       }
-
-      console.log('Kiosk punching with location:', currentLocation)
+      if (companyInfo?.geofence_enabled && !currentLocation) {
+        setMessage('Location is required to punch at the office. Please enable location access and try again.')
+        setSuccess(false)
+        setLoading(false)
+        return
+      }
 
       const response = await api.post('/kiosk/clock', {
         company_slug: slug,
@@ -229,6 +238,18 @@ export default function KioskSlugPage() {
         setPinDisplay('')
         setPendingPunch(false)
         setShowCashDialog(false)
+      } else if (err.response?.status === 403 && (typeof errorDetail === 'string' && (errorDetail.includes('outside the allowed area') || errorDetail.includes('must be at the office')))) {
+        setMessage('You must be at the office to punch in/out. You are currently outside the allowed area.')
+        setSuccess(false)
+        setPinDisplay('')
+        setPendingPunch(false)
+        setShowCashDialog(false)
+      } else if (err.response?.status === 400 && typeof errorDetail === 'string' && errorDetail.includes('Location is required')) {
+        setMessage('Location is required to punch at the office. Please enable location access and try again.')
+        setSuccess(false)
+        setPinDisplay('')
+        setPendingPunch(false)
+        setShowCashDialog(false)
       } else {
         const errorMessage = typeof errorDetail === 'string' ? errorDetail : errorDetail?.message || 'Invalid PIN. Please try again.'
         
@@ -265,7 +286,7 @@ export default function KioskSlugPage() {
     } finally {
       setLoading(false)
     }
-  }, [slug, location, getCurrentLocation])
+  }, [slug, location, companyInfo?.geofence_enabled, getCurrentLocation])
 
   const checkPin = useCallback(async (pin: string) => {
     if (!slug || pin.length !== 4) {
@@ -571,6 +592,39 @@ export default function KioskSlugPage() {
         {/* Right Panel - White */}
         <div className="flex-1 bg-white flex flex-col justify-center items-center p-12">
           <div className="w-full max-w-md">
+            {/* Geofence: punch only at office */}
+            {companyInfo?.geofence_enabled && (
+              <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-4">
+                Punch in/out is only allowed when you are at the office.
+              </p>
+            )}
+            {/* Location status when geofence is on (needed for kiosk punching) */}
+            {companyInfo?.geofence_enabled && (
+              <div
+                className={`mb-4 rounded-lg p-3 border text-sm flex items-center justify-center gap-2 ${
+                  locationLoading
+                    ? 'bg-blue-50 border-blue-200 text-blue-700'
+                    : location
+                      ? 'bg-green-50 border-green-200 text-green-700'
+                      : locationError
+                        ? 'bg-red-50 border-red-200 text-red-700'
+                        : 'bg-gray-50 border-gray-200 text-gray-600'
+                }`}
+              >
+                {locationLoading ? (
+                  <>
+                    <span className="animate-spin inline-block w-4 h-4 border-2 border-current border-t-transparent rounded-full" />
+                    Getting location…
+                  </>
+                ) : location ? (
+                  <>Location ready</>
+                ) : locationError ? (
+                  <>Location unavailable – enable location to punch</>
+                ) : (
+                  <>Location required to punch</>
+                )}
+              </div>
+            )}
             {/* Greeting */}
             {employeeInfo ? (
               <>

@@ -31,14 +31,21 @@ class KioskCompanyInfoResponse(BaseModel):
     cash_drawer_required_for_all: bool = False
     cash_drawer_required_roles: list[str] = []
     cash_drawer_starting_amount_cents: int = 0
+    geofence_enabled: bool = False  # When True, kiosk must send location and be within office radius
 
 
 KIOSK_NETWORK_MESSAGE = "Kiosk is only available on the office network. Please connect to the office network and try again."
 
 
-def _check_kiosk_network(request: Request, company) -> None:
-    """Raise 403 if kiosk network restriction is enabled and client IP is not in allowlist."""
-    from app.services.company_service import get_company_settings
+async def _check_kiosk_network(
+    request: Request,
+    company,
+    db: AsyncSession,
+    employee: Optional[User] = None,
+) -> None:
+    """Raise 403 if kiosk network restriction is enabled and client IP is not in allowlist. Sends admin warning email on violation."""
+    from app.services.company_service import get_company_settings, get_company_admin_emails
+    from app.services.email_service import email_service
     settings = get_company_settings(company)
     if not settings.get("kiosk_network_restriction_enabled"):
         return
@@ -47,6 +54,19 @@ def _check_kiosk_network(request: Request, company) -> None:
         return
     client_ip = get_client_ip(request)
     if not is_ip_in_allowed_list(client_ip, allowed):
+        admin_emails = await get_company_admin_emails(db, company.id)
+        if admin_emails:
+            user_agent = request.headers.get("User-Agent")
+            await email_service.send_punch_violation_warning(
+                to_emails=admin_emails,
+                company_name=company.name,
+                violation_type="network",
+                employee_name=employee.name if employee else None,
+                employee_email=employee.email if employee else None,
+                ip_address=client_ip,
+                user_agent=user_agent,
+                attempted_at=datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC"),
+            )
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail=KIOSK_NETWORK_MESSAGE,
@@ -86,9 +106,10 @@ async def get_kiosk_company_info(
             cash_drawer_required_for_all=settings.get("cash_drawer_required_for_all", False),
             cash_drawer_required_roles=settings.get("cash_drawer_required_roles", []),
             cash_drawer_starting_amount_cents=settings.get("cash_drawer_starting_amount_cents", 0),
+            geofence_enabled=False,
         )
     
-    _check_kiosk_network(request, company)
+    await _check_kiosk_network(request, company, db)
     
     # Get company settings for cash drawer
     from app.services.company_service import get_company_settings
@@ -102,6 +123,7 @@ async def get_kiosk_company_info(
         cash_drawer_required_for_all=settings.get("cash_drawer_required_for_all", False),
         cash_drawer_required_roles=settings.get("cash_drawer_required_roles", []),
         cash_drawer_starting_amount_cents=settings.get("cash_drawer_starting_amount_cents", 0),
+        geofence_enabled=settings.get("geofence_enabled", False),
     )
 
 
@@ -147,7 +169,7 @@ async def check_kiosk_pin(
     if not company.kiosk_enabled:
         return KioskPinCheckResponse(valid=False)
     
-    _check_kiosk_network(request, company)
+    await _check_kiosk_network(request, company, db)
     
     # Find active employees with PINs in this company (any role except ADMIN/DEVELOPER)
     result = await db.execute(
@@ -265,8 +287,6 @@ async def kiosk_clock(
             detail="Kiosk is disabled for this company",
         )
     
-    _check_kiosk_network(request, company)
-    
     # Find active employees with PINs in this company (any role except ADMIN/DEVELOPER)
     result = await db.execute(
         select(User).where(
@@ -282,9 +302,9 @@ async def kiosk_clock(
     
     # Find employee by verifying PIN (only within this company)
     matching_employee = None
-    for employee in employees:
-        if employee.pin_hash and verify_pin(data.pin, employee.pin_hash):
-            matching_employee = employee
+    for emp in employees:
+        if emp.pin_hash and verify_pin(data.pin, emp.pin_hash):
+            matching_employee = emp
             break
     
     if not matching_employee:
@@ -292,6 +312,9 @@ async def kiosk_clock(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid PIN",
         )
+    
+    # Check kiosk network after we know who is punching — so we can include employee in the warning email
+    await _check_kiosk_network(request, company, db, employee=matching_employee)
     
     # Check if employee's email is verified (respects company email_verification_required)
     from app.services.verification_service import check_verification_required_for_user
