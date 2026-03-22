@@ -1,11 +1,12 @@
 from fastapi import APIRouter, Body, Depends, HTTPException, Request, Response, status, Query
 from sqlalchemy.ext.asyncio import AsyncSession
+import logging
 import uuid
 
 from app.core.config import settings
 from app.core.database import get_db
 from app.core.dependencies import get_current_user
-from app.core.error_handling import handle_endpoint_errors
+from app.core.error_handling import handle_endpoint_errors, client_error_detail
 from app.schemas.auth import (
     RegisterCompanyRequest,
     LoginRequest,
@@ -23,6 +24,8 @@ from app.models.user import User
 from app.services.password_reset_service import send_password_reset_otp, verify_otp_and_reset_password
 from app.core.security import normalize_email
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter()
 
 # Cookie settings for refresh token (HttpOnly, Secure, SameSite to prevent XSS access)
@@ -30,22 +33,32 @@ def _refresh_cookie_max_age() -> int:
     return settings.REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60 * 60
 
 
+def _refresh_cookie_scope_kwargs() -> dict:
+    """Path/secure/httponly/samesite/domain must match on set and delete or browsers may not clear the cookie."""
+    kw: dict = {
+        "path": "/",
+        "secure": settings.COOKIE_SECURE,
+        "httponly": True,
+        "samesite": settings.COOKIE_SAMESITE.lower(),
+    }
+    if settings.COOKIE_DOMAIN:
+        kw["domain"] = settings.COOKIE_DOMAIN
+    return kw
+
+
 def _set_refresh_cookie(response: Response, refresh_token: str) -> None:
     response.set_cookie(
         key=settings.REFRESH_TOKEN_COOKIE_NAME,
         value=refresh_token,
         max_age=_refresh_cookie_max_age(),
-        secure=settings.COOKIE_SECURE,
-        httponly=True,
-        samesite=settings.COOKIE_SAMESITE.lower(),
-        path="/",
+        **_refresh_cookie_scope_kwargs(),
     )
 
 
 def _clear_refresh_cookie(response: Response) -> None:
     response.delete_cookie(
         key=settings.REFRESH_TOKEN_COOKIE_NAME,
-        path="/",
+        **_refresh_cookie_scope_kwargs(),
     )
 
 
@@ -363,11 +376,12 @@ async def set_password_endpoint(
         return {"message": "Password set successfully. You can now log in."}
     except Exception as e:
         await db.rollback()
-        import os
-        is_production = os.getenv("ENVIRONMENT", "").lower() in ["prod", "production"]
-        detail = "Failed to set password. Please try again." if is_production else f"Failed to set password: {str(e)}"
+        logger.error("set_password commit failed: %s", e, exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=detail,
+            detail=client_error_detail(
+                dev_detail=f"Failed to set password: {str(e)}",
+                prod_detail="Failed to set password. Please try again.",
+            ),
         )
 

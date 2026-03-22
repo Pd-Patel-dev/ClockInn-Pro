@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Request, status
+from fastapi import FastAPI, Request, status, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
@@ -7,9 +7,11 @@ import time
 import logging
 
 from app.core.config import settings
+from app.core.environment import is_production_environment
 from app.core.database import engine, Base
 from app.api.v1.router import api_router
 from app.core.logging_config import setup_logging
+from app.middleware.rate_limit import RateLimitMiddleware
 
 # Setup logging
 setup_logging()
@@ -60,10 +62,26 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning("Could not check email service: %s", e)
     
+    try:
+        from app.core.config import settings as _settings
+
+        if _settings.REDIS_URL:
+            logger.info("Login lockout: Redis backend (REDIS_URL is set).")
+        else:
+            logger.info("Login lockout: in-memory — set REDIS_URL for shared lockout across API replicas.")
+    except Exception:
+        pass
+
     logger.info("ClockInn API server started successfully")
     yield
     # Shutdown
     logger.info("Shutting down ClockInn API server...")
+    try:
+        from app.core.login_attempts import close_login_attempts_redis
+
+        await close_login_attempts_redis()
+    except Exception as e:
+        logger.warning("login_attempts Redis shutdown: %s", e)
 
 
 app = FastAPI(
@@ -114,10 +132,9 @@ async def log_requests(request: Request, call_next):
 # Security headers (add before CORS so they apply to all responses)
 @app.middleware("http")
 async def add_security_headers(request: Request, call_next):
-    import os
     from fastapi.responses import RedirectResponse
 
-    is_production = os.getenv("ENVIRONMENT", "").lower() in ["prod", "production"]
+    is_production = is_production_environment()
     forwarded_proto = request.headers.get("x-forwarded-proto", "").strip().lower()
 
     # HTTPS redirect in production when request came over HTTP (proxy should do this; app fallback)
@@ -141,7 +158,7 @@ async def add_security_headers(request: Request, call_next):
 
     return response
 
-# CORS
+# CORS: explicit origins only (* rejected in config). In production, https:// required except localhost/127.0.0.1.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.CORS_ORIGINS,
@@ -149,6 +166,10 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Global rate limit by IP (outermost after CORS = runs first on incoming request).
+# Stricter limits apply to /api/v1/auth/* and /api/v1/kiosk/* (see settings).
+app.add_middleware(RateLimitMiddleware)
 
 # Custom exception handler for validation errors
 @app.exception_handler(RequestValidationError)
@@ -184,6 +205,32 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
         }
     )
 
+
+@app.exception_handler(Exception)
+async def global_unhandled_exception_handler(request: Request, exc: Exception):
+    """
+    Catch any exception not converted to HTTPException (e.g. missing @handle_endpoint_errors).
+    Never return stack traces or raw exception text in production.
+    """
+    if isinstance(exc, HTTPException):
+        hdrs = getattr(exc, "headers", None) or {}
+        return JSONResponse(
+            status_code=exc.status_code,
+            content={"detail": exc.detail},
+            headers=dict(hdrs),
+        )
+    logger.exception("Unhandled exception: %s %s", request.method, request.url.path)
+    if is_production_environment():
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content={"detail": "An unexpected error occurred. Please try again later."},
+        )
+    return JSONResponse(
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        content={"detail": f"{type(exc).__name__}: {exc!s}"},
+    )
+
+
 # Include routers
 app.include_router(api_router, prefix="/api/v1")
 
@@ -194,7 +241,7 @@ if __name__ == "__main__":
     from pathlib import Path
     
     # Enable reload in development mode (default to True if not in production)
-    reload = os.getenv("ENVIRONMENT", "").lower() not in ["prod", "production"] or os.getenv("RELOAD", "").lower() == "true"
+    reload = not is_production_environment() or os.getenv("RELOAD", "").lower() == "true"
     
     if reload:
         script_dir = Path(__file__).parent.absolute()

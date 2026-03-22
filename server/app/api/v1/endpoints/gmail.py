@@ -10,7 +10,7 @@ from app.core.dependencies import get_current_developer
 from app.models.user import User
 from app.services.email_service import email_service
 from app.core.config import settings
-from app.core.error_handling import handle_endpoint_errors
+from app.core.error_handling import handle_endpoint_errors, client_error_detail
 
 logger = logging.getLogger(__name__)
 
@@ -168,10 +168,13 @@ async def get_gmail_oauth_url(
         )
         
     except Exception as e:
-        logger.error(f"Failed to generate OAuth URL: {e}")
+        logger.error("Failed to generate OAuth URL: %s", e, exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to generate OAuth URL: {str(e)}",
+            detail=client_error_detail(
+                dev_detail=f"Failed to generate OAuth URL: {str(e)}",
+                prod_detail="Failed to generate OAuth URL. Check server logs.",
+            ),
         )
 
 
@@ -235,19 +238,25 @@ async def update_gmail_token(
                 detail="Invalid JSON format. Please provide valid token JSON from Google OAuth 2.0 Playground or OAuth callback.",
             )
         except Exception as e:
-            logger.error(f"Failed to update Gmail token: {e}")
+            logger.error("Failed to update Gmail token: %s", e, exc_info=True)
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Failed to update token: {str(e)}. Please ensure the token JSON is valid.",
+                detail=client_error_detail(
+                    dev_detail=f"Failed to update token: {str(e)}. Please ensure the token JSON is valid.",
+                    prod_detail="Failed to update token. Please ensure the token JSON is valid.",
+                ),
             )
             
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Unexpected error updating Gmail token: {e}")
+        logger.error("Unexpected error updating Gmail token: %s", e, exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Unexpected error: {str(e)}",
+            detail=client_error_detail(
+                dev_detail=f"Unexpected error: {str(e)}",
+                prod_detail="An error occurred while updating the token.",
+            ),
         )
 
 
@@ -295,9 +304,12 @@ async def test_gmail_send(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error sending test email: {e}")
+        logger.error("Error sending test email: %s", e, exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error sending test email: {str(e)}",
+            detail=client_error_detail(
+                dev_detail=f"Error sending test email: {str(e)}",
+                prod_detail="Error sending test email. Check server logs.",
+            ),
         )
 

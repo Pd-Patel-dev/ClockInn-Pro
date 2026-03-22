@@ -375,10 +375,10 @@ export default function EmployeeDetailPage() {
         {/* Header */}
         <div className="mb-6">
           <BackButton fallbackHref="/employees" className="text-sm text-blue-600 hover:text-blue-700 mb-4">
-            ← Back
+            Back
           </BackButton>
-          <h1 className="text-2xl font-semibold text-gray-900 mb-1">Employee Details</h1>
-          <p className="text-sm text-gray-600">View and manage employee information and time entries</p>
+          <h1 className="text-2xl font-semibold text-slate-900 mb-1">Employee Details</h1>
+          <p className="text-sm text-slate-600">View and manage employee information and time entries</p>
         </div>
 
         {error && (
@@ -389,20 +389,20 @@ export default function EmployeeDetailPage() {
 
         {/* Employee Info Card */}
         {employee && (
-          <div className="bg-white rounded-lg border border-gray-200 p-6 mb-6">
+          <div className="bg-white rounded-lg border border-slate-200 p-6 mb-6">
             <div className="flex items-start justify-between">
               <div className="flex items-center">
                 <div className="flex-shrink-0 h-16 w-16 rounded-full bg-blue-100 flex items-center justify-center text-blue-700 font-semibold text-xl">
                   {employee.name.charAt(0).toUpperCase()}
                 </div>
                 <div className="ml-4">
-                  <h2 className="text-xl font-semibold text-gray-900">{employee.name}</h2>
-                  <p className="text-sm text-gray-600">{employee.email}</p>
+                  <h2 className="text-xl font-semibold text-slate-900">{employee.name}</h2>
+                  <p className="text-sm text-slate-600">{employee.email}</p>
                   <div className="mt-2 flex items-center gap-4 text-sm">
                     <span className={`px-2 py-1 rounded-full text-xs font-semibold ${
                       employee.status === 'active'
                         ? 'bg-green-100 text-green-800'
-                        : 'bg-gray-100 text-gray-800'
+                        : 'bg-slate-100 text-slate-800'
                     }`}>
                       {employee.status ? employee.status.charAt(0).toUpperCase() + employee.status.slice(1).toLowerCase() : employee.status}
                     </span>
@@ -425,14 +425,14 @@ export default function EmployeeDetailPage() {
             </div>
             <div className="mt-6 grid grid-cols-1 md:grid-cols-3 gap-4">
               <div>
-                <p className="text-sm text-gray-600">Pay Rate</p>
-                <p className="text-sm font-medium text-gray-900">
+                <p className="text-sm text-slate-600">Pay Rate</p>
+                <p className="text-sm font-medium text-slate-900">
                   {employee.pay_rate ? `$${employee.pay_rate.toFixed(2)}/hr` : 'N/A'}
                 </p>
               </div>
               <div>
-                <p className="text-sm text-gray-600">Last Punch</p>
-                <p className="text-sm font-medium text-gray-900">
+                <p className="text-sm text-slate-600">Last Punch</p>
+                <p className="text-sm font-medium text-slate-900">
                   {employee.last_punch_at
                     ? format(new Date(employee.last_punch_at), 'MMM dd, yyyy HH:mm')
                     : 'Never'}
@@ -445,16 +445,16 @@ export default function EmployeeDetailPage() {
         {/* Edit Employee Modal */}
         {showEditEmployee && employee && (
           <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center p-4">
-            <div className="relative bg-white rounded-xl shadow-2xl w-full max-w-2xl m-4">
+            <div className="relative bg-white rounded-xl shadow-xl w-full max-w-2xl m-4">
               {/* Header */}
-              <div className="flex justify-between items-center px-8 py-6 border-b border-gray-200">
+              <div className="flex justify-between items-center px-8 py-6 border-b border-slate-200">
                 <div>
-                  <h3 className="text-2xl font-bold text-gray-900">Edit Employee</h3>
-                  <p className="text-sm text-gray-500 mt-1">Update employee information below</p>
+                  <h3 className="text-2xl font-bold text-slate-900">Edit Employee</h3>
+                  <p className="text-sm text-slate-500 mt-1">Update employee information below</p>
                 </div>
                 <button
                   onClick={closeEditEmployeeForm}
-                  className="text-gray-400 hover:text-gray-600 text-3xl leading-none transition-colors"
+                  className="text-slate-400 hover:text-slate-600 text-3xl leading-none transition-colors"
                   disabled={updating}
                   aria-label="Close"
                 >
@@ -466,7 +466,7 @@ export default function EmployeeDetailPage() {
               <form onSubmit={editEmployeeForm.handleSubmit(onSubmitEditEmployee)} className="p-8">
                 {/* Basic Information Section */}
                 <div className="mb-8">
-                  <h4 className="text-lg font-semibold text-gray-900 mb-4 pb-2 border-b border-gray-200">
+                  <h4 className="text-lg font-semibold text-slate-900 mb-4 pb-2 border-b border-slate-200">
                     Basic Information
                   </h4>
                   <div className="space-y-5">
@@ -479,7 +479,7 @@ export default function EmployeeDetailPage() {
                         type="email"
                         value={employee.email}
                         disabled
-                        className="bg-gray-100 text-gray-500 cursor-not-allowed"
+                        className="bg-slate-100 text-slate-500 cursor-not-allowed"
                       />
                     </FormField>
                     
@@ -503,7 +503,7 @@ export default function EmployeeDetailPage() {
 
                 {/* Additional Details Section */}
                 <div className="mb-8">
-                  <h4 className="text-lg font-semibold text-gray-900 mb-4 pb-2 border-b border-gray-200">
+                  <h4 className="text-lg font-semibold text-slate-900 mb-4 pb-2 border-b border-slate-200">
                     Additional Details
                   </h4>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -528,11 +528,11 @@ export default function EmployeeDetailPage() {
                 </div>
 
                 {/* Action Buttons */}
-                <div className="flex gap-4 pt-6 mt-8 border-t border-gray-200">
+                <div className="flex gap-4 pt-6 mt-8 border-t border-slate-200">
                   <button
                     type="submit"
                     disabled={updating}
-                    className="flex-1 px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-semibold text-sm shadow-md hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:shadow-md flex items-center justify-center gap-2"
+                    className="flex-1 px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-semibold text-sm shadow-sm hover:shadow-sm transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:shadow-sm flex items-center justify-center gap-2"
                   >
                     {updating && <ButtonSpinner />}
                     {updating ? 'Saving...' : 'Save Changes'}
@@ -541,7 +541,7 @@ export default function EmployeeDetailPage() {
                     type="button"
                     onClick={closeEditEmployeeForm}
                     disabled={updating}
-                    className="px-6 py-3 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 font-semibold text-sm transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="px-6 py-3 bg-slate-100 text-slate-700 rounded-lg hover:bg-slate-200 font-semibold text-sm transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     Cancel
                   </button>
@@ -556,10 +556,10 @@ export default function EmployeeDetailPage() {
           <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center">
             <div className="relative bg-white rounded-lg shadow-xl p-6 w-full max-w-2xl m-4">
               <div className="flex justify-between items-center mb-4">
-                <h3 className="text-xl font-semibold text-gray-900">Add Manual Time Entry</h3>
+                <h3 className="text-xl font-semibold text-slate-900">Add Manual Time Entry</h3>
                 <button
                   onClick={closeManualForm}
-                  className="text-gray-400 hover:text-gray-600 text-2xl"
+                  className="text-slate-400 hover:text-slate-600 text-2xl"
                 >
                   ×
                 </button>
@@ -567,61 +567,61 @@ export default function EmployeeDetailPage() {
               <form onSubmit={manualForm.handleSubmit(onSubmitManual)} className="space-y-4">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Clock In Date</label>
+                    <label className="block text-sm font-medium text-slate-700 mb-2">Clock In Date</label>
                     <input
                       type="date"
                       {...manualForm.register('clock_in_at')}
-                      className="block w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                      className="block w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
                     />
                     {manualForm.formState.errors.clock_in_at && (
                       <p className="mt-1 text-sm text-red-600">{manualForm.formState.errors.clock_in_at.message}</p>
                     )}
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Clock In Time</label>
+                    <label className="block text-sm font-medium text-slate-700 mb-2">Clock In Time</label>
                     <input
                       type="time"
                       {...manualForm.register('clock_in_time')}
-                      className="block w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                      className="block w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
                     />
                     {manualForm.formState.errors.clock_in_time && (
                       <p className="mt-1 text-sm text-red-600">{manualForm.formState.errors.clock_in_time.message}</p>
                     )}
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Clock Out Date (Optional)</label>
+                    <label className="block text-sm font-medium text-slate-700 mb-2">Clock Out Date (Optional)</label>
                     <input
                       type="date"
                       {...manualForm.register('clock_out_at')}
-                      className="block w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                      className="block w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Clock Out Time (Optional)</label>
+                    <label className="block text-sm font-medium text-slate-700 mb-2">Clock Out Time (Optional)</label>
                     <input
                       type="time"
                       {...manualForm.register('clock_out_time')}
-                      className="block w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                      className="block w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Break Minutes</label>
+                    <label className="block text-sm font-medium text-slate-700 mb-2">Break Minutes</label>
                     <input
                       type="number"
                       {...manualForm.register('break_minutes')}
-                      className="block w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                      className="block w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Note (Optional)</label>
+                    <label className="block text-sm font-medium text-slate-700 mb-2">Note (Optional)</label>
                     <input
                       type="text"
                       {...manualForm.register('note')}
-                      className="block w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                      className="block w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
                     />
                   </div>
                 </div>
-                <div className="flex gap-3 pt-4 border-t border-gray-200">
+                <div className="flex gap-3 pt-4 border-t border-slate-200">
                   <button
                     type="submit"
                     className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium"
@@ -631,7 +631,7 @@ export default function EmployeeDetailPage() {
                   <button
                     type="button"
                     onClick={closeManualForm}
-                    className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 font-medium"
+                    className="px-4 py-2 bg-slate-200 text-slate-700 rounded-lg hover:bg-slate-300 font-medium"
                   >
                     Cancel
                   </button>
@@ -644,16 +644,16 @@ export default function EmployeeDetailPage() {
         {/* Edit Entry Modal */}
         {editingEntry && (
           <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center p-4">
-            <div className="relative bg-white rounded-xl shadow-2xl w-full max-w-3xl m-4">
+            <div className="relative bg-white rounded-xl shadow-xl w-full max-w-3xl m-4">
               {/* Header */}
-              <div className="flex justify-between items-center px-8 py-6 border-b border-gray-200">
+              <div className="flex justify-between items-center px-8 py-6 border-b border-slate-200">
                 <div>
-                  <h3 className="text-2xl font-bold text-gray-900">Edit Time Entry</h3>
-                  <p className="text-sm text-gray-500 mt-1">Update the time entry details below</p>
+                  <h3 className="text-2xl font-bold text-slate-900">Edit Time Entry</h3>
+                  <p className="text-sm text-slate-500 mt-1">Update the time entry details below</p>
                 </div>
                 <button
                   onClick={closeEditForm}
-                  className="text-gray-400 hover:text-gray-600 text-3xl leading-none transition-colors"
+                  className="text-slate-400 hover:text-slate-600 text-3xl leading-none transition-colors"
                   disabled={deletingEntry}
                   aria-label="Close"
                 >
@@ -665,29 +665,29 @@ export default function EmployeeDetailPage() {
               <form onSubmit={editForm.handleSubmit(onSubmitEdit)} className="p-8">
                 {/* Clock In Section */}
                 <div className="mb-8">
-                  <h4 className="text-lg font-semibold text-gray-900 mb-4 pb-2 border-b border-gray-200">
+                  <h4 className="text-lg font-semibold text-slate-900 mb-4 pb-2 border-b border-slate-200">
                     Clock In
                   </h4>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div>
-                      <label className="block text-sm font-semibold text-gray-700 mb-3">
+                      <label className="block text-sm font-semibold text-slate-700 mb-3">
                         Date <span className="text-red-500">*</span>
                       </label>
                       <input
                         type="date"
                         {...editForm.register('clock_in_at')}
-                        className="block w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm transition-all shadow-sm hover:border-gray-400"
+                        className="block w-full px-4 py-3 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm transition-all shadow-sm hover:border-slate-400"
                         disabled={deletingEntry}
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-semibold text-gray-700 mb-3">
+                      <label className="block text-sm font-semibold text-slate-700 mb-3">
                         Time <span className="text-red-500">*</span>
                       </label>
                       <input
                         type="time"
                         {...editForm.register('clock_in_time')}
-                        className="block w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm transition-all shadow-sm hover:border-gray-400"
+                        className="block w-full px-4 py-3 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm transition-all shadow-sm hover:border-slate-400"
                         disabled={deletingEntry}
                       />
                     </div>
@@ -696,29 +696,29 @@ export default function EmployeeDetailPage() {
 
                 {/* Clock Out Section */}
                 <div className="mb-8">
-                  <h4 className="text-lg font-semibold text-gray-900 mb-4 pb-2 border-b border-gray-200">
+                  <h4 className="text-lg font-semibold text-slate-900 mb-4 pb-2 border-b border-slate-200">
                     Clock Out
                   </h4>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div>
-                      <label className="block text-sm font-semibold text-gray-700 mb-3">
-                        Date <span className="text-gray-400 text-xs font-normal">(Optional)</span>
+                      <label className="block text-sm font-semibold text-slate-700 mb-3">
+                        Date <span className="text-slate-400 text-xs font-normal">(Optional)</span>
                       </label>
                       <input
                         type="date"
                         {...editForm.register('clock_out_at')}
-                        className="block w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm transition-all shadow-sm hover:border-gray-400"
+                        className="block w-full px-4 py-3 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm transition-all shadow-sm hover:border-slate-400"
                         disabled={deletingEntry}
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-semibold text-gray-700 mb-3">
-                        Time <span className="text-gray-400 text-xs font-normal">(Optional)</span>
+                      <label className="block text-sm font-semibold text-slate-700 mb-3">
+                        Time <span className="text-slate-400 text-xs font-normal">(Optional)</span>
                       </label>
                       <input
                         type="time"
                         {...editForm.register('clock_out_time')}
-                        className="block w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm transition-all shadow-sm hover:border-gray-400"
+                        className="block w-full px-4 py-3 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm transition-all shadow-sm hover:border-slate-400"
                         disabled={deletingEntry}
                       />
                     </div>
@@ -727,32 +727,32 @@ export default function EmployeeDetailPage() {
 
                 {/* Additional Information Section */}
                 <div className="mb-8">
-                  <h4 className="text-lg font-semibold text-gray-900 mb-4 pb-2 border-b border-gray-200">
+                  <h4 className="text-lg font-semibold text-slate-900 mb-4 pb-2 border-b border-slate-200">
                     Additional Information
                   </h4>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div>
-                      <label className="block text-sm font-semibold text-gray-700 mb-3">
+                      <label className="block text-sm font-semibold text-slate-700 mb-3">
                         Break Minutes
                       </label>
                       <input
                         type="number"
                         {...editForm.register('break_minutes')}
                         min="0"
-                        className="block w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm transition-all shadow-sm hover:border-gray-400"
+                        className="block w-full px-4 py-3 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm transition-all shadow-sm hover:border-slate-400"
                         disabled={deletingEntry}
                       />
-                      <p className="mt-2 text-xs text-gray-500">Total break time in minutes</p>
+                      <p className="mt-2 text-xs text-slate-500">Total break time in minutes</p>
                     </div>
                     <div className="md:col-span-2">
-                      <label className="block text-sm font-semibold text-gray-700 mb-3">
+                      <label className="block text-sm font-semibold text-slate-700 mb-3">
                         Edit Reason <span className="text-red-500">*</span>
                       </label>
                       <input
                         type="text"
                         {...editForm.register('edit_reason')}
                         placeholder="Enter reason for editing this time entry"
-                        className="block w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm transition-all shadow-sm hover:border-gray-400"
+                        className="block w-full px-4 py-3 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm transition-all shadow-sm hover:border-slate-400"
                         disabled={deletingEntry}
                       />
                       {editForm.formState.errors.edit_reason && (
@@ -760,17 +760,17 @@ export default function EmployeeDetailPage() {
                           {editForm.formState.errors.edit_reason.message}
                         </p>
                       )}
-                      <p className="mt-2 text-xs text-gray-500">Please provide a reason for making changes to this entry</p>
+                      <p className="mt-2 text-xs text-slate-500">Please provide a reason for making changes to this entry</p>
                     </div>
                   </div>
                 </div>
 
                 {/* Action Buttons */}
-                <div className="flex gap-4 pt-6 mt-8 border-t border-gray-200">
+                <div className="flex gap-4 pt-6 mt-8 border-t border-slate-200">
                   <button
                     type="submit"
                     disabled={deletingEntry}
-                    className="flex-1 px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-semibold text-sm shadow-md hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:shadow-md"
+                    className="flex-1 px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-semibold text-sm shadow-sm hover:shadow-sm transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:shadow-sm"
                   >
                     Save Changes
                   </button>
@@ -778,7 +778,7 @@ export default function EmployeeDetailPage() {
                     type="button"
                     onClick={handleDeleteEntry}
                     disabled={deletingEntry}
-                    className="px-6 py-3 bg-red-600 text-white rounded-lg hover:bg-red-700 font-semibold text-sm shadow-md hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:shadow-md"
+                    className="px-6 py-3 bg-red-600 text-white rounded-lg hover:bg-red-700 font-semibold text-sm shadow-sm hover:shadow-sm transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:shadow-sm"
                   >
                     {deletingEntry ? 'Deleting...' : 'Delete'}
                   </button>
@@ -786,7 +786,7 @@ export default function EmployeeDetailPage() {
                     type="button"
                     onClick={closeEditForm}
                     disabled={deletingEntry}
-                    className="px-6 py-3 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 font-semibold text-sm transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="px-6 py-3 bg-slate-100 text-slate-700 rounded-lg hover:bg-slate-200 font-semibold text-sm transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     Cancel
                   </button>
@@ -797,9 +797,9 @@ export default function EmployeeDetailPage() {
         )}
 
         {/* Time Entries Section */}
-        <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-          <div className="p-5 border-b border-gray-200 flex justify-between items-center">
-            <h2 className="text-xl font-semibold text-gray-900">Time Entries</h2>
+        <div className="bg-white rounded-lg border border-slate-200 overflow-hidden">
+          <div className="p-5 border-b border-slate-200 flex justify-between items-center">
+            <h2 className="text-xl font-semibold text-slate-900">Time Entries</h2>
             {!showManualForm && !editingEntry && (
               <button
                 onClick={() => setShowManualForm(true)}
@@ -813,58 +813,58 @@ export default function EmployeeDetailPage() {
           {loadingEntries ? (
             <div className="p-12 text-center">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
-              <p className="mt-4 text-sm text-gray-600">Loading entries...</p>
+              <p className="mt-4 text-sm text-slate-600">Loading entries...</p>
             </div>
           ) : (
             <>
               <div className="overflow-x-auto">
-                <table className="min-w-full divide-y divide-gray-200">
-                  <thead className="bg-gray-50">
+                <table className="min-w-full divide-y divide-slate-200">
+                  <thead className="bg-slate-50">
                     <tr>
-                      <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                      <th className="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">
                         Date
                       </th>
-                      <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                      <th className="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">
                         Clock In
                       </th>
-                      <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                      <th className="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">
                         Clock Out
                       </th>
-                      <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                      <th className="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">
                         Hours
                       </th>
-                      <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                      <th className="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">
                         Break
                       </th>
-                      <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                      <th className="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">
                         Status
                       </th>
-                      <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                      <th className="px-6 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">
                         Actions
                       </th>
                     </tr>
                   </thead>
-                  <tbody className="bg-white divide-y divide-gray-200">
+                  <tbody className="bg-white divide-y divide-slate-200">
                     {entries.length === 0 ? (
                       <tr>
                         <td colSpan={7} className="px-6 py-12 text-center">
-                          <p className="text-gray-500">No time entries found</p>
+                          <p className="text-slate-500">No time entries found</p>
                         </td>
                       </tr>
                     ) : (
                       entries.map((entry) => (
-                        <tr key={entry.id} className="hover:bg-gray-50 transition-colors">
-                          <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                        <tr key={entry.id} className="hover:bg-slate-50 transition-colors">
+                          <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-slate-900">
                             {entry.clock_in_at_local
                               ? entry.clock_in_at_local.split(' ')[0]
                               : format(new Date(entry.clock_in_at), 'MMM dd, yyyy')}
                           </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-700">
                             {entry.clock_in_at_local
                               ? entry.clock_in_at_local.split(' ')[1]?.substring(0, 5)
                               : format(new Date(entry.clock_in_at), 'HH:mm')}
                           </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-700">
                             {entry.clock_out_at_local ? (
                               entry.clock_out_at_local.split(' ')[1]?.substring(0, 5)
                             ) : entry.clock_out_at ? (
@@ -873,17 +873,17 @@ export default function EmployeeDetailPage() {
                               <span className="px-2 py-1 bg-yellow-100 text-yellow-800 rounded-full text-xs font-semibold">Open</span>
                             )}
                           </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm font-semibold text-gray-900">
+                          <td className="px-6 py-4 whitespace-nowrap text-sm font-semibold text-slate-900">
                             {calculateHours(entry)} hrs
                           </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-700">
                             {entry.break_minutes} min
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm">
                             <span className={`px-2 py-1 rounded-full text-xs font-semibold ${
                               entry.status === 'closed' ? 'bg-green-100 text-green-800' :
                               entry.status === 'open' ? 'bg-yellow-100 text-yellow-800' :
-                              'bg-gray-100 text-gray-800'
+                              'bg-slate-100 text-slate-800'
                             }`}>
                               {entry.status ? entry.status.charAt(0).toUpperCase() + entry.status.slice(1).toLowerCase() : entry.status}
                             </span>
@@ -905,9 +905,9 @@ export default function EmployeeDetailPage() {
 
               {/* Pagination */}
               {total > 0 && (
-                <div className="p-4 border-t border-gray-200">
+                <div className="p-4 border-t border-slate-200">
                   <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
-                    <div className="text-sm text-gray-700">
+                    <div className="text-sm text-slate-700">
                       Showing <span className="font-medium">{startEntry}</span> to <span className="font-medium">{endEntry}</span> of{' '}
                       <span className="font-medium">{total}</span> entries
                     </div>
@@ -915,17 +915,17 @@ export default function EmployeeDetailPage() {
                       <button
                         onClick={() => setCurrentPage(currentPage - 1)}
                         disabled={currentPage === 1}
-                        className="px-3 py-1 border border-gray-300 rounded text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                        className="px-3 py-1 border border-slate-300 rounded text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         Previous
                       </button>
-                      <span className="px-3 py-1 text-sm text-gray-700">
+                      <span className="px-3 py-1 text-sm text-slate-700">
                         Page {currentPage} of {totalPages}
                       </span>
                       <button
                         onClick={() => setCurrentPage(currentPage + 1)}
                         disabled={currentPage === totalPages}
-                        className="px-3 py-1 border border-gray-300 rounded text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                        className="px-3 py-1 border border-slate-300 rounded text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         Next
                       </button>

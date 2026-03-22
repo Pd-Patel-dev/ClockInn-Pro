@@ -24,11 +24,17 @@ interface EmployeeRowProps {
   deletingEmployee: string | null
 }
 
+const roleBadge = (role: string) => {
+  if (role === 'ADMIN') {
+    return 'bg-blue-50 text-blue-700 border border-blue-200'
+  }
+  return 'bg-slate-100 text-slate-600 border border-slate-200'
+}
+
 export const EmployeeRow = React.memo<EmployeeRowProps>(({ employee, onEdit, onDelete, deletingEmployee }) => {
   const router = useRouter()
 
   const handleRowClick = (e: React.MouseEvent) => {
-    // Don't navigate if clicking on action buttons
     if ((e.target as HTMLElement).closest('button')) {
       return
     }
@@ -38,79 +44,67 @@ export const EmployeeRow = React.memo<EmployeeRowProps>(({ employee, onEdit, onD
   return (
     <tr
       onClick={handleRowClick}
-      className="hover:bg-gray-50 transition-colors cursor-pointer"
+      className="border-b border-slate-100 hover:bg-slate-50 transition-colors cursor-pointer last:border-0"
     >
-      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-        {employee.name}
-      </td>
-      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-        {employee.email}
-      </td>
-      <td className="px-6 py-4 whitespace-nowrap text-sm">
+      <td className="px-4 py-3 whitespace-nowrap text-sm text-slate-700">{employee.name}</td>
+      <td className="px-4 py-3 whitespace-nowrap text-sm text-slate-700">{employee.email}</td>
+      <td className="px-4 py-3 whitespace-nowrap text-sm">
         <span
-          className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
-            employee.role === 'ADMIN'
-              ? 'bg-purple-100 text-purple-800'
-              : employee.role === 'MAINTENANCE'
-              ? 'bg-orange-100 text-orange-800'
-              : employee.role === 'FRONTDESK'
-              ? 'bg-teal-100 text-teal-800'
-              : employee.role === 'HOUSEKEEPING'
-              ? 'bg-green-100 text-green-800'
-              : 'bg-gray-100 text-gray-800'
-          }`}
+          className={`inline-flex text-xs font-medium px-2.5 py-0.5 rounded-full ${roleBadge(employee.role)}`}
         >
-          {employee.role === 'ADMIN' ? 'Admin' :
-           employee.role === 'MAINTENANCE' ? 'Maintenance' :
-           employee.role === 'FRONTDESK' ? 'Front Desk' :
-           employee.role === 'HOUSEKEEPING' ? 'Housekeeping' :
-           employee.role}
+          {employee.role === 'ADMIN'
+            ? 'Admin'
+            : employee.role === 'MAINTENANCE'
+              ? 'Maintenance'
+              : employee.role === 'FRONTDESK'
+                ? 'Front Desk'
+                : employee.role === 'HOUSEKEEPING'
+                  ? 'Housekeeping'
+                  : employee.role}
         </span>
       </td>
-      <td className="px-6 py-4 whitespace-nowrap text-sm">
+      <td className="px-4 py-3 whitespace-nowrap text-sm">
         <span
-          className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
+          className={`inline-flex text-xs font-medium px-2.5 py-0.5 rounded-full border ${
             employee.status === 'active'
-              ? 'bg-green-100 text-green-800'
-              : 'bg-red-100 text-red-800'
+              ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+              : 'bg-red-50 text-red-600 border-red-200'
           }`}
         >
           {employee.status === 'active' ? 'Active' : 'Inactive'}
         </span>
       </td>
-      <td className="px-6 py-4 whitespace-nowrap text-sm">
+      <td className="px-4 py-3 whitespace-nowrap text-sm">
         {employee.is_clocked_in !== null ? (
           <span
-            className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
+            className={`inline-flex text-xs font-medium px-2.5 py-0.5 rounded-full border ${
               employee.is_clocked_in
-                ? 'bg-blue-100 text-blue-800'
-                : 'bg-gray-100 text-gray-800'
+                ? 'bg-blue-50 text-blue-700 border-blue-200'
+                : 'bg-slate-100 text-slate-600 border-slate-200'
             }`}
           >
             {employee.is_clocked_in ? 'In' : 'Out'}
           </span>
         ) : (
-          <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-gray-100 text-gray-500">
-            -
+          <span className="inline-flex text-xs font-medium px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-500 border border-slate-200">
+            —
           </span>
         )}
       </td>
-      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-        {employee.has_pin ? 'Yes' : 'No'}
+      <td className="px-4 py-3 whitespace-nowrap text-sm text-slate-700">{employee.has_pin ? 'Yes' : 'No'}</td>
+      <td className="px-4 py-3 whitespace-nowrap text-sm text-slate-700">
+        {employee.pay_rate ? `$${employee.pay_rate.toFixed(2)}` : '—'}
       </td>
-      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-        {employee.pay_rate ? `$${employee.pay_rate.toFixed(2)}` : '-'}
-      </td>
-      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+      <td className="px-4 py-3 whitespace-nowrap text-sm text-slate-700">
         {employee.created_at
           ? new Date(employee.created_at).toLocaleDateString('en-US', {
               year: 'numeric',
               month: 'short',
               day: 'numeric',
             })
-          : '-'}
+          : '—'}
       </td>
-      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+      <td className="px-4 py-3 whitespace-nowrap text-sm text-slate-700">
         {employee.last_punch_at
           ? new Date(employee.last_punch_at).toLocaleString('en-US', {
               year: 'numeric',
@@ -121,33 +115,34 @@ export const EmployeeRow = React.memo<EmployeeRowProps>(({ employee, onEdit, onD
             })
           : 'Never'}
       </td>
-      <td className="px-6 py-4 whitespace-nowrap text-sm">
+      <td className="px-4 py-3 whitespace-nowrap text-sm">
         <div className="flex gap-2">
           <button
+            type="button"
             onClick={(e) => {
               e.stopPropagation()
               onEdit(employee)
             }}
-            className="px-3 py-1 rounded-md text-xs font-medium bg-blue-100 text-blue-800 hover:bg-blue-200"
+            className="px-3 py-1.5 rounded-lg text-xs font-medium bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 transition-colors"
           >
             Edit
           </button>
           <button
+            type="button"
             onClick={(e) => {
               e.stopPropagation()
               onDelete(employee.id, employee.name)
             }}
             disabled={deletingEmployee === employee.id}
-            className="px-3 py-1 rounded-md text-xs font-medium bg-red-100 text-red-800 hover:bg-red-200 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="px-3 py-1.5 rounded-lg text-xs font-medium bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {deletingEmployee === employee.id ? 'Deleting...' : 'Delete'}
+            {deletingEmployee === employee.id ? 'Deleting…' : 'Delete'}
           </button>
         </div>
       </td>
     </tr>
   )
 }, (prevProps, nextProps) => {
-  // Custom comparison function for React.memo
   return (
     prevProps.employee.id === nextProps.employee.id &&
     prevProps.employee.name === nextProps.employee.name &&
@@ -158,4 +153,3 @@ export const EmployeeRow = React.memo<EmployeeRowProps>(({ employee, onEdit, onD
 })
 
 EmployeeRow.displayName = 'EmployeeRow'
-

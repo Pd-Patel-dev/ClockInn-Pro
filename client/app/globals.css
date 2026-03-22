@@ -2,25 +2,43 @@
 @tailwind components;
 @tailwind utilities;
 
+/*
+ * ClockInn design system — Linear / Vercel-style baseline
+ * - Page: slate-50 · Surfaces: white · Borders: slate-200
+ * - Accent: blue-600 (buttons, links, focus)
+ * - Cards: rounded-xl, shadow-sm only
+ */
+
 :root {
-  --foreground-rgb: 0, 0, 0;
-  --background-start-rgb: 214, 219, 220;
-  --background-end-rgb: 255, 255, 255;
+  --color-surface: 255 255 255;
+  --color-border: 226 232 240;
+  --color-text: 15 23 42;
+  --color-text-muted: 100 116 139;
+  --color-accent: 37 99 235;
 }
 
-body {
-  color: rgb(var(--foreground-rgb));
-  background: linear-gradient(
-      to bottom,
-      transparent,
-      rgb(var(--background-end-rgb))
-    )
-    rgb(var(--background-start-rgb));
+@layer base {
+  html {
+    @apply antialiased;
+  }
+
+  body {
+    @apply min-h-screen bg-slate-50 text-slate-900;
+    font-feature-settings: 'rlig' 1, 'calt' 1;
+  }
+
+  :where(a[href], button):focus-visible {
+    @apply outline-none ring-2 ring-blue-500 ring-offset-2 ring-offset-slate-50;
+  }
 }
 
 @layer utilities {
   .text-balance {
     text-wrap: balance;
   }
-}
 
+  /* Shared card surface (authenticated app) */
+  .surface-card {
+    @apply rounded-xl border border-slate-200 bg-white shadow-sm;
+  }
+}

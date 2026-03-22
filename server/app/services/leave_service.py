@@ -3,9 +3,14 @@ from uuid import UUID
 from datetime import date
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_, func
+import logging
+
 from fastapi import HTTPException, status
 
+from app.core.error_handling import client_error_detail
 from app.models.leave_request import LeaveRequest, LeaveStatus
+
+logger = logging.getLogger(__name__)
 from app.core.query_builder import get_paginated_results, build_employee_company_filtered_query, build_company_filtered_query, filter_by_status
 from app.schemas.leave_request import LeaveRequestCreate, LeaveRequestUpdate
 import uuid
@@ -45,9 +50,13 @@ async def create_leave_request(
         return leave_request
     except Exception as e:
         await db.rollback()
+        logger.error("Failed to create leave request: %s", e, exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to create leave request: {str(e)}",
+            detail=client_error_detail(
+                dev_detail=f"Failed to create leave request: {str(e)}",
+                prod_detail="Failed to create leave request. Please try again.",
+            ),
         )
 
 
@@ -149,8 +158,12 @@ async def update_leave_request(
         return leave_request
     except Exception as e:
         await db.rollback()
+        logger.error("Failed to update leave request: %s", e, exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to update leave request: {str(e)}",
+            detail=client_error_detail(
+                dev_detail=f"Failed to update leave request: {str(e)}",
+                prod_detail="Failed to update leave request. Please try again.",
+            ),
         )
 

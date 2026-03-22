@@ -213,8 +213,8 @@ export default function DeveloperPortalPage() {
       <div className="px-4 py-6 sm:px-0">
         <div className="flex items-center justify-between mb-6">
           <div>
-            <h1 className="text-3xl font-bold text-gray-900">Developer Portal</h1>
-            <p className="text-sm text-gray-600 mt-1">System monitoring and administration</p>
+            <h1 className="text-3xl font-bold text-slate-900">Developer Portal</h1>
+            <p className="text-sm text-slate-600 mt-1">System monitoring and administration</p>
           </div>
           <button
             onClick={fetchAllData}
@@ -226,7 +226,7 @@ export default function DeveloperPortalPage() {
         </div>
 
         {/* Tabs */}
-        <div className="border-b border-gray-200 mb-6">
+        <div className="border-b border-slate-200 mb-6">
           <nav className="-mb-px flex space-x-8">
             {['overview', 'stats', 'system', 'activity', 'email', 'companies', 'add-developer'].map((tab) => (
               <button
@@ -235,7 +235,7 @@ export default function DeveloperPortalPage() {
                 className={`py-4 px-1 border-b-2 font-medium text-sm capitalize ${
                   activeTab === tab
                     ? 'border-blue-500 text-blue-600'
-                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                    : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'
                 }`}
               >
                 {tab === 'overview' ? 'Overview' : tab === 'add-developer' ? 'Add developer' : tab}
@@ -252,7 +252,7 @@ export default function DeveloperPortalPage() {
               <h3 className="text-lg font-semibold mb-4">Service Status</h3>
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
-                  <span className="text-sm text-gray-600">Status</span>
+                  <span className="text-sm text-slate-600">Status</span>
                   <span className={`px-2 py-1 rounded text-xs font-medium ${
                     healthStatus.status === 'healthy' 
                       ? 'bg-green-100 text-green-800' 
@@ -262,11 +262,11 @@ export default function DeveloperPortalPage() {
                   </span>
                 </div>
                 <div className="flex items-center justify-between">
-                  <span className="text-sm text-gray-600">Uptime</span>
+                  <span className="text-sm text-slate-600">Uptime</span>
                   <span className="text-sm font-medium">{healthStatus.service?.uptime?.formatted || 'N/A'}</span>
                 </div>
                 <div className="flex items-center justify-between">
-                  <span className="text-sm text-gray-600">Version</span>
+                  <span className="text-sm text-slate-600">Version</span>
                   <span className="text-sm font-medium">{healthStatus.service?.version || 'N/A'}</span>
                 </div>
               </div>
@@ -277,7 +277,7 @@ export default function DeveloperPortalPage() {
               <h3 className="text-lg font-semibold mb-4">Database</h3>
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
-                  <span className="text-sm text-gray-600">Status</span>
+                  <span className="text-sm text-slate-600">Status</span>
                   <span className={`px-2 py-1 rounded text-xs font-medium ${
                     healthStatus.database?.status === 'connected' 
                       ? 'bg-green-100 text-green-800' 
@@ -288,7 +288,7 @@ export default function DeveloperPortalPage() {
                 </div>
                 {healthStatus.database?.version && (
                   <div className="flex items-center justify-between">
-                    <span className="text-sm text-gray-600">Version</span>
+                    <span className="text-sm text-slate-600">Version</span>
                     <span className="text-sm font-medium">
                       {healthStatus.database.version.major}.{healthStatus.database.version.minor}
                     </span>
@@ -303,15 +303,15 @@ export default function DeveloperPortalPage() {
                 <h3 className="text-lg font-semibold mb-4">Quick Stats</h3>
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
-                    <span className="text-sm text-gray-600">Total Users</span>
+                    <span className="text-sm text-slate-600">Total Users</span>
                     <span className="text-sm font-medium">{stats.total_users}</span>
                   </div>
                   <div className="flex items-center justify-between">
-                    <span className="text-sm text-gray-600">Companies</span>
+                    <span className="text-sm text-slate-600">Companies</span>
                     <span className="text-sm font-medium">{stats.total_companies}</span>
                   </div>
                   <div className="flex items-center justify-between">
-                    <span className="text-sm text-gray-600">Active Sessions</span>
+                    <span className="text-sm text-slate-600">Active Sessions</span>
                     <span className="text-sm font-medium">{stats.active_sessions}</span>
                   </div>
                 </div>
@@ -325,22 +325,22 @@ export default function DeveloperPortalPage() {
           <div className="space-y-6">
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
               <div className="bg-white rounded-lg shadow p-6">
-                <h3 className="text-sm font-medium text-gray-600 mb-2">Total Users</h3>
-                <p className="text-3xl font-bold text-gray-900">{stats.total_users}</p>
-                <p className="text-sm text-gray-500 mt-2">{stats.active_users} active</p>
+                <h3 className="text-sm font-medium text-slate-600 mb-2">Total Users</h3>
+                <p className="text-3xl font-bold text-slate-900">{stats.total_users}</p>
+                <p className="text-sm text-slate-500 mt-2">{stats.active_users} active</p>
               </div>
               <div className="bg-white rounded-lg shadow p-6">
-                <h3 className="text-sm font-medium text-gray-600 mb-2">Companies</h3>
-                <p className="text-3xl font-bold text-gray-900">{stats.total_companies}</p>
+                <h3 className="text-sm font-medium text-slate-600 mb-2">Companies</h3>
+                <p className="text-3xl font-bold text-slate-900">{stats.total_companies}</p>
               </div>
               <div className="bg-white rounded-lg shadow p-6">
-                <h3 className="text-sm font-medium text-gray-600 mb-2">Time Entries</h3>
-                <p className="text-3xl font-bold text-gray-900">{stats.total_time_entries}</p>
-                <p className="text-sm text-gray-500 mt-2">{stats.today_time_entries} today</p>
+                <h3 className="text-sm font-medium text-slate-600 mb-2">Time Entries</h3>
+                <p className="text-3xl font-bold text-slate-900">{stats.total_time_entries}</p>
+                <p className="text-sm text-slate-500 mt-2">{stats.today_time_entries} today</p>
               </div>
               <div className="bg-white rounded-lg shadow p-6">
-                <h3 className="text-sm font-medium text-gray-600 mb-2">Active Sessions</h3>
-                <p className="text-3xl font-bold text-gray-900">{stats.active_sessions}</p>
+                <h3 className="text-sm font-medium text-slate-600 mb-2">Active Sessions</h3>
+                <p className="text-3xl font-bold text-slate-900">{stats.active_sessions}</p>
               </div>
             </div>
 
@@ -348,19 +348,19 @@ export default function DeveloperPortalPage() {
               <h3 className="text-lg font-semibold mb-4">User Breakdown</h3>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 <div>
-                  <p className="text-sm text-gray-600">Admins</p>
+                  <p className="text-sm text-slate-600">Admins</p>
                   <p className="text-2xl font-bold">{stats.admin_users}</p>
                 </div>
                 <div>
-                  <p className="text-sm text-gray-600">Employees</p>
+                  <p className="text-sm text-slate-600">Employees</p>
                   <p className="text-2xl font-bold">{stats.employee_users}</p>
                 </div>
                 <div>
-                  <p className="text-sm text-gray-600">Developers</p>
+                  <p className="text-sm text-slate-600">Developers</p>
                   <p className="text-2xl font-bold">{stats.developer_users}</p>
                 </div>
                 <div>
-                  <p className="text-sm text-gray-600">Verified</p>
+                  <p className="text-sm text-slate-600">Verified</p>
                   <p className="text-2xl font-bold">{stats.verified_users}</p>
                 </div>
               </div>
@@ -375,28 +375,28 @@ export default function DeveloperPortalPage() {
               <h3 className="text-lg font-semibold mb-4">System Information</h3>
               <dl className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <dt className="text-sm font-medium text-gray-600">Platform</dt>
-                  <dd className="mt-1 text-sm text-gray-900">{systemInfo.platform}</dd>
+                  <dt className="text-sm font-medium text-slate-600">Platform</dt>
+                  <dd className="mt-1 text-sm text-slate-900">{systemInfo.platform}</dd>
                 </div>
                 <div>
-                  <dt className="text-sm font-medium text-gray-600">System</dt>
-                  <dd className="mt-1 text-sm text-gray-900">{systemInfo.system}</dd>
+                  <dt className="text-sm font-medium text-slate-600">System</dt>
+                  <dd className="mt-1 text-sm text-slate-900">{systemInfo.system}</dd>
                 </div>
                 <div>
-                  <dt className="text-sm font-medium text-gray-600">Processor</dt>
-                  <dd className="mt-1 text-sm text-gray-900">{systemInfo.processor || 'N/A'}</dd>
+                  <dt className="text-sm font-medium text-slate-600">Processor</dt>
+                  <dd className="mt-1 text-sm text-slate-900">{systemInfo.processor || 'N/A'}</dd>
                 </div>
                 <div>
-                  <dt className="text-sm font-medium text-gray-600">Python Version</dt>
-                  <dd className="mt-1 text-sm text-gray-900">{systemInfo.python_version}</dd>
+                  <dt className="text-sm font-medium text-slate-600">Python Version</dt>
+                  <dd className="mt-1 text-sm text-slate-900">{systemInfo.python_version}</dd>
                 </div>
                 <div>
-                  <dt className="text-sm font-medium text-gray-600">Server Time</dt>
-                  <dd className="mt-1 text-sm text-gray-900">{formatTimestamp(systemInfo.server_time)}</dd>
+                  <dt className="text-sm font-medium text-slate-600">Server Time</dt>
+                  <dd className="mt-1 text-sm text-slate-900">{formatTimestamp(systemInfo.server_time)}</dd>
                 </div>
                 <div>
-                  <dt className="text-sm font-medium text-gray-600">Uptime</dt>
-                  <dd className="mt-1 text-sm text-gray-900">{healthStatus.service?.uptime?.formatted || 'N/A'}</dd>
+                  <dt className="text-sm font-medium text-slate-600">Uptime</dt>
+                  <dd className="mt-1 text-sm text-slate-900">{healthStatus.service?.uptime?.formatted || 'N/A'}</dd>
                 </div>
               </dl>
             </div>
@@ -407,7 +407,7 @@ export default function DeveloperPortalPage() {
                 <h3 className="text-lg font-semibold mb-4">Database Information</h3>
                 <div className="space-y-3">
                   <div className="flex items-center justify-between">
-                    <span className="text-sm text-gray-600">Connection Status</span>
+                    <span className="text-sm text-slate-600">Connection Status</span>
                     <span className={`px-2 py-1 rounded text-xs font-medium ${
                       stats.database_status === 'connected' 
                         ? 'bg-green-100 text-green-800' 
@@ -417,7 +417,7 @@ export default function DeveloperPortalPage() {
                     </span>
                   </div>
                   <div className="flex items-center justify-between">
-                    <span className="text-sm text-gray-600">Configured</span>
+                    <span className="text-sm text-slate-600">Configured</span>
                     <span className={`px-2 py-1 rounded text-xs font-medium ${
                       stats.configuration?.database_configured 
                         ? 'bg-green-100 text-green-800' 
@@ -430,7 +430,7 @@ export default function DeveloperPortalPage() {
                     <>
                       {stats.configuration.database_info.provider && (
                         <div className="flex items-center justify-between">
-                          <span className="text-sm text-gray-600">Provider</span>
+                          <span className="text-sm text-slate-600">Provider</span>
                           <span className="text-sm font-medium capitalize">
                             {stats.configuration.database_info.provider}
                           </span>
@@ -438,7 +438,7 @@ export default function DeveloperPortalPage() {
                       )}
                       {stats.configuration.database_info.host && (
                         <div className="flex items-center justify-between">
-                          <span className="text-sm text-gray-600">Host</span>
+                          <span className="text-sm text-slate-600">Host</span>
                           <span className="text-sm font-medium">
                             {stats.configuration.database_info.host}
                           </span>
@@ -446,7 +446,7 @@ export default function DeveloperPortalPage() {
                       )}
                       {stats.configuration.database_info.port && (
                         <div className="flex items-center justify-between">
-                          <span className="text-sm text-gray-600">Port</span>
+                          <span className="text-sm text-slate-600">Port</span>
                           <span className="text-sm font-medium">
                             {stats.configuration.database_info.port}
                           </span>
@@ -454,7 +454,7 @@ export default function DeveloperPortalPage() {
                       )}
                       {stats.configuration.database_info.database && (
                         <div className="flex items-center justify-between">
-                          <span className="text-sm text-gray-600">Database Name</span>
+                          <span className="text-sm text-slate-600">Database Name</span>
                           <span className="text-sm font-medium">
                             {stats.configuration.database_info.database}
                           </span>
@@ -480,7 +480,7 @@ export default function DeveloperPortalPage() {
                   
                   return (
                     <div key={key} className="flex items-center justify-between">
-                      <span className="text-sm text-gray-600 capitalize">
+                      <span className="text-sm text-slate-600 capitalize">
                         {key.replace(/_/g, ' ')}
                       </span>
                       <span className={`px-2 py-1 rounded text-xs font-medium ${
@@ -506,9 +506,9 @@ export default function DeveloperPortalPage() {
                   <div key={index} className="border-l-4 border-blue-500 pl-4 py-2">
                     <div className="flex items-center justify-between">
                       <span className="font-medium capitalize">{activity.type.replace(/_/g, ' ')}</span>
-                      <span className="text-sm text-gray-500">{formatTimestamp(activity.timestamp)}</span>
+                      <span className="text-sm text-slate-500">{formatTimestamp(activity.timestamp)}</span>
                     </div>
-                    <div className="text-sm text-gray-600 mt-1">
+                    <div className="text-sm text-slate-600 mt-1">
                       {activity.details.email && <span>Email: {activity.details.email}</span>}
                       {activity.details.role && <span className="ml-4">Role: {activity.details.role}</span>}
                       {activity.details.status && <span className="ml-4">Status: {activity.details.status}</span>}
@@ -516,7 +516,7 @@ export default function DeveloperPortalPage() {
                   </div>
                 ))
               ) : (
-                <p className="text-gray-500 text-center py-8">No recent activity</p>
+                <p className="text-slate-500 text-center py-8">No recent activity</p>
               )}
             </div>
           </div>
@@ -531,7 +531,7 @@ export default function DeveloperPortalPage() {
                 <h3 className="text-lg font-semibold mb-4">Gmail API Health</h3>
                 <div className="space-y-3">
                   <div className="flex items-center justify-between">
-                    <span className="text-sm text-gray-600">Status</span>
+                    <span className="text-sm text-slate-600">Status</span>
                     <span className={`px-2 py-1 rounded text-xs font-medium ${
                       gmailHealth.status === 'healthy' 
                         ? 'bg-green-100 text-green-800' 
@@ -541,7 +541,7 @@ export default function DeveloperPortalPage() {
                     </span>
                   </div>
                   <div className="flex items-center justify-between">
-                    <span className="text-sm text-gray-600">Initialized</span>
+                    <span className="text-sm text-slate-600">Initialized</span>
                     <span className={`px-2 py-1 rounded text-xs font-medium ${
                       gmailHealth.initialized 
                         ? 'bg-green-100 text-green-800' 
@@ -552,7 +552,7 @@ export default function DeveloperPortalPage() {
                   </div>
                   {gmailHealth.needs_reauthorization !== undefined && (
                     <div className="flex items-center justify-between">
-                      <span className="text-sm text-gray-600">Needs Re-authorization</span>
+                      <span className="text-sm text-slate-600">Needs Re-authorization</span>
                       <span className={`px-2 py-1 rounded text-xs font-medium ${
                         gmailHealth.needs_reauthorization 
                           ? 'bg-yellow-100 text-yellow-800' 
@@ -564,7 +564,7 @@ export default function DeveloperPortalPage() {
                   )}
                   {gmailHealth.message && (
                     <div className="mt-3 pt-3 border-t">
-                      <span className="text-xs text-gray-600">{gmailHealth.message}</span>
+                      <span className="text-xs text-slate-600">{gmailHealth.message}</span>
                     </div>
                   )}
                 </div>
@@ -577,7 +577,7 @@ export default function DeveloperPortalPage() {
                 <h3 className="text-lg font-semibold mb-4">Email Service Status</h3>
                 <div className="space-y-3">
                   <div className="flex items-center justify-between">
-                    <span className="text-sm text-gray-600">Initialized</span>
+                    <span className="text-sm text-slate-600">Initialized</span>
                     <span className={`px-2 py-1 rounded text-xs font-medium ${
                       stats.email_service.initialized 
                         ? 'bg-green-100 text-green-800' 
@@ -587,7 +587,7 @@ export default function DeveloperPortalPage() {
                     </span>
                   </div>
                   <div className="flex items-center justify-between">
-                    <span className="text-sm text-gray-600">Has Credentials</span>
+                    <span className="text-sm text-slate-600">Has Credentials</span>
                     <span className={`px-2 py-1 rounded text-xs font-medium ${
                       stats.email_service.has_credentials 
                         ? 'bg-green-100 text-green-800' 
@@ -597,12 +597,12 @@ export default function DeveloperPortalPage() {
                     </span>
                   </div>
                   <div className="flex items-center justify-between">
-                    <span className="text-sm text-gray-600">Sender Email</span>
+                    <span className="text-sm text-slate-600">Sender Email</span>
                     <span className="text-sm font-medium">{stats.email_service.sender_email || 'N/A'}</span>
                   </div>
                   {stats.email_service.token_valid !== undefined && (
                     <div className="flex items-center justify-between">
-                      <span className="text-sm text-gray-600">Token Valid</span>
+                      <span className="text-sm text-slate-600">Token Valid</span>
                       <span className={`px-2 py-1 rounded text-xs font-medium ${
                         stats.email_service.token_valid 
                           ? 'bg-green-100 text-green-800' 
@@ -614,7 +614,7 @@ export default function DeveloperPortalPage() {
                   )}
                   {stats.email_service.token_expired !== undefined && (
                     <div className="flex items-center justify-between">
-                      <span className="text-sm text-gray-600">Token Expired</span>
+                      <span className="text-sm text-slate-600">Token Expired</span>
                       <span className={`px-2 py-1 rounded text-xs font-medium ${
                         stats.email_service.token_expired 
                           ? 'bg-red-100 text-red-800' 
@@ -626,7 +626,7 @@ export default function DeveloperPortalPage() {
                   )}
                   {stats.email_service.has_refresh_token !== undefined && (
                     <div className="flex items-center justify-between">
-                      <span className="text-sm text-gray-600">Has Refresh Token</span>
+                      <span className="text-sm text-slate-600">Has Refresh Token</span>
                       <span className={`px-2 py-1 rounded text-xs font-medium ${
                         stats.email_service.has_refresh_token 
                           ? 'bg-green-100 text-green-800' 
@@ -638,19 +638,19 @@ export default function DeveloperPortalPage() {
                   )}
                   {stats.email_service.token_expires_at && (
                     <div className="flex items-center justify-between">
-                      <span className="text-sm text-gray-600">Token Expires At</span>
+                      <span className="text-sm text-slate-600">Token Expires At</span>
                       <span className="text-xs font-medium">{formatTimestamp(stats.email_service.token_expires_at)}</span>
                     </div>
                   )}
                   {stats.email_service.token_expires_in_hours !== undefined && (
                     <div className="flex items-center justify-between">
-                      <span className="text-sm text-gray-600">Token Expires In</span>
+                      <span className="text-sm text-slate-600">Token Expires In</span>
                       <span className={`text-xs font-medium ${
                         stats.email_service.token_expires_in_hours < 1 
                           ? 'text-red-600' 
                           : stats.email_service.token_expires_in_hours < 24 
                           ? 'text-yellow-600' 
-                          : 'text-gray-600'
+                          : 'text-slate-600'
                       }`}>
                         {stats.email_service.token_expires_in_hours.toFixed(1)} hours
                       </span>
@@ -666,7 +666,7 @@ export default function DeveloperPortalPage() {
                 <h3 className="text-lg font-semibold mb-4">Gmail Configuration</h3>
                 <div className="space-y-3">
                   <div className="flex items-center justify-between">
-                    <span className="text-sm text-gray-600">Credentials Configured</span>
+                    <span className="text-sm text-slate-600">Credentials Configured</span>
                     <span className={`px-2 py-1 rounded text-xs font-medium ${
                       stats.configuration.gmail_credentials_configured 
                         ? 'bg-green-100 text-green-800' 
@@ -677,12 +677,12 @@ export default function DeveloperPortalPage() {
                   </div>
                   {stats.configuration.gmail_credentials_source && (
                     <div className="flex items-center justify-between ml-4">
-                      <span className="text-xs text-gray-500">Source</span>
+                      <span className="text-xs text-slate-500">Source</span>
                       <span className="text-xs font-medium capitalize">{stats.configuration.gmail_credentials_source}</span>
                     </div>
                   )}
                   <div className="flex items-center justify-between">
-                    <span className="text-sm text-gray-600">Token Configured</span>
+                    <span className="text-sm text-slate-600">Token Configured</span>
                     <span className={`px-2 py-1 rounded text-xs font-medium ${
                       stats.configuration.gmail_token_configured 
                         ? 'bg-green-100 text-green-800' 
@@ -693,7 +693,7 @@ export default function DeveloperPortalPage() {
                   </div>
                   {stats.configuration.gmail_token_source && (
                     <div className="flex items-center justify-between ml-4">
-                      <span className="text-xs text-gray-500">Source</span>
+                      <span className="text-xs text-slate-500">Source</span>
                       <span className="text-xs font-medium capitalize">{stats.configuration.gmail_token_source}</span>
                     </div>
                   )}
@@ -713,23 +713,23 @@ export default function DeveloperPortalPage() {
         {activeTab === 'companies' && (
           <div className="bg-white rounded-lg shadow p-6">
             <h3 className="text-lg font-semibold mb-4">All Companies</h3>
-            <p className="text-sm text-gray-600 mb-4">Click a company name to view full info and manage users (developer only).</p>
+            <p className="text-sm text-slate-600 mb-4">Click a company name to view full info and manage users (developer only).</p>
             {companies.length === 0 && !refreshing ? (
-              <p className="text-gray-500">No companies or loading…</p>
+              <p className="text-slate-500">No companies or loading…</p>
             ) : (
               <div className="overflow-x-auto">
-                <table className="min-w-full divide-y divide-gray-200">
-                  <thead className="bg-gray-50">
+                <table className="min-w-full divide-y divide-slate-200">
+                  <thead className="bg-slate-50">
                     <tr>
-                      <th className="px-4 py-2 text-left text-xs font-medium text-gray-700 uppercase">Name</th>
-                      <th className="px-4 py-2 text-left text-xs font-medium text-gray-700 uppercase">Slug</th>
-                      <th className="px-4 py-2 text-left text-xs font-medium text-gray-700 uppercase">Users</th>
-                      <th className="px-4 py-2 text-left text-xs font-medium text-gray-700 uppercase">Created</th>
+                      <th className="px-4 py-2 text-left text-xs font-medium text-slate-700 uppercase">Name</th>
+                      <th className="px-4 py-2 text-left text-xs font-medium text-slate-700 uppercase">Slug</th>
+                      <th className="px-4 py-2 text-left text-xs font-medium text-slate-700 uppercase">Users</th>
+                      <th className="px-4 py-2 text-left text-xs font-medium text-slate-700 uppercase">Created</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-gray-200">
+                  <tbody className="divide-y divide-slate-200">
                     {companies.map((c) => (
-                      <tr key={c.id} className="hover:bg-gray-50">
+                      <tr key={c.id} className="hover:bg-slate-50">
                         <td className="px-4 py-3">
                           <Link
                             href={`/developer/companies/${c.id}`}
@@ -738,9 +738,9 @@ export default function DeveloperPortalPage() {
                             {c.name}
                           </Link>
                         </td>
-                        <td className="px-4 py-3 text-sm text-gray-600">{c.slug}</td>
-                        <td className="px-4 py-3 text-sm text-gray-600">{c.user_count}</td>
-                        <td className="px-4 py-3 text-sm text-gray-500">
+                        <td className="px-4 py-3 text-sm text-slate-600">{c.slug}</td>
+                        <td className="px-4 py-3 text-sm text-slate-600">{c.user_count}</td>
+                        <td className="px-4 py-3 text-sm text-slate-500">
                           {c.created_at ? new Date(c.created_at).toLocaleDateString() : '—'}
                         </td>
                       </tr>
@@ -756,7 +756,7 @@ export default function DeveloperPortalPage() {
         {activeTab === 'add-developer' && (
           <div className="bg-white rounded-lg shadow p-6 max-w-md">
             <h3 className="text-lg font-semibold mb-2">Add developer account</h3>
-            <p className="text-sm text-gray-600 mb-4">Create a new developer (super account). They can log in and access the Developer Portal.</p>
+            <p className="text-sm text-slate-600 mb-4">Create a new developer (super account). They can log in and access the Developer Portal.</p>
             {addDevError && (
               <div className="mb-4 p-3 rounded-lg bg-red-50 border border-red-200 text-red-800 text-sm">
                 {addDevError}
@@ -764,48 +764,48 @@ export default function DeveloperPortalPage() {
             )}
             <form onSubmit={handleAddDeveloperSubmit} className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Name</label>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Name</label>
                 <input
                   type="text"
                   required
                   value={addDevForm.name}
                   onChange={(e) => setAddDevForm((f) => ({ ...f, name: e.target.value }))}
-                  className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 text-sm"
+                  className="block w-full px-3 py-2 border border-slate-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 text-sm"
                   placeholder="Developer name"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Email</label>
                 <input
                   type="email"
                   required
                   value={addDevForm.email}
                   onChange={(e) => setAddDevForm((f) => ({ ...f, email: e.target.value }))}
-                  className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 text-sm"
+                  className="block w-full px-3 py-2 border border-slate-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 text-sm"
                   placeholder="developer@example.com"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Password</label>
                 <input
                   type="password"
                   required
                   minLength={8}
                   value={addDevForm.password}
                   onChange={(e) => setAddDevForm((f) => ({ ...f, password: e.target.value }))}
-                  className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 text-sm"
+                  className="block w-full px-3 py-2 border border-slate-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 text-sm"
                   placeholder="Min 8 characters"
                 />
-                <p className="mt-1 text-xs text-gray-500">At least 8 characters; use letters, numbers, and symbols for strength.</p>
+                <p className="mt-1 text-xs text-slate-500">At least 8 characters; use letters, numbers, and symbols for strength.</p>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Confirm password</label>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Confirm password</label>
                 <input
                   type="password"
                   required
                   value={addDevForm.confirmPassword}
                   onChange={(e) => setAddDevForm((f) => ({ ...f, confirmPassword: e.target.value }))}
-                  className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 text-sm"
+                  className="block w-full px-3 py-2 border border-slate-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 text-sm"
                   placeholder="Repeat password"
                 />
               </div>

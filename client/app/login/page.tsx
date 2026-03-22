@@ -171,48 +171,49 @@ function LoginContent() {
   }
 
   return (
-    <div className="min-h-screen flex">
-      {/* Left side - Branding */}
-      <div className="hidden lg:flex lg:w-1/2 bg-gradient-to-br from-blue-600 via-blue-700 to-indigo-800 relative overflow-hidden">
-        <div className="absolute inset-0 bg-black/10"></div>
-        <div className="relative z-10 flex flex-col justify-center px-12 text-white">
-          <div className="mb-8">
-            <h1 className="text-5xl font-bold mb-4">ClockInn</h1>
-            <p className="text-xl text-blue-100">Time & Attendance Management</p>
+    <div className="min-h-screen flex bg-slate-50">
+      {/* Left: calm brand panel — no gradients (design system) */}
+      <div className="hidden lg:flex lg:w-1/2 bg-slate-900 text-white">
+        <div className="flex flex-col justify-center px-14 max-w-xl mx-auto w-full">
+          <div className="flex items-center gap-2 mb-6">
+            <span className="inline-block w-2 h-2 rounded-full bg-blue-500" aria-hidden />
+            <p className="text-sm font-medium uppercase tracking-wider text-slate-400">ClockInn</p>
           </div>
-          <div className="space-y-4 mt-8">
-            <div className="flex items-center space-x-3">
-              <div className="w-2 h-2 bg-blue-300 rounded-full"></div>
-              <span className="text-blue-100">Track employee hours effortlessly</span>
-            </div>
-            <div className="flex items-center space-x-3">
-              <div className="w-2 h-2 bg-blue-300 rounded-full"></div>
-              <span className="text-blue-100">Automated payroll calculations</span>
-            </div>
-            <div className="flex items-center space-x-3">
-              <div className="w-2 h-2 bg-blue-300 rounded-full"></div>
-              <span className="text-blue-100">Real-time reporting & analytics</span>
-            </div>
-          </div>
+          <h1 className="text-3xl font-semibold tracking-tight text-white mb-3">Time & attendance</h1>
+          <p className="text-slate-400 text-base leading-relaxed">
+            A clear, reliable workspace for teams to track hours, schedules, and payroll in one place.
+          </p>
+          <ul className="mt-10 space-y-3 text-sm text-slate-300">
+            <li className="flex gap-2">
+              <span className="text-slate-500 shrink-0">—</span>
+              Accurate punch and schedule data
+            </li>
+            <li className="flex gap-2">
+              <span className="text-slate-500 shrink-0">—</span>
+              Built for hotels and multi-site operations
+            </li>
+            <li className="flex gap-2">
+              <span className="text-slate-500 shrink-0">—</span>
+              Role-based access for staff and managers
+            </li>
+          </ul>
         </div>
-        {/* Decorative circles */}
-        <div className="absolute top-0 right-0 w-96 h-96 bg-blue-400/20 rounded-full -mr-48 -mt-48"></div>
-        <div className="absolute bottom-0 left-0 w-96 h-96 bg-indigo-400/20 rounded-full -ml-48 -mb-48"></div>
       </div>
 
-      {/* Right side - Login Form */}
-      <div className="w-full lg:w-1/2 flex items-center justify-center bg-gray-50 px-4 sm:px-6 lg:px-8">
+      <div className="w-full lg:w-1/2 flex items-center justify-center px-4 sm:px-6 lg:px-10 py-12">
         <div className="w-full max-w-md">
-          {/* Mobile Logo */}
-          <div className="lg:hidden text-center mb-8">
-            <h1 className="text-3xl font-bold text-gray-900">ClockInn</h1>
-            <p className="text-sm text-gray-600 mt-1">Time & Attendance</p>
+          <div className="lg:hidden text-center mb-10">
+            <div className="inline-flex items-center gap-2 justify-center mb-2">
+              <span className="inline-block w-2 h-2 rounded-full bg-blue-600" aria-hidden />
+              <span className="text-lg font-semibold text-slate-900">ClockInn</span>
+            </div>
+            <p className="text-sm text-slate-500">Sign in to continue</p>
           </div>
 
-          <div className="bg-white rounded-2xl shadow-xl p-8 sm:p-10">
+          <div className="rounded-lg border border-slate-200 bg-white p-8 sm:p-9 shadow-sm">
             <div className="mb-8">
-              <h2 className="text-3xl font-bold text-gray-900 mb-2">Welcome back</h2>
-              <p className="text-gray-600">Sign in to your account to continue</p>
+              <h2 className="text-xl font-semibold text-slate-900 tracking-tight">Sign in</h2>
+              <p className="text-sm text-slate-500 mt-1.5">Use your work email and password.</p>
             </div>
 
             <form
@@ -225,45 +226,29 @@ function LoginContent() {
               }}
             >
               {sessionExpired && (
-                <div className="rounded-lg bg-yellow-50 border border-yellow-200 p-4 animate-in fade-in duration-200">
-                  <div className="flex items-center">
-                    <svg className="w-5 h-5 text-yellow-600 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                    <div className="text-sm text-yellow-800">Your session has expired. Please sign in again.</div>
-                  </div>
+                <div className="rounded-md border border-amber-200 bg-amber-50/80 px-4 py-3" role="status">
+                  <p className="text-sm text-amber-900">Your session has expired. Please sign in again.</p>
                 </div>
               )}
               {error && (
-                <div className="rounded-lg bg-red-50 border border-red-200 p-4 animate-in fade-in duration-200">
-                  <div className="flex items-center">
-                    <svg className="w-5 h-5 text-red-600 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                    <div className="text-sm text-red-800">{error}</div>
-                  </div>
+                <div className="rounded-md border border-red-200 bg-red-50/80 px-4 py-3" role="alert">
+                  <p className="text-sm text-red-800">{error}</p>
                 </div>
               )}
 
               <div className="space-y-5">
                 <div>
-                  <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-2">
-                    Email address
+                  <label htmlFor="email" className="block text-sm font-medium text-slate-700 mb-1.5">
+                    Email
                   </label>
-                  <div className="relative">
-                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                      <svg className="h-5 w-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 12a4 4 0 10-8 0 4 4 0 008 0zm0 0v1.5a2.5 2.5 0 005 0V12a9 9 0 10-9 9m4.5-1.206a8.959 8.959 0 01-4.5 1.207" />
-                      </svg>
-                    </div>
-                    <input
-                      {...register('email')}
-                      type="email"
-                      autoComplete="email"
-                      className="block w-full pl-10 pr-3 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors sm:text-sm"
-                      placeholder="you@company.com"
-                    />
-                  </div>
+                  <input
+                    {...register('email')}
+                    id="email"
+                    type="email"
+                    autoComplete="email"
+                    className="block w-full px-3 py-2.5 border border-slate-300 rounded-md bg-white text-slate-900 shadow-sm placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-blue-600 sm:text-sm"
+                    placeholder="you@company.com"
+                  />
                   {errors.email && (
                     <p className="mt-1 text-sm text-red-600 flex items-center">
                       <svg className="w-4 h-4 mr-1" fill="currentColor" viewBox="0 0 20 20">
@@ -275,30 +260,27 @@ function LoginContent() {
                 </div>
 
                 <div>
-                  <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-2">
-                    Password
-                  </label>
-                  {mounted && (
-                    <div className="flex justify-end -mt-2 mb-2">
-                      <Link href="/forgot-password" className="text-sm font-medium text-blue-600 hover:text-blue-500 transition-colors">
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label htmlFor="password" className="block text-sm font-medium text-slate-700">
+                      Password
+                    </label>
+                    {mounted && (
+                      <Link
+                        href="/forgot-password"
+                        className="text-sm font-medium text-blue-600 hover:text-blue-700"
+                      >
                         Forgot password?
                       </Link>
-                    </div>
-                  )}
-                  <div className="relative">
-                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                      <svg className="h-5 w-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-                      </svg>
-                    </div>
-                    <input
-                      {...register('password')}
-                      type="password"
-                      autoComplete="current-password"
-                      className="block w-full pl-10 pr-3 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors sm:text-sm"
-                      placeholder="Enter your password"
-                    />
+                    )}
                   </div>
+                  <input
+                    {...register('password')}
+                    id="password"
+                    type="password"
+                    autoComplete="current-password"
+                    className="block w-full px-3 py-2.5 border border-slate-300 rounded-md bg-white text-slate-900 shadow-sm placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-blue-600 sm:text-sm"
+                    placeholder="••••••••"
+                  />
                   {errors.password && (
                     <p className="mt-1 text-sm text-red-600 flex items-center">
                       <svg className="w-4 h-4 mr-1" fill="currentColor" viewBox="0 0 20 20">
@@ -314,7 +296,7 @@ function LoginContent() {
                 <button
                   type="submit"
                   disabled={loading}
-                  className="w-full flex justify-center items-center py-3 px-4 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 transform hover:scale-[1.02] active:scale-[0.98]"
+                  className="w-full flex justify-center items-center py-2.5 px-4 rounded-md text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-600 focus:ring-offset-2 focus:ring-offset-white disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                 >
                   {loading ? (
                     <>
@@ -330,18 +312,18 @@ function LoginContent() {
                 </button>
               </div>
 
-              <div className="text-center">
-                <p className="text-sm text-gray-600">
-                  Don&apos;t have an account?{' '}
-                  <Link href="/register" className="font-medium text-blue-600 hover:text-blue-500 transition-colors">
-                    Register your company
+              <div className="text-center pt-2">
+                <p className="text-sm text-slate-600">
+                  New company?{' '}
+                  <Link href="/register" className="font-medium text-blue-600 hover:text-blue-700">
+                    Create an account
                   </Link>
                 </p>
               </div>
             </form>
           </div>
 
-          <p className="mt-6 text-center text-xs text-gray-500">
+          <p className="mt-8 text-center text-xs text-slate-400">
             © {currentYear || new Date().getFullYear()} ClockInn. All rights reserved.
           </p>
         </div>
@@ -353,8 +335,8 @@ function LoginContent() {
 export default function LoginPage() {
   return (
     <Suspense fallback={
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+      <div className="min-h-screen flex items-center justify-center bg-slate-50">
+        <div className="h-9 w-9 rounded-full border-2 border-slate-200 border-t-blue-600 animate-spin" aria-hidden />
       </div>
     }>
       <LoginContent />

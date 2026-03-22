@@ -149,6 +149,10 @@ async def health_check(db: Optional[AsyncSession] = Depends(get_db)):
             "cors_origins_configured": bool(settings.CORS_ORIGINS),
             "frontend_url": settings.FRONTEND_URL,
             "rate_limiting_enabled": settings.RATE_LIMIT_ENABLED,
+            "rate_limit_per_minute": settings.RATE_LIMIT_PER_MINUTE,
+            "rate_limit_auth_kiosk_per_minute": settings.RATE_LIMIT_AUTH_KIOSK_PER_MINUTE,
+            "login_lockout_store": "redis" if settings.REDIS_URL else "memory",
+            "login_lockout_use_ip": settings.LOGIN_LOCKOUT_USE_IP,
             "database_ssl": "supabase" in settings.DATABASE_URL.lower() or "pooler.supabase.com" in settings.DATABASE_URL,
         },
         "dependencies": {
@@ -241,12 +245,17 @@ async def liveness_check():
 async def test_error_logging():
     """
     Test endpoint to verify error logging is working.
-    This will intentionally raise an error to test error.log.
+    Disabled in production (no intentional errors or hints in prod).
     """
+    from app.core.environment import is_production_environment
+
+    if is_production_environment():
+        raise HTTPException(status_code=http_status.HTTP_404_NOT_FOUND, detail="Not found")
+
     try:
         # Intentionally raise an error for testing
         raise ValueError("This is a test error to verify error logging functionality")
-    except Exception as e:
+    except Exception:
         logger.error("Test error logged successfully", exc_info=True)
         raise HTTPException(status_code=500, detail="Test error - check error.log to verify logging")
 

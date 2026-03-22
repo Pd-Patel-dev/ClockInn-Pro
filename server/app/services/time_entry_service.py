@@ -1,10 +1,13 @@
 from typing import Optional, List, Tuple
 from uuid import UUID
 from datetime import datetime, date
+import logging
+
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_, or_, func
 from fastapi import HTTPException, status
 
+from app.core.error_handling import client_error_detail
 from app.models.time_entry import TimeEntry, TimeEntryStatus, TimeEntrySource
 from app.models.user import User, UserRole, UserStatus
 from app.core.query_builder import get_paginated_results, build_employee_company_filtered_query, build_company_filtered_query, filter_by_date_range, filter_by_status
@@ -15,6 +18,8 @@ from app.services.rounding_service import (
     get_company_rounding_policy,
 )
 import uuid
+
+logger = logging.getLogger(__name__)
 
 
 async def punch(
@@ -68,29 +73,23 @@ async def punch(
     
     employee = result.scalar_one_or_none()
     if not employee:
-        if employee_email:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"No active employee found with email {employee_email}",
-            )
-        else:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Employee with ID {employee_id} not found or is not active",
-            )
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid email or PIN",
+        )
     
     # Only verify PIN if not skipped (for cases where PIN was already verified)
     if not skip_pin_verification:
         if not employee.pin_hash:
             raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"PIN is not configured for employee {employee.email}. Please contact your administrator to set up a PIN.",
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid email or PIN",
             )
         
         if not verify_pin(pin, employee.pin_hash):
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="The PIN you entered is incorrect. Please try again.",
+                detail="Invalid email or PIN",
             )
     
     # Get company settings to check cash drawer requirements
@@ -273,9 +272,13 @@ async def punch(
         raise
     except Exception as e:
         await db.rollback()
+        logger.error("Failed to process punch: %s", e, exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to process punch: {str(e)}",
+            detail=client_error_detail(
+                dev_detail=f"Failed to process punch: {str(e)}",
+                prod_detail="Failed to process punch. Please try again.",
+            ),
         )
 
 
@@ -433,8 +436,12 @@ async def edit_time_entry(
         return entry
     except Exception as e:
         await db.rollback()
+        logger.error("Failed to edit time entry: %s", e, exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to edit time entry: {str(e)}",
+            detail=client_error_detail(
+                dev_detail=f"Failed to edit time entry: {str(e)}",
+                prod_detail="Failed to edit time entry. Please try again.",
+            ),
         )
 

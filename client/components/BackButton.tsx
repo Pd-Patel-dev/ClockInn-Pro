@@ -1,18 +1,31 @@
 'use client'
 
 import { useRouter } from 'next/navigation'
+import type { ReactNode } from 'react'
 
 interface BackButtonProps {
-  /** Button label. Default: "Back" */
-  children?: React.ReactNode
+  /** Button label. Default: "Back" (rendered as "← Back"). */
+  children?: ReactNode
   className?: string
   /** Optional fallback when there is no history (e.g. opened in new tab). If not set, router.back() is always used. */
   fallbackHref?: string
-  /** If true, show a left-arrow icon before the label. Default: true */
+  /**
+   * When true (default), string labels get a single leading "← " if they don’t already start with ←.
+   * When false, children render exactly as provided (e.g. "Cancel" without an arrow).
+   */
   showArrow?: boolean
 }
 
-const defaultClassName = 'inline-flex items-center gap-1.5 text-sm font-medium text-gray-600 hover:text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-400/30 rounded-lg transition-colors'
+const defaultClassName =
+  'inline-flex items-center gap-1.5 text-sm font-medium text-slate-600 hover:text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-400/30 rounded-lg transition-colors'
+
+/** Single typographic arrow — no separate chevron icon (avoids "<" + "← Back" stacking). */
+function withLeadingArrow(label: ReactNode): ReactNode {
+  if (typeof label !== 'string') return label
+  const trimmed = label.trimStart()
+  if (trimmed.startsWith('←') || trimmed.startsWith('\u2190')) return label
+  return `← ${trimmed}`
+}
 
 /**
  * Back button that navigates to the previous page in history.
@@ -36,19 +49,13 @@ export default function BackButton({
     }
   }
 
+  const content = showArrow ? withLeadingArrow(children) : children
+  const aria =
+    typeof children === 'string' ? children : typeof content === 'string' ? content : 'Go back'
+
   return (
-    <button
-      type="button"
-      onClick={handleClick}
-      className={className}
-      aria-label={typeof children === 'string' ? children : 'Go back'}
-    >
-      {showArrow && (
-        <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-        </svg>
-      )}
-      {children}
+    <button type="button" onClick={handleClick} className={className} aria-label={aria}>
+      {content}
     </button>
   )
 }

@@ -322,9 +322,9 @@ export default function MyPunchPage() {
         <div className="max-w-2xl mx-auto">
           {/* Header */}
           <div className="mb-6 text-center">
-            <h1 className="text-2xl font-semibold text-gray-900 mb-1">Punch In/Out</h1>
+            <h1 className="text-2xl font-semibold text-slate-900 mb-1">Punch In/Out</h1>
             {user && (
-              <p className="text-sm text-gray-600">{user.name}</p>
+              <p className="text-sm text-slate-600">{user.name}</p>
             )}
           </div>
 
@@ -333,9 +333,9 @@ export default function MyPunchPage() {
             <div className={`mb-4 rounded-lg p-4 border ${
               currentStatus === 'in' 
                 ? 'bg-yellow-50 border-yellow-200' 
-                : 'bg-gray-50 border-gray-200'
+                : 'bg-slate-50 border-slate-200'
             }`}>
-              <p className="text-center font-medium text-gray-900">
+              <p className="text-center font-medium text-slate-900">
                 {currentStatus === 'in' ? 'Currently Clocked In' : 'Currently Clocked Out'}
               </p>
             </div>
@@ -347,7 +347,7 @@ export default function MyPunchPage() {
               ? 'bg-blue-50 border-blue-200 text-blue-700'
               : location 
                 ? 'bg-green-50 border-green-200 text-green-700'
-                : 'bg-gray-50 border-gray-200 text-gray-600'
+                : 'bg-slate-50 border-slate-200 text-slate-600'
           }`}>
             {locationLoading ? (
               <>
@@ -376,7 +376,7 @@ export default function MyPunchPage() {
           </div>
 
           {/* Main Card */}
-          <div className="bg-white rounded-lg border border-gray-200 p-6">
+          <div className="bg-white rounded-lg border border-slate-200 p-6">
             {/* Message Display */}
             {message && (
               <div
@@ -392,14 +392,14 @@ export default function MyPunchPage() {
 
             {/* PIN Display */}
             <div className="mb-6">
-              <label className="block text-sm font-medium text-gray-700 mb-3 text-center">
+              <label className="block text-sm font-medium text-slate-700 mb-3 text-center">
                 Enter Your PIN
               </label>
               <input
                 type="text"
                 value={pinDisplay}
                 readOnly
-                className="block w-full px-4 py-4 border border-gray-300 rounded-lg text-center text-3xl font-mono tracking-widest focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 bg-gray-50"
+                className="block w-full px-4 py-4 border border-slate-300 rounded-lg text-center text-3xl font-mono tracking-widest focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 bg-slate-50"
                 placeholder="----"
               />
             </div>
@@ -413,7 +413,7 @@ export default function MyPunchPage() {
                   type="button"
                   onClick={() => appendPin(num.toString())}
                   disabled={loading}
-                  className="py-4 px-4 border border-gray-300 rounded-lg bg-white text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-1 focus:ring-blue-500 text-xl font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="py-4 px-4 border border-slate-300 rounded-lg bg-white text-slate-700 hover:bg-slate-50 focus:outline-none focus:ring-1 focus:ring-blue-500 text-xl font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {num}
                 </button>
@@ -422,7 +422,7 @@ export default function MyPunchPage() {
                 type="button"
                 onClick={clearPin}
                 disabled={loading}
-                className="py-4 px-4 border border-gray-300 rounded-lg bg-gray-100 text-gray-700 hover:bg-gray-200 focus:outline-none focus:ring-1 focus:ring-blue-500 font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                className="py-4 px-4 border border-slate-300 rounded-lg bg-slate-100 text-slate-700 hover:bg-slate-200 focus:outline-none focus:ring-1 focus:ring-blue-500 font-medium disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Clear
               </button>
@@ -430,7 +430,7 @@ export default function MyPunchPage() {
                 type="button"
                 onClick={() => appendPin('0')}
                 disabled={loading}
-                className="py-4 px-4 border border-gray-300 rounded-lg bg-white text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-1 focus:ring-blue-500 text-xl font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
+                className="py-4 px-4 border border-slate-300 rounded-lg bg-white text-slate-700 hover:bg-slate-50 focus:outline-none focus:ring-1 focus:ring-blue-500 text-xl font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 0
               </button>
@@ -459,7 +459,7 @@ export default function MyPunchPage() {
             </div>
 
             {/* Instructions */}
-            <div className="text-center text-sm text-gray-500 mt-6">
+            <div className="text-center text-sm text-slate-500 mt-6">
               <p>Enter your 4-digit PIN to {currentStatus === 'in' ? 'clock out' : 'clock in'}</p>
             </div>
           </div>
@@ -467,9 +467,9 @@ export default function MyPunchPage() {
           {/* Cash Drawer Dialog */}
           {showCashDialog && (
             <div className="fixed inset-0 bg-black/60 backdrop-blur-sm overflow-y-auto h-full w-full z-[9999] flex items-center justify-center p-4 animate-in fade-in duration-200">
-              <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-lg m-4 transform transition-all animate-in zoom-in-95 duration-200">
+              <div className="relative bg-white rounded-2xl shadow-xl w-full max-w-lg m-4 transform transition-all animate-in zoom-in-95 duration-200">
                 {/* Header */}
-                <div className="px-8 pt-8 pb-6 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-t-2xl border-b border-gray-100">
+                <div className="px-8 pt-8 pb-6 bg-gradient-to-r from-blue-50 to-blue-50 rounded-t-2xl border-b border-slate-100">
                   <div className="flex items-center justify-center mb-3">
                     <div className="p-3 bg-blue-100 rounded-full">
                       <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -477,10 +477,10 @@ export default function MyPunchPage() {
                       </svg>
                     </div>
                   </div>
-                  <h3 className="text-2xl font-bold text-gray-900 text-center mb-2">
+                  <h3 className="text-2xl font-bold text-slate-900 text-center mb-2">
                     {currentStatus === 'in' ? 'Ending Cash Count' : 'Starting Cash Count'}
                   </h3>
-                  <p className="text-sm text-gray-600 text-center">
+                  <p className="text-sm text-slate-600 text-center">
                     {currentStatus === 'in' 
                       ? 'Enter the final cash amount in the drawer' 
                       : 'Enter the starting cash amount in the drawer'}
@@ -492,12 +492,12 @@ export default function MyPunchPage() {
                   {currentStatus === 'out' ? (
                     /* Clock-in: only starting cash */
                     <div className="mb-8">
-                      <label className="block text-sm font-semibold text-gray-700 mb-4 text-center">
+                      <label className="block text-sm font-semibold text-slate-700 mb-4 text-center">
                         Cash Amount <span className="text-red-500">*</span>
                       </label>
                       <div className="relative group">
                         <div className="absolute inset-y-0 left-0 pl-5 flex items-center pointer-events-none">
-                          <span className="text-gray-400 text-2xl font-medium">$</span>
+                          <span className="text-slate-400 text-2xl font-medium">$</span>
                         </div>
                         <input
                           type="number"
@@ -517,7 +517,7 @@ export default function MyPunchPage() {
                           className={`block w-full pl-12 pr-5 py-5 border-2 rounded-xl text-center text-3xl font-bold tracking-wide focus:outline-none focus:ring-4 focus:ring-blue-100 transition-all ${
                             cashError
                               ? 'border-red-300 bg-red-50 focus:border-red-400 focus:ring-red-100'
-                              : 'border-gray-200 bg-gray-50 focus:border-blue-500 focus:bg-white'
+                              : 'border-slate-200 bg-slate-50 focus:border-blue-500 focus:bg-white'
                           }`}
                           placeholder="0.00"
                           disabled={loading}
@@ -531,7 +531,7 @@ export default function MyPunchPage() {
                           <span>{cashError}</span>
                         </div>
                       )}
-                      <p className="mt-3 text-xs text-gray-500 text-center">
+                      <p className="mt-3 text-xs text-slate-500 text-center">
                         Enter the amount in dollars (e.g., 100.50)
                       </p>
                     </div>
@@ -539,57 +539,57 @@ export default function MyPunchPage() {
                     /* Clock-out: collected, drop, beverages, cash in drawer */
                     <div className="space-y-4 mb-8">
                       <div>
-                        <label className="block text-sm font-semibold text-gray-700 mb-2">Collected Cash <span className="text-red-500">*</span></label>
+                        <label className="block text-sm font-semibold text-slate-700 mb-2">Collected Cash <span className="text-red-500">*</span></label>
                         <div className="relative">
-                          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">$</span>
+                          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">$</span>
                           <input
                             type="number"
                             step="0.01"
                             min="0"
                             value={collectedCash}
                             onChange={(e) => { setCollectedCash(e.target.value); setCashError(null) }}
-                            className={`block w-full pl-8 pr-4 py-3 border rounded-lg ${cashError ? 'border-red-300 bg-red-50' : 'border-gray-300'}`}
+                            className={`block w-full pl-8 pr-4 py-3 border rounded-lg ${cashError ? 'border-red-300 bg-red-50' : 'border-slate-300'}`}
                             placeholder="0.00"
                             disabled={loading}
                           />
                         </div>
                       </div>
                       <div>
-                        <label className="block text-sm font-semibold text-gray-700 mb-2">Drop Amount <span className="text-red-500">*</span></label>
+                        <label className="block text-sm font-semibold text-slate-700 mb-2">Drop Amount <span className="text-red-500">*</span></label>
                         <div className="relative">
-                          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">$</span>
+                          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">$</span>
                           <input
                             type="number"
                             step="0.01"
                             min="0"
                             value={dropAmount}
                             onChange={(e) => { setDropAmount(e.target.value); setCashError(null) }}
-                            className={`block w-full pl-8 pr-4 py-3 border rounded-lg ${cashError ? 'border-red-300 bg-red-50' : 'border-gray-300'}`}
+                            className={`block w-full pl-8 pr-4 py-3 border rounded-lg ${cashError ? 'border-red-300 bg-red-50' : 'border-slate-300'}`}
                             placeholder="0.00"
                             disabled={loading}
                           />
                         </div>
                       </div>
                       <div>
-                        <label className="block text-sm font-semibold text-gray-700 mb-2">Beverages Sold (Total) <span className="text-red-500">*</span></label>
+                        <label className="block text-sm font-semibold text-slate-700 mb-2">Beverages Sold (Total) <span className="text-red-500">*</span></label>
                         <div className="relative">
-                          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">$</span>
+                          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">$</span>
                           <input
                             type="number"
                             step="0.01"
                             min="0"
                             value={beveragesCash}
                             onChange={(e) => { setBeveragesCash(e.target.value); setCashError(null) }}
-                            className={`block w-full pl-8 pr-4 py-3 border rounded-lg ${cashError ? 'border-red-300 bg-red-50' : 'border-gray-300'}`}
+                            className={`block w-full pl-8 pr-4 py-3 border rounded-lg ${cashError ? 'border-red-300 bg-red-50' : 'border-slate-300'}`}
                             placeholder="0.00"
                             disabled={loading}
                           />
                         </div>
                       </div>
                       <div>
-                        <label className="block text-sm font-semibold text-gray-700 mb-2">Cash in Drawer <span className="text-red-500">*</span></label>
+                        <label className="block text-sm font-semibold text-slate-700 mb-2">Cash in Drawer <span className="text-red-500">*</span></label>
                         <div className="relative">
-                          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">$</span>
+                          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">$</span>
                           <input
                             type="number"
                             step="0.01"
@@ -600,7 +600,7 @@ export default function MyPunchPage() {
                               setCashError(null)
                             }}
                             onKeyPress={(e) => { if (e.key === 'Enter') handleCashDialogSubmit() }}
-                            className={`block w-full pl-12 pr-5 py-5 border-2 rounded-xl text-center text-2xl font-bold ${cashError ? 'border-red-300 bg-red-50' : 'border-gray-200 bg-gray-50'}`}
+                            className={`block w-full pl-12 pr-5 py-5 border-2 rounded-xl text-center text-2xl font-bold ${cashError ? 'border-red-300 bg-red-50' : 'border-slate-200 bg-slate-50'}`}
                             placeholder="0.00"
                             disabled={loading}
                           />
@@ -631,7 +631,7 @@ export default function MyPunchPage() {
                             !beveragesCash ||
                             parseFloat(beveragesCash) < 0))
                       }
-                      className="flex-1 px-6 py-4 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-xl hover:from-blue-700 hover:to-indigo-700 font-semibold text-base disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 shadow-lg hover:shadow-xl transition-all transform hover:scale-[1.02] active:scale-[0.98]"
+                      className="flex-1 px-6 py-4 bg-gradient-to-r from-blue-600 to-blue-600 text-white rounded-xl hover:from-blue-700 hover:to-blue-700 font-semibold text-base disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 shadow-sm hover:shadow-xl transition-all transform hover:scale-[1.02] active:scale-[0.98]"
                     >
                       {loading ? (
                         <>
@@ -654,7 +654,7 @@ export default function MyPunchPage() {
                       type="button"
                       onClick={handleCashDialogCancel}
                       disabled={loading}
-                      className="px-6 py-4 bg-gray-100 text-gray-700 rounded-xl hover:bg-gray-200 font-semibold text-base disabled:opacity-50 disabled:cursor-not-allowed transition-all transform hover:scale-[1.02] active:scale-[0.98]"
+                      className="px-6 py-4 bg-slate-100 text-slate-700 rounded-xl hover:bg-slate-200 font-semibold text-base disabled:opacity-50 disabled:cursor-not-allowed transition-all transform hover:scale-[1.02] active:scale-[0.98]"
                     >
                       Cancel
                     </button>

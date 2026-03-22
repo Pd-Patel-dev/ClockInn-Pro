@@ -178,8 +178,8 @@ export default function RolesPermissionsPage() {
       <div className="max-w-5xl mx-auto px-4 py-8">
         {/* Header */}
         <div className="mb-8">
-          <h1 className="text-2xl font-bold text-gray-900">Roles & Permissions</h1>
-          <p className="text-gray-600 mt-1">Manage what each role can access</p>
+          <h1 className="text-2xl font-bold text-slate-900">Roles & Permissions</h1>
+          <p className="text-slate-600 mt-1">Manage what each role can access</p>
         </div>
 
         {/* Role Tabs */}
@@ -190,8 +190,8 @@ export default function RolesPermissionsPage() {
               onClick={() => setSelectedRole(role.value)}
               className={`px-4 py-2 rounded-lg font-medium text-sm transition-all ${
                 selectedRole === role.value
-                  ? `${role.color} text-white shadow-md`
-                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  ? `${role.color} text-white shadow-sm`
+                  : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
               }`}
             >
               {role.label}
@@ -200,14 +200,14 @@ export default function RolesPermissionsPage() {
         </div>
 
         {/* Permissions Card */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200">
+        <div className="bg-white rounded-xl shadow-sm border border-slate-200">
           {/* Card Header */}
-          <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
+          <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between">
             <div>
-              <h2 className="text-lg font-semibold text-gray-900">
+              <h2 className="text-lg font-semibold text-slate-900">
                 {selectedRoleInfo?.label} Permissions
               </h2>
-              <p className="text-sm text-gray-500">
+              <p className="text-sm text-slate-500">
                 {selectedPermissions.size} permissions enabled
               </p>
             </div>
@@ -228,7 +228,7 @@ export default function RolesPermissionsPage() {
           </div>
 
           {/* Permissions List */}
-          <div className="divide-y divide-gray-100">
+          <div className="divide-y divide-slate-100">
             {loading ? (
               <div className="flex items-center justify-center py-12">
                 <LoadingSpinner />
@@ -248,18 +248,18 @@ export default function RolesPermissionsPage() {
                           type="checkbox"
                           checked={isFullySelected}
                           onChange={(e) => handleCategoryToggle(category.category, e.target.checked)}
-                          className="w-5 h-5 rounded border-gray-300 text-teal-600 focus:ring-teal-500"
+                          className="w-5 h-5 rounded border-slate-300 text-teal-600 focus:ring-teal-500"
                           ref={(input) => {
                             if (input) {
                               input.indeterminate = isPartiallySelected
                             }
                           }}
                         />
-                        <span className="font-semibold text-gray-900">
+                        <span className="font-semibold text-slate-900">
                           {CATEGORY_LABELS[category.category] || category.category}
                         </span>
                       </label>
-                      <span className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded">
+                      <span className="text-xs text-slate-500 bg-slate-100 px-2 py-1 rounded">
                         {categorySelectedCount}/{category.permissions.length}
                       </span>
                     </div>
@@ -269,15 +269,15 @@ export default function RolesPermissionsPage() {
                       {category.permissions.map((permission) => (
                         <label
                           key={permission.id}
-                          className="flex items-center gap-2 p-2 rounded-lg hover:bg-gray-50 cursor-pointer"
+                          className="flex items-center gap-2 p-2 rounded-lg hover:bg-slate-50 cursor-pointer"
                         >
                           <input
                             type="checkbox"
                             checked={selectedPermissions.has(permission.id)}
                             onChange={() => handlePermissionToggle(permission.id)}
-                            className="w-4 h-4 rounded border-gray-300 text-teal-600 focus:ring-teal-500"
+                            className="w-4 h-4 rounded border-slate-300 text-teal-600 focus:ring-teal-500"
                           />
-                          <span className="text-sm text-gray-700">{permission.display_name}</span>
+                          <span className="text-sm text-slate-700">{permission.display_name}</span>
                         </label>
                       ))}
                     </div>

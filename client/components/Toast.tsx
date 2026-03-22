@@ -85,7 +85,7 @@ const ToastContainer: React.FC<ToastContainerProps> = ({ toasts, onRemove }) => 
   if (toasts.length === 0) return null
 
   return (
-    <div className="fixed top-4 right-4 z-50 space-y-2 max-w-md w-full">
+    <div className="fixed top-4 right-4 z-[100] flex flex-col gap-2 max-w-md w-[calc(100%-2rem)] sm:w-full pointer-events-none [&>*]:pointer-events-auto">
       {toasts.map((toast) => (
         <ToastItem key={toast.id} toast={toast} onRemove={onRemove} />
       ))}
@@ -111,14 +111,14 @@ const ToastItem: React.FC<ToastItemProps> = ({ toast, onRemove }) => {
   const getToastStyles = () => {
     switch (toast.type) {
       case 'success':
-        return 'bg-green-50 border-green-200 text-green-800'
+        return 'bg-white border-slate-200 text-slate-800 border-l-4 border-l-emerald-500'
       case 'error':
-        return 'bg-red-50 border-red-200 text-red-800'
+        return 'bg-white border-slate-200 text-slate-800 border-l-4 border-l-red-500'
       case 'warning':
-        return 'bg-yellow-50 border-yellow-200 text-yellow-800'
+        return 'bg-white border-slate-200 text-slate-800 border-l-4 border-l-amber-500'
       case 'info':
       default:
-        return 'bg-blue-50 border-blue-200 text-blue-800'
+        return 'bg-white border-slate-200 text-slate-800 border-l-4 border-l-blue-600'
     }
   }
 
@@ -154,17 +154,17 @@ const ToastItem: React.FC<ToastItemProps> = ({ toast, onRemove }) => {
 
   return (
     <div
-      className={`${getToastStyles()} border rounded-lg p-4 shadow-lg flex items-start gap-3 transition-all duration-300 ${
-        isExiting ? 'opacity-0 translate-x-full' : 'opacity-100 translate-x-0'
+      className={`${getToastStyles()} border rounded-xl p-3.5 shadow-sm flex items-start gap-3 transition-opacity duration-200 ${
+        isExiting ? 'opacity-0 translate-x-2' : 'opacity-100 translate-x-0'
       }`}
     >
       <div className="flex-shrink-0 mt-0.5">{getIcon()}</div>
       <div className="flex-1 min-w-0">
-        <p className="text-sm font-medium">{toast.message}</p>
+        <p className="text-sm font-medium leading-snug">{toast.message}</p>
       </div>
       <button
         onClick={handleClose}
-        className="flex-shrink-0 text-gray-400 hover:text-gray-600 transition-colors"
+        className="flex-shrink-0 rounded-lg p-0.5 text-slate-400 hover:text-slate-600 transition-colors"
       >
         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />

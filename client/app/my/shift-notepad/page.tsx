@@ -122,8 +122,8 @@ export default function ShiftNotepadPage() {
   return (
     <Layout>
       <div className="max-w-4xl mx-auto">
-        <h1 className="text-2xl font-bold text-gray-900 mb-2">Shift Notepad</h1>
-        <p className="text-sm text-gray-600 mb-6">
+        <h1 className="text-2xl font-bold text-slate-900 mb-2">Shift Notepad</h1>
+        <p className="text-sm text-slate-600 mb-6">
           One note per shift. Autosaves as you type.
         </p>
 
@@ -146,9 +146,9 @@ export default function ShiftNotepadPage() {
 
         {note && (
           <>
-            <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-              <div className="border-b border-gray-200 px-4 py-2 flex items-center justify-between flex-wrap gap-2">
-                <span className="text-xs text-gray-500">
+            <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+              <div className="border-b border-slate-200 px-4 py-2 flex items-center justify-between flex-wrap gap-2">
+                <span className="text-xs text-slate-500">
                   {note.clock_in_at
                     ? `Shift started ${formatDateTimeForDisplay(note.clock_in_at)}`
                     : 'Current shift'}
@@ -166,7 +166,7 @@ export default function ShiftNotepadPage() {
                     type="button"
                     onClick={insertTemplate}
                     disabled={!note.can_edit || content.trim().length > 0}
-                    className="text-xs font-medium text-gray-600 hover:text-gray-900 disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="text-xs font-medium text-slate-600 hover:text-slate-900 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     Insert template
                   </button>
@@ -178,10 +178,10 @@ export default function ShiftNotepadPage() {
                 onChange={(e) => setContent(e.target.value)}
                 disabled={!note.can_edit}
                 placeholder="Write your shift notes here..."
-                className="w-full min-h-[320px] p-4 text-gray-900 placeholder-gray-400 border-0 focus:ring-0 focus:outline-none resize-y font-mono text-sm leading-relaxed disabled:bg-gray-50 disabled:cursor-not-allowed"
+                className="w-full min-h-[320px] p-4 text-slate-900 placeholder-gray-400 border-0 focus:ring-0 focus:outline-none resize-y font-mono text-sm leading-relaxed disabled:bg-slate-50 disabled:cursor-not-allowed"
                 style={{ minHeight: '320px' }}
               />
-              <div className="border-t border-gray-200 px-4 py-2 flex items-center justify-between text-xs text-gray-500">
+              <div className="border-t border-slate-200 px-4 py-2 flex items-center justify-between text-xs text-slate-500">
                 <span>
                   {saveStatus === 'saving' && 'Saving...'}
                   {saveStatus === 'saved' && savedAt && `Saved at ${format(savedAt, 'h:mm a')}`}

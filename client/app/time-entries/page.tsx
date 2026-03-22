@@ -175,7 +175,7 @@ export default function AdminTimePage() {
       'approved': { color: 'text-blue-800', bg: 'bg-blue-100' },
       'edited': { color: 'text-purple-800', bg: 'bg-purple-100' },
     }
-    const style = statusMap[status.toLowerCase()] || { color: 'text-gray-800', bg: 'bg-gray-100' }
+    const style = statusMap[status.toLowerCase()] || { color: 'text-slate-800', bg: 'bg-slate-100' }
     const capitalizedStatus = status ? status.charAt(0).toUpperCase() + status.slice(1).toLowerCase() : status
     return (
       <span className={`px-3 py-1 rounded-full text-xs font-semibold ${style.bg} ${style.color}`}>
@@ -193,8 +193,8 @@ export default function AdminTimePage() {
       <div className="px-4 py-8 sm:px-6 lg:px-8">
         {/* Header */}
         <div className="mb-6">
-          <h1 className="text-2xl font-semibold text-gray-900 mb-1">Time Entries</h1>
-          <p className="text-sm text-gray-600">View and manage all employee time entries</p>
+          <h1 className="text-2xl font-semibold text-slate-900 mb-1">Time Entries</h1>
+          <p className="text-sm text-slate-600">View and manage all employee time entries</p>
         </div>
 
         {error && (
@@ -204,25 +204,25 @@ export default function AdminTimePage() {
         )}
 
         {/* Filters Card */}
-        <div className="bg-white rounded-lg border border-gray-200 p-4 mb-6">
-          <h2 className="text-sm font-medium text-gray-900 mb-3">Filter by Date Range</h2>
+        <div className="bg-white rounded-lg border border-slate-200 p-4 mb-6">
+          <h2 className="text-sm font-medium text-slate-900 mb-3">Filter by Date Range</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">From Date</label>
+              <label className="block text-sm font-medium text-slate-700 mb-2">From Date</label>
               <input
                 type="date"
                 value={fromDate}
                 onChange={(e) => setFromDate(e.target.value)}
-                className="block w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                className="block w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">To Date</label>
+              <label className="block text-sm font-medium text-slate-700 mb-2">To Date</label>
               <input
                 type="date"
                 value={toDate}
                 onChange={(e) => setToDate(e.target.value)}
-                className="block w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                className="block w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
               />
             </div>
           </div>
@@ -233,68 +233,68 @@ export default function AdminTimePage() {
           <TableSkeleton rows={10} columns={6} />
         ) : (
           <>
-            <div className="bg-white rounded-lg border border-gray-200 overflow-hidden mb-4">
+            <div className="bg-white rounded-lg border border-slate-200 overflow-hidden mb-4">
               <div className="overflow-x-auto">
-                <table className="w-full divide-y divide-gray-200">
-                  <thead className="bg-gray-50">
+                <table className="w-full divide-y divide-slate-200">
+                  <thead className="bg-slate-50">
                     <tr>
-                      <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                      <th className="px-6 py-4 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">
                         Employee
                       </th>
-                      <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                      <th className="px-6 py-4 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">
                         Date
                       </th>
-                      <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                      <th className="px-6 py-4 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">
                         Clock In
                       </th>
-                      <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                      <th className="px-6 py-4 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">
                         Clock Out
                       </th>
-                      <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                      <th className="px-6 py-4 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">
                         Hours
                       </th>
-                      <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                      <th className="px-6 py-4 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">
                         Status
                       </th>
-                      <th className="px-6 py-4 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
+                      <th className="px-6 py-4 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">
                         Actions
                       </th>
                     </tr>
                   </thead>
-                  <tbody className="bg-white divide-y divide-gray-200">
+                  <tbody className="bg-white divide-y divide-slate-200">
                     {entries.length === 0 ? (
                       <tr>
                         <td colSpan={7} className="px-6 py-12 text-center">
                           <div className="flex flex-col items-center">
-                            <p className="text-gray-500 text-lg font-medium">No entries found</p>
-                            <p className="text-gray-400 text-sm mt-1">Try adjusting your date filters</p>
+                            <p className="text-slate-500 text-lg font-medium">No entries found</p>
+                            <p className="text-slate-400 text-sm mt-1">Try adjusting your date filters</p>
                           </div>
                         </td>
                       </tr>
                     ) : (
                       entries.map((entry) => (
-                        <tr key={entry.id} className="hover:bg-gray-50 transition-colors">
+                        <tr key={entry.id} className="hover:bg-slate-50 transition-colors">
                           <td className="px-6 py-4 whitespace-nowrap">
                             <div className="flex items-center">
                               <div className="flex-shrink-0 h-10 w-10 rounded-full bg-blue-100 flex items-center justify-center text-blue-700 font-semibold">
                                 {entry.employee_name.charAt(0).toUpperCase()}
                               </div>
                               <div className="ml-4">
-                                <div className="text-sm font-medium text-gray-900">{entry.employee_name}</div>
+                                <div className="text-sm font-medium text-slate-900">{entry.employee_name}</div>
                               </div>
                             </div>
                           </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                          <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-slate-900">
                             {entry.clock_in_at_local
                               ? entry.clock_in_at_local.split(' ')[0]
                               : format(new Date(entry.clock_in_at), 'MMM dd, yyyy')}
                           </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-700">
                             {entry.clock_in_at_local
                               ? entry.clock_in_at_local.split(' ')[1]?.substring(0, 5)
                               : format(new Date(entry.clock_in_at), 'HH:mm')}
                           </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-700">
                             {entry.clock_out_at_local ? (
                               entry.clock_out_at_local.split(' ')[1]?.substring(0, 5)
                             ) : entry.clock_out_at ? (
@@ -303,7 +303,7 @@ export default function AdminTimePage() {
                               <span className="px-2 py-1 bg-yellow-100 text-yellow-800 rounded-full text-xs font-semibold">Open</span>
                             )}
                           </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm font-semibold text-gray-900">
+                          <td className="px-6 py-4 whitespace-nowrap text-sm font-semibold text-slate-900">
                             {calculateHours(entry)} hrs
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm">
@@ -334,15 +334,15 @@ export default function AdminTimePage() {
             {/* Info Modal */}
             {showInfoModal && selectedEntry && (
               <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center p-4">
-                <div className="relative bg-white rounded-xl shadow-2xl w-full max-w-2xl">
-                  <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
-                    <h3 className="text-xl font-bold text-gray-900">Time Entry Details</h3>
+                <div className="relative bg-white rounded-xl shadow-xl w-full max-w-2xl">
+                  <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between">
+                    <h3 className="text-xl font-bold text-slate-900">Time Entry Details</h3>
                     <button
                       onClick={() => {
                         setShowInfoModal(false)
                         setSelectedEntry(null)
                       }}
-                      className="text-gray-400 hover:text-gray-600 transition-colors"
+                      className="text-slate-400 hover:text-slate-600 transition-colors"
                     >
                       <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -352,22 +352,22 @@ export default function AdminTimePage() {
                   <div className="p-6 space-y-4">
                     <div className="grid grid-cols-2 gap-4">
                       <div>
-                        <label className="text-sm font-medium text-gray-500">Employee</label>
-                        <p className="mt-1 text-sm text-gray-900">{selectedEntry.employee_name}</p>
+                        <label className="text-sm font-medium text-slate-500">Employee</label>
+                        <p className="mt-1 text-sm text-slate-900">{selectedEntry.employee_name}</p>
                       </div>
                       <div>
-                        <label className="text-sm font-medium text-gray-500">Status</label>
+                        <label className="text-sm font-medium text-slate-500">Status</label>
                         <div className="mt-1">{getStatusBadge(selectedEntry.status)}</div>
                       </div>
                       <div>
-                        <label className="text-sm font-medium text-gray-500">Clock In</label>
-                        <p className="mt-1 text-sm text-gray-900">
+                        <label className="text-sm font-medium text-slate-500">Clock In</label>
+                        <p className="mt-1 text-sm text-slate-900">
                           {selectedEntry.clock_in_at_local || format(new Date(selectedEntry.clock_in_at), 'MMM dd, yyyy HH:mm')}
                         </p>
                       </div>
                       <div>
-                        <label className="text-sm font-medium text-gray-500">Clock Out</label>
-                        <p className="mt-1 text-sm text-gray-900">
+                        <label className="text-sm font-medium text-slate-500">Clock Out</label>
+                        <p className="mt-1 text-sm text-slate-900">
                           {selectedEntry.clock_out_at_local 
                             ? selectedEntry.clock_out_at_local
                             : selectedEntry.clock_out_at 
@@ -376,43 +376,43 @@ export default function AdminTimePage() {
                         </p>
                       </div>
                       <div>
-                        <label className="text-sm font-medium text-gray-500">Total Hours</label>
-                        <p className="mt-1 text-sm text-gray-900">{calculateHours(selectedEntry)} hrs</p>
+                        <label className="text-sm font-medium text-slate-500">Total Hours</label>
+                        <p className="mt-1 text-sm text-slate-900">{calculateHours(selectedEntry)} hrs</p>
                       </div>
                       <div>
-                        <label className="text-sm font-medium text-gray-500">Break Minutes</label>
-                        <p className="mt-1 text-sm text-gray-900">{selectedEntry.break_minutes} min</p>
+                        <label className="text-sm font-medium text-slate-500">Break Minutes</label>
+                        <p className="mt-1 text-sm text-slate-900">{selectedEntry.break_minutes} min</p>
                       </div>
                       <div>
-                        <label className="text-sm font-medium text-gray-500">Source</label>
-                        <p className="mt-1 text-sm text-gray-900 capitalize">{selectedEntry.source || 'N/A'}</p>
+                        <label className="text-sm font-medium text-slate-500">Source</label>
+                        <p className="mt-1 text-sm text-slate-900 capitalize">{selectedEntry.source || 'N/A'}</p>
                       </div>
                       <div>
-                        <label className="text-sm font-medium text-gray-500">Clock In IP</label>
-                        <p className="mt-1 text-sm text-gray-900 font-mono">{selectedEntry.ip_address || 'N/A'}</p>
+                        <label className="text-sm font-medium text-slate-500">Clock In IP</label>
+                        <p className="mt-1 text-sm text-slate-900 font-mono">{selectedEntry.ip_address || 'N/A'}</p>
                       </div>
                       {selectedEntry.clock_out_ip_address && (
                         <div>
-                          <label className="text-sm font-medium text-gray-500">Clock Out IP</label>
-                          <p className="mt-1 text-sm text-gray-900 font-mono">{selectedEntry.clock_out_ip_address}</p>
+                          <label className="text-sm font-medium text-slate-500">Clock Out IP</label>
+                          <p className="mt-1 text-sm text-slate-900 font-mono">{selectedEntry.clock_out_ip_address}</p>
                         </div>
                       )}
                       {selectedEntry.user_agent && (
                         <div>
-                          <label className="text-sm font-medium text-gray-500">Clock In Device</label>
-                          <p className="mt-1 text-sm text-gray-900">{parseUserAgent(selectedEntry.user_agent)}</p>
+                          <label className="text-sm font-medium text-slate-500">Clock In Device</label>
+                          <p className="mt-1 text-sm text-slate-900">{parseUserAgent(selectedEntry.user_agent)}</p>
                         </div>
                       )}
                       {selectedEntry.clock_out_user_agent && (
                         <div>
-                          <label className="text-sm font-medium text-gray-500">Clock Out Device</label>
-                          <p className="mt-1 text-sm text-gray-900">{parseUserAgent(selectedEntry.clock_out_user_agent)}</p>
+                          <label className="text-sm font-medium text-slate-500">Clock Out Device</label>
+                          <p className="mt-1 text-sm text-slate-900">{parseUserAgent(selectedEntry.clock_out_user_agent)}</p>
                         </div>
                       )}
                       {formatLocation(selectedEntry.clock_in_latitude, selectedEntry.clock_in_longitude) && (
                         <div>
-                          <label className="text-sm font-medium text-gray-500">Clock In Location</label>
-                          <p className="mt-1 text-sm text-gray-900">
+                          <label className="text-sm font-medium text-slate-500">Clock In Location</label>
+                          <p className="mt-1 text-sm text-slate-900">
                             <a 
                               href={getMapLink(selectedEntry.clock_in_latitude, selectedEntry.clock_in_longitude) || '#'} 
                               target="_blank" 
@@ -429,8 +429,8 @@ export default function AdminTimePage() {
                       )}
                       {formatLocation(selectedEntry.clock_out_latitude, selectedEntry.clock_out_longitude) && (
                         <div>
-                          <label className="text-sm font-medium text-gray-500">Clock Out Location</label>
-                          <p className="mt-1 text-sm text-gray-900">
+                          <label className="text-sm font-medium text-slate-500">Clock Out Location</label>
+                          <p className="mt-1 text-sm text-slate-900">
                             <a 
                               href={getMapLink(selectedEntry.clock_out_latitude, selectedEntry.clock_out_longitude) || '#'} 
                               target="_blank" 
@@ -447,41 +447,41 @@ export default function AdminTimePage() {
                       )}
                       {selectedEntry.note && (
                         <div className="col-span-2">
-                          <label className="text-sm font-medium text-gray-500">Note</label>
-                          <p className="mt-1 text-sm text-gray-900">{selectedEntry.note}</p>
+                          <label className="text-sm font-medium text-slate-500">Note</label>
+                          <p className="mt-1 text-sm text-slate-900">{selectedEntry.note}</p>
                         </div>
                       )}
                       {selectedEntry.edited_by_name && (
                         <div>
-                          <label className="text-sm font-medium text-gray-500">Edited By</label>
-                          <p className="mt-1 text-sm text-gray-900">{selectedEntry.edited_by_name}</p>
+                          <label className="text-sm font-medium text-slate-500">Edited By</label>
+                          <p className="mt-1 text-sm text-slate-900">{selectedEntry.edited_by_name}</p>
                         </div>
                       )}
                       {selectedEntry.created_at && (
                         <div>
-                          <label className="text-sm font-medium text-gray-500">Created At</label>
-                          <p className="mt-1 text-sm text-gray-900">
+                          <label className="text-sm font-medium text-slate-500">Created At</label>
+                          <p className="mt-1 text-sm text-slate-900">
                             {format(new Date(selectedEntry.created_at), 'MMM dd, yyyy HH:mm:ss')}
                           </p>
                         </div>
                       )}
                       {selectedEntry.updated_at && (
                         <div>
-                          <label className="text-sm font-medium text-gray-500">Last Updated</label>
-                          <p className="mt-1 text-sm text-gray-900">
+                          <label className="text-sm font-medium text-slate-500">Last Updated</label>
+                          <p className="mt-1 text-sm text-slate-900">
                             {format(new Date(selectedEntry.updated_at), 'MMM dd, yyyy HH:mm:ss')}
                           </p>
                         </div>
                       )}
                       {selectedEntry.company_timezone && (
                         <div>
-                          <label className="text-sm font-medium text-gray-500">Timezone</label>
-                          <p className="mt-1 text-sm text-gray-900">{selectedEntry.company_timezone}</p>
+                          <label className="text-sm font-medium text-slate-500">Timezone</label>
+                          <p className="mt-1 text-sm text-slate-900">{selectedEntry.company_timezone}</p>
                         </div>
                       )}
                     </div>
                   </div>
-                  <div className="px-6 py-4 border-t border-gray-200 flex justify-end">
+                  <div className="px-6 py-4 border-t border-slate-200 flex justify-end">
                     <button
                       onClick={() => {
                         setShowInfoModal(false)
@@ -498,24 +498,24 @@ export default function AdminTimePage() {
 
             {/* Pagination */}
             {total > 0 && (
-              <div className="bg-white rounded-lg border border-gray-200 p-4">
+              <div className="bg-white rounded-lg border border-slate-200 p-4">
                 <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
                   {/* Page Info */}
-                  <div className="text-sm text-gray-700">
+                  <div className="text-sm text-slate-700">
                     Showing <span className="font-medium">{startEntry}</span> to <span className="font-medium">{endEntry}</span> of{' '}
                     <span className="font-medium">{total}</span> entries
                   </div>
 
                   {/* Page Size Selector */}
                   <div className="flex items-center gap-2">
-                    <label className="text-sm text-gray-700">Show:</label>
+                    <label className="text-sm text-slate-700">Show:</label>
                     <select
                       value={pageSize}
                       onChange={(e) => {
                         setPageSize(Number(e.target.value))
                         setCurrentPage(1)
                       }}
-                      className="px-3 py-1 border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 text-sm"
+                      className="px-3 py-1 border border-slate-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 text-sm"
                     >
                       <option value="10">10</option>
                       <option value="20">20</option>
@@ -529,31 +529,31 @@ export default function AdminTimePage() {
                     <button
                       onClick={() => setCurrentPage(1)}
                       disabled={currentPage === 1}
-                      className="px-3 py-1 border border-gray-300 rounded text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="px-3 py-1 border border-slate-300 rounded text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       First
                     </button>
                     <button
                       onClick={() => setCurrentPage(currentPage - 1)}
                       disabled={currentPage === 1}
-                      className="px-3 py-1 border border-gray-300 rounded text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="px-3 py-1 border border-slate-300 rounded text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       Previous
                     </button>
-                    <span className="px-3 py-1 text-sm text-gray-700">
+                    <span className="px-3 py-1 text-sm text-slate-700">
                       Page {currentPage} of {totalPages}
                     </span>
                     <button
                       onClick={() => setCurrentPage(currentPage + 1)}
                       disabled={currentPage === totalPages}
-                      className="px-3 py-1 border border-gray-300 rounded text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="px-3 py-1 border border-slate-300 rounded text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       Next
                     </button>
                     <button
                       onClick={() => setCurrentPage(totalPages)}
                       disabled={currentPage === totalPages}
-                      className="px-3 py-1 border border-gray-300 rounded text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="px-3 py-1 border border-slate-300 rounded text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       Last
                     </button>

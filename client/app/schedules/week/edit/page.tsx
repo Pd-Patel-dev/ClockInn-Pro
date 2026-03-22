@@ -116,14 +116,14 @@ function EditWeekShiftsContent() {
 
   return (
     <Layout>
-      <div className="min-h-screen bg-gradient-to-br from-slate-100 via-gray-50 to-indigo-50/30">
+      <div className="min-h-screen bg-gradient-to-br from-slate-100 via-gray-50 to-blue-50/30">
         <div className="max-w-2xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           <div className="mb-6">
-            <BackButton fallbackHref="/schedules" className="text-sm font-medium text-gray-600 hover:text-gray-900 mb-4 inline-flex items-center gap-1">
+            <BackButton fallbackHref="/schedules" className="text-sm font-medium text-slate-600 hover:text-slate-900 mb-4 inline-flex items-center gap-1">
               Back to Schedule
             </BackButton>
-            <h1 className="text-2xl font-bold text-gray-900">Edit shifts</h1>
-            <p className="mt-1 text-sm text-gray-500">
+            <h1 className="text-2xl font-bold text-slate-900">Edit shifts</h1>
+            <p className="mt-1 text-sm text-slate-500">
               {employeeName || 'Employee'} · Week of {format(weekStart, 'MMM d')} – {format(weekEnd, 'MMM d, yyyy')}
             </p>
           </div>
@@ -131,11 +131,11 @@ function EditWeekShiftsContent() {
           {loading ? (
             <div className="bg-white/80 rounded-2xl border border-white/60 p-8 text-center">
               <div className="animate-spin rounded-full h-10 w-10 border-2 border-blue-500/60 border-t-transparent mx-auto" />
-              <p className="mt-3 text-gray-600">Loading shifts...</p>
+              <p className="mt-3 text-slate-600">Loading shifts...</p>
             </div>
           ) : shifts.length === 0 ? (
             <div className="bg-white/80 rounded-2xl border border-white/60 p-8 text-center">
-              <p className="text-gray-600">No shifts this week for this employee.</p>
+              <p className="text-slate-600">No shifts this week for this employee.</p>
               <button
                 type="button"
                 onClick={() => router.push(`/schedules/week?employee_id=${employeeId}&week_start=${format(weekStart, 'yyyy-MM-dd')}`)}
@@ -157,10 +157,10 @@ function EditWeekShiftsContent() {
                     className="flex items-center justify-between gap-4 bg-white/80 rounded-xl border border-white/60 p-4 shadow-[inset_2px_2px_4px_rgba(0,0,0,0.03)]"
                   >
                     <div>
-                      <p className="font-medium text-gray-900">
+                      <p className="font-medium text-slate-900">
                         {format(new Date(shift.shift_date), 'EEE, MMM d')}
                       </p>
-                      <p className="text-sm text-gray-600">
+                      <p className="text-sm text-slate-600">
                         {formatTime(shift.start_time)} – {formatTime(shift.end_time)}
                         {shift.break_minutes ? ` · ${shift.break_minutes}m break` : ''}
                       </p>
@@ -169,7 +169,7 @@ function EditWeekShiftsContent() {
                       <button
                         type="button"
                         onClick={() => router.push(`/schedules/shift/${shift.id}/edit`)}
-                        className="py-2 px-4 rounded-lg bg-gray-100 text-gray-700 text-sm font-medium hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-gray-400/50"
+                        className="py-2 px-4 rounded-lg bg-slate-100 text-slate-700 text-sm font-medium hover:bg-slate-200 focus:outline-none focus:ring-2 focus:ring-gray-400/50"
                       >
                         Edit
                       </button>
@@ -214,7 +214,7 @@ export default function EditWeekShiftsPage() {
     <Suspense
       fallback={
         <Layout>
-          <div className="min-h-screen bg-gradient-to-br from-slate-100 via-gray-50 to-indigo-50/30 flex items-center justify-center">
+          <div className="min-h-screen bg-gradient-to-br from-slate-100 via-gray-50 to-blue-50/30 flex items-center justify-center">
             <div className="animate-spin rounded-full h-10 w-10 border-2 border-blue-500/60 border-t-transparent" />
           </div>
         </Layout>

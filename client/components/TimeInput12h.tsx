@@ -39,15 +39,15 @@ export default function TimeInput12h({ value, onChange, id, label, className = '
     return (
       <div className={className}>
         {label && (
-          <label htmlFor={id} className="block text-sm font-semibold text-gray-700 mb-1">
+          <label htmlFor={id} className="block text-sm font-semibold text-slate-700 mb-1">
             {label}
           </label>
         )}
         <div className="flex items-center gap-1.5 px-2.5 py-2 border border-amber-300 rounded-lg bg-amber-50/80 text-amber-800 text-sm">
-          <span className="text-gray-500">— : —</span>
+          <span className="text-slate-500">— : —</span>
           <span className="text-amber-700 font-medium">Invalid time</span>
         </div>
-        <p className="text-xs text-gray-500 mt-1">Defaulting to 12:00 AM</p>
+        <p className="text-xs text-slate-500 mt-1">Defaulting to 12:00 AM</p>
       </div>
     )
   }
@@ -55,7 +55,7 @@ export default function TimeInput12h({ value, onChange, id, label, className = '
   return (
     <div className={className}>
       {label && (
-        <label htmlFor={id} className="block text-sm font-semibold text-gray-700 mb-1">
+        <label htmlFor={id} className="block text-sm font-semibold text-slate-700 mb-1">
           {label}
         </label>
       )}
@@ -65,7 +65,7 @@ export default function TimeInput12h({ value, onChange, id, label, className = '
           value={t.hour12}
           onChange={(e) => handleChange({ hour12: Number(e.target.value) })}
           disabled={disabled}
-          className="px-2.5 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white min-w-[4rem]"
+          className="px-2.5 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white min-w-[4rem]"
           aria-label="Hour"
         >
           {HOURS_12.map((h) => (
@@ -74,12 +74,12 @@ export default function TimeInput12h({ value, onChange, id, label, className = '
             </option>
           ))}
         </select>
-        <span className="text-gray-500 font-medium">:</span>
+        <span className="text-slate-500 font-medium">:</span>
         <select
           value={t.minute}
           onChange={(e) => handleChange({ minute: Number(e.target.value) })}
           disabled={disabled}
-          className="px-2.5 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white min-w-[4rem]"
+          className="px-2.5 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white min-w-[4rem]"
           aria-label="Minute"
         >
           {MINUTES.map((m) => (
@@ -92,7 +92,7 @@ export default function TimeInput12h({ value, onChange, id, label, className = '
           value={t.ampm}
           onChange={(e) => handleChange({ ampm: e.target.value as 'AM' | 'PM' })}
           disabled={disabled}
-          className="px-2.5 py-2 border border-gray-300 rounded-lg text-sm font-medium focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white min-w-[4.5rem]"
+          className="px-2.5 py-2 border border-slate-300 rounded-lg text-sm font-medium focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white min-w-[4.5rem]"
           aria-label="AM/PM"
         >
           <option value="AM">AM</option>

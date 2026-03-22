@@ -21,52 +21,55 @@ This document summarizes security-related findings from a full-app review. Addre
 - **Risk:** 4-digit PIN = 10,000 possibilities. Attackers can try many PINs per minute; login rate limit does not apply to these endpoints.
 - **Recommendation:** Add rate limiting for PIN attempts (e.g. per IP and/or per `company_slug`): lockout after N failed attempts (reuse `PIN_ATTEMPTS_LIMIT` / `LOCKOUT_DURATION_MINUTES` or similar). Consider lockout per (IP, company_slug) to avoid one company blocking others.
 
-### 4. **Email enumeration on public punch**
-- **Where:** `POST /time/punch` returns `"Employee not found"` when email is not in DB (after PIN is not yet checked).
-- **Risk:** Attackers can probe whether an email exists in the system.
-- **Recommendation:** Use a generic message such as `"Invalid email or PIN"` for both “user not found” and “wrong PIN” (and still verify PIN with constant-time logic where applicable).
+### 4. **Email enumeration on public punch** *(addressed)*
+- **Where:** `POST /time/punch` returned `"Employee not found"` when email is not in DB.
+- **Risk:** Attackers could probe whether an email exists in the system.
+- **Fix:** Public punch path now returns `401` with generic `"Invalid email or PIN"` for: unknown email, wrong PIN, and PIN not configured. No distinction between “user not found” and “wrong PIN” (`server/app/api/v1/endpoints/time.py`, `server/app/services/time_entry_service.py`).
 
 ---
 
 ## Medium
 
-### 5. **Access token in `localStorage`**
-- **Where:** `client/lib/api.ts` — access token stored in `localStorage`.
-- **Risk:** Any XSS can read `localStorage` and steal the access token; refresh token is safer in HttpOnly cookie.
-- **Recommendation:** Acceptable for many SPA setups; mitigate by strict CSP, sanitizing all user-generated content, and short access token lifetime (you use 15 minutes). Document the trade-off and ensure no sensitive data is only protected by the access token long-term.
+### 5. **Access token in `localStorage`** *(trade-off documented)*
+- **Where:** `client/lib/api.ts` — access token stored in `localStorage` (refresh token is HttpOnly cookie).
+- **Risk:** Any XSS can read `localStorage` and steal the access token; refresh token is not readable by JS.
+- **Mitigations in place:** Short access token lifetime (15 min); refresh token in HttpOnly cookie; no long-term secrets depend solely on the access token. Full trade-off, risk, and mitigations (CSP, sanitization, SPA alternatives) are documented in the **JSDoc block** above `accessToken` in `client/lib/api.ts`.
 
-### 6. **No global API rate limiting**
-- **Where:** `RATE_LIMIT_PER_MINUTE` exists in config but there is no middleware applying it to the whole API.
-- **Risk:** Unauthenticated and authenticated endpoints can be hammered (e.g. login, kiosk, password reset).
-- **Recommendation:** Add a global rate limit (e.g. by IP) for the API, and keep stricter limits for auth and kiosk endpoints (login already has lockout; add PIN rate limit as in #3).
+### 6. **No global API rate limiting** *(addressed)*
+- **Where:** `app/middleware/rate_limit.py` + `main.py` — sliding-window limits per client IP (`get_client_ip`: `X-Forwarded-For`, `X-Real-IP`, then `request.client.host`).
+- **Behavior:** `RATE_LIMIT_PER_MINUTE` (default 60) for most `/api/v1/*` routes; stricter `RATE_LIMIT_AUTH_KIOSK_PER_MINUTE` (default 30) for `/api/v1/auth/*` and `/api/v1/kiosk/*` (each request counts toward both caps). Exempt: `/api/v1/health` (except `/health/test-error`), `/docs`, `/openapi.json`, `/redoc`, and **HTTP OPTIONS** (CORS preflight). Toggle with `RATE_LIMIT_ENABLED`.
+- **Limits:** In-memory only — not shared across workers/instances (same class of issue as login lockout #7); use Redis-backed limits in production if you scale horizontally.
+- **Recommendation (remaining):** Add PIN / kiosk-specific attempt limits (#3) in addition to this IP cap.
 
-### 7. **Login lockout is in-memory**
-- **Where:** `server/app/core/login_attempts.py` — `_attempts` dict in process memory.
-- **Risk:** With multiple API instances or restarts, lockout state is lost; attackers can retry from another instance or after restart.
-- **Recommendation:** For multi-instance or production, store failed attempts and lockout in a shared store (e.g. Redis) keyed by normalized email (and optionally IP if desired).
+### 7. **Login lockout is in-memory** *(optional Redis)*
+- **Where:** `server/app/core/login_attempts.py` — in-process dict by default; **Redis** when `REDIS_URL` is set (e.g. `redis://redis:6379/0`).
+- **Behavior:** Keys `clockinn:login_attempts:{normalized_email}` (or `{email}|{ip}` if `LOGIN_LOCKOUT_USE_IP=true`). TTL on Redis keys prevents unbounded growth. `close_login_attempts_redis()` runs on app shutdown.
+- **Risk without Redis:** Multiple instances or restarts still lose lockout coherence (each worker has its own memory store).
+- **Recommendation:** Set `REDIS_URL` in production when running more than one API replica. Optionally enable `LOGIN_LOCKOUT_USE_IP` to scope lockout per IP (trade-off documented in `login_attempts.py`).
 
 ### 8. **Refresh token in request body**
 - **Where:** `auth.py` — refresh endpoint accepts refresh token from cookie or from request body (`refresh_data.refresh_token`).
 - **Risk:** If clients send refresh token in body, it may be logged (e.g. in proxies or app logs) and is more exposed than cookie.
 - **Recommendation:** Prefer cookie-only for refresh; deprecate body parameter and remove once all clients use cookies.
 
-### 9. **`delete_cookie` may not clear cookie on all browsers**
-- **Where:** `auth.py` — `_clear_refresh_cookie` only sets `path="/"`.
+### 9. **`delete_cookie` may not clear cookie on all browsers** *(addressed)*
+- **Where:** `auth.py` — `_clear_refresh_cookie` shared scope with `_set_refresh_cookie` via `_refresh_cookie_scope_kwargs()` (`path`, `secure`, `httponly`, `samesite`, optional `COOKIE_DOMAIN`).
 - **Risk:** If cookie was set with `Secure` and `SameSite`, some browsers require the same attributes on delete to clear it.
-- **Recommendation:** Use the same `secure` and `samesite` (and domain if set) when calling `response.delete_cookie(...)`.
+- **Fix:** `delete_cookie` now passes the same scope as `set_cookie`.
 
-### 10. **Sensitive data in error messages**
-- **Where:** Various endpoints; e.g. `create_developer_supabase.py` and some auth paths may expose stack traces or internal details when `ENVIRONMENT` is not production.
+### 10. **Sensitive data in error messages** *(addressed)*
+- **Where:** Previously various services/endpoints returned `str(e)` in HTTP `detail`; CLI script printed exceptions; `ENVIRONMENT` was read ad hoc via `os.getenv`.
 - **Risk:** Information disclosure helps attackers (e.g. DB or paths).
-- **Recommendation:** In production, never return stack traces or internal details; return generic messages and log details server-side only.
+- **Fix:** `settings.ENVIRONMENT` + `app.core.environment.is_production_environment()`; `@handle_endpoint_errors` already sanitized unhandled exceptions; **global `Exception` handler** in `main.py` returns a generic 500 body in production and logs server-side; **`client_error_detail()`** in `error_handling.py` for intentional HTTP 500s that previously embedded `str(e)` (e.g. `user_service`, `leave_service`, `time_entry_service`, `gmail`, `admin`, `cash_drawer`, `auth` set-password); **`/health/test-error` disabled in production**; **`create_developer_supabase.py`** logs full traceback, prints a generic message, exits 1.
 
 ---
 
 ## Low / Informational
 
-### 11. **CORS**
+### 11. **CORS** *(addressed)*
 - **Status:** CORS uses an explicit list of origins (no `*` with credentials). Good.
 - **Recommendation:** Ensure production `CORS_ORIGINS` only lists trusted front-end origins.
+- **Fix:** `config.py` rejects `*` on startup. When `ENVIRONMENT` is `production` or `prod`, each `CORS_ORIGINS` entry must be `https://` unless it is `localhost` or `127.0.0.1` (so production cannot accidentally use `http://` public origins). `.env.example` documents comma-separated / multi-origin HTTPS lists.
 
 ### 12. **Security headers**
 - **Status:** Middleware sets `X-Content-Type-Options`, `X-Frame-Options`, `X-XSS-Protection`, `Referrer-Policy`, `Permissions-Policy`; HSTS in production when forwarded over HTTPS. Good.
@@ -114,10 +117,10 @@ This document summarizes security-related findings from a full-app review. Addre
 | Critical  | `COOKIE_SECURE` in production             | Set `COOKIE_SECURE=true` when on HTTPS |
 | Critical  | Default developer password in code        | Use random password or env/CLI; never commit default |
 | High      | Kiosk/PIN brute force                     | Add rate limiting for PIN attempts (per IP/company) |
-| High      | Email enumeration on `/time/punch`       | Return generic “Invalid email or PIN” |
-| Medium    | Access token in localStorage             | Document XSS mitigations; keep short expiry |
-| Medium    | No global API rate limit                  | Add middleware rate limit by IP |
-| Medium    | Login lockout in-memory                   | Move to Redis (or similar) for multi-instance |
+| High      | Email enumeration on `/time/punch`       | Done — generic “Invalid email or PIN” |
+| Medium    | Access token in localStorage             | Done — documented in api.ts; short expiry, HttpOnly refresh |
+| Medium    | No global API rate limit                  | Done — `RateLimitMiddleware` + `RATE_LIMIT_*` settings |
+| Medium    | Login lockout in-memory                   | Optional — set `REDIS_URL` for shared store across replicas |
 | Medium    | Refresh token in body                     | Prefer cookie-only; deprecate body |
 | Medium    | delete_cookie attributes                  | Match cookie’s Secure/SameSite when clearing |
 | Low       | Error messages in production              | No stack traces or internals in responses |

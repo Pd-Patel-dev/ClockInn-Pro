@@ -15,7 +15,7 @@ export const Skeleton = React.memo(({ className = '', width, height }: SkeletonP
 
   return (
     <div
-      className={`animate-pulse bg-gray-200 rounded ${className}`}
+      className={`animate-pulse bg-slate-200 rounded-lg ${className}`}
       style={style}
     />
   )
@@ -25,10 +25,10 @@ Skeleton.displayName = 'Skeleton'
 
 export const TableRowSkeleton = React.memo(({ columns = 5 }: { columns?: number }) => {
   return (
-    <tr>
+    <tr className="border-b border-slate-100 last:border-0">
       {Array.from({ length: columns }).map((_, idx) => (
-        <td key={idx} className="px-6 py-4 whitespace-nowrap">
-          <Skeleton height="h-4" width="w-24" />
+        <td key={idx} className="px-4 py-3 whitespace-nowrap">
+          <Skeleton className="h-4 w-24" />
         </td>
       ))}
     </tr>
@@ -39,19 +39,19 @@ TableRowSkeleton.displayName = 'TableRowSkeleton'
 
 export const TableSkeleton = React.memo(({ rows = 5, columns = 5 }: { rows?: number; columns?: number }) => {
   return (
-    <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+    <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
       <div className="overflow-x-auto">
-        <table className="min-w-full divide-y divide-gray-200">
-          <thead className="bg-gray-50">
+        <table className="w-full text-sm">
+          <thead className="bg-slate-50 border-b border-slate-200">
             <tr>
               {Array.from({ length: columns }).map((_, idx) => (
-                <th key={idx} className="px-6 py-3 text-left">
-                  <Skeleton height="h-4" width="w-20" />
+                <th key={idx} className="px-4 py-3 text-left">
+                  <Skeleton className="h-4 w-20" />
                 </th>
               ))}
             </tr>
           </thead>
-          <tbody className="bg-white divide-y divide-gray-200">
+          <tbody>
             {Array.from({ length: rows }).map((_, idx) => (
               <TableRowSkeleton key={idx} columns={columns} />
             ))}
@@ -66,10 +66,10 @@ TableSkeleton.displayName = 'TableSkeleton'
 
 export const CardSkeleton = React.memo(() => {
   return (
-    <div className="bg-white rounded-lg border border-gray-200 p-5">
-      <Skeleton height="h-6" width="w-32" className="mb-4" />
-      <Skeleton height="h-4" width="w-full" className="mb-2" />
-      <Skeleton height="h-4" width="w-3/4" />
+    <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm">
+      <Skeleton className="h-6 w-32 mb-4" />
+      <Skeleton className="h-4 w-full mb-2" />
+      <Skeleton className="h-4 w-3/4" />
     </div>
   )
 })
@@ -90,12 +90,11 @@ ListSkeleton.displayName = 'ListSkeleton'
 
 export const StatsCardSkeleton = React.memo(() => {
   return (
-    <div className="bg-white rounded-lg border border-gray-200 p-6">
-      <Skeleton height="h-4" width="w-24" className="mb-2" />
-      <Skeleton height="h-8" width="w-16" />
+    <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm">
+      <Skeleton className="h-4 w-24 mb-2" />
+      <Skeleton className="h-8 w-16" />
     </div>
   )
 })
 
 StatsCardSkeleton.displayName = 'StatsCardSkeleton'
-

@@ -20,6 +20,13 @@ interface Employee {
   is_clocked_in: boolean | null
 }
 
+function getGreeting() {
+  const h = new Date().getHours()
+  if (h < 12) return 'Good morning'
+  if (h < 17) return 'Good afternoon'
+  return 'Good evening'
+}
+
 export default function DashboardPage() {
   const router = useRouter()
   const [user, setUser] = useState<User | null>(null)
@@ -31,6 +38,7 @@ export default function DashboardPage() {
   const [loadingStats, setLoadingStats] = useState(true)
   const [shiftNotes, setShiftNotes] = useState<ShiftNoteListItemType[]>([])
   const [loadingNotes, setLoadingNotes] = useState(false)
+  const [shiftNotesFeatureEnabled, setShiftNotesFeatureEnabled] = useState(true)
 
   useEffect(() => {
     const fetchUser = async () => {
@@ -47,9 +55,16 @@ export default function DashboardPage() {
         setLoading(false)
       }
     }
-    async function fetchNotes(u: User) {
+    async function fetchNotes(_u: User) {
       setLoadingNotes(true)
       try {
+        const info = await api.get('/company/info')
+        const enabled = info.data?.settings?.shift_notes_enabled !== false
+        setShiftNotesFeatureEnabled(enabled)
+        if (!enabled) {
+          setShiftNotes([])
+          return
+        }
         const res = await api.get('/shift-notes/common?limit=25&sort_by=clock_in_at&order=desc')
         const data = res.data as { items?: ShiftNoteListItemType[]; total?: number }
         setShiftNotes(data.items ?? [])
@@ -65,24 +80,19 @@ export default function DashboardPage() {
   const fetchStats = async () => {
     setLoadingStats(true)
     try {
-      // Fetch employees
       const employeesResponse = await api.get('/users/admin/employees?limit=1000')
       const employeesList = employeesResponse.data || []
       setTotalEmployees(employeesList.length)
-      
-      // Count active today (clocked in)
+
       const activeCount = employeesList.filter((emp: Employee) => emp.is_clocked_in === true).length
       setActiveToday(activeCount)
-      
-      // Set employees list (limit to 10 for display)
+
       setEmployees(employeesList.slice(0, 10))
-      
-      // Fetch pending leave requests
+
       try {
         const leaveResponse = await api.get('/leave/admin/leave?status=pending&limit=1')
         setPendingLeave(leaveResponse.data?.total || 0)
       } catch (error) {
-        // If leave endpoint fails, just set to 0
         setPendingLeave(0)
       }
     } catch (error: any) {
@@ -95,8 +105,12 @@ export default function DashboardPage() {
   if (loading) {
     return (
       <Layout>
-        <div className="min-h-screen flex items-center justify-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+        <div className="min-h-[40vh] flex items-center justify-center" role="status" aria-label="Loading">
+          <div className="animate-pulse space-y-3 w-full max-w-md mx-auto px-4">
+            <div className="h-8 bg-slate-200 rounded-lg w-2/3" />
+            <div className="h-4 bg-slate-200 rounded-lg w-1/2" />
+            <div className="h-32 bg-slate-200 rounded-xl mt-6" />
+          </div>
         </div>
       </Layout>
     )
@@ -110,69 +124,19 @@ export default function DashboardPage() {
   const isAdmin = user.role === 'ADMIN'
 
   const employeeQuickActions = [
-    {
-      title: 'Punch In/Out',
-      description: 'Clock in or out for your shift',
-      href: '/punch-in-out',
-      color: 'from-blue-500 to-blue-600',
-    },
-    {
-      title: 'Time Logs',
-      description: 'View your time entries',
-      href: '/logs',
-      color: 'from-green-500 to-green-600',
-    },
-    {
-      title: 'Leave Requests',
-      description: 'Request time off',
-      href: '/leave',
-      color: 'from-purple-500 to-purple-600',
-    },
+    { title: 'Punch In/Out', description: 'Clock in or out for your shift', href: '/punch-in-out' },
+    { title: 'Time Logs', description: 'View your time entries', href: '/logs' },
+    { title: 'Leave Requests', description: 'Request time off', href: '/leave' },
   ]
 
   const adminQuickActions = [
-    {
-      title: 'Employees',
-      description: 'Manage your team',
-      href: '/employees',
-      color: 'from-indigo-500 to-indigo-600',
-    },
-    {
-      title: 'Schedules',
-      description: 'Manage shift schedules',
-      href: '/schedules',
-      color: 'from-pink-500 to-pink-600',
-    },
-    {
-      title: 'Time Entries',
-      description: 'View all time entries',
-      href: '/time-entries',
-      color: 'from-blue-500 to-blue-600',
-    },
-    {
-      title: 'Payroll',
-      description: 'Generate payroll',
-      href: '/payroll',
-      color: 'from-green-500 to-green-600',
-    },
-    {
-      title: 'Leave Requests',
-      description: 'Review leave requests',
-      href: '/leave-requests',
-      color: 'from-yellow-500 to-yellow-600',
-    },
-    {
-      title: 'Reports',
-      description: 'Generate reports',
-      href: '/reports',
-      color: 'from-purple-500 to-purple-600',
-    },
-    {
-      title: 'Settings',
-      description: 'Company settings',
-      href: '/settings',
-      color: 'from-gray-500 to-gray-600',
-    },
+    { title: 'Employees', description: 'Manage your team', href: '/employees' },
+    { title: 'Schedules', description: 'Manage shift schedules', href: '/schedules' },
+    { title: 'Time Entries', description: 'View all time entries', href: '/time-entries' },
+    { title: 'Payroll', description: 'Generate payroll', href: '/payroll' },
+    { title: 'Leave Requests', description: 'Review leave requests', href: '/leave-requests' },
+    { title: 'Reports', description: 'Generate reports', href: '/reports' },
+    { title: 'Settings', description: 'Company settings', href: '/settings' },
   ]
 
   const quickActions = isEmployee ? employeeQuickActions : adminQuickActions
@@ -185,7 +149,7 @@ export default function DashboardPage() {
     const diffMins = Math.floor(diffMs / 60000)
     const diffHours = Math.floor(diffMins / 60)
     const diffDays = Math.floor(diffHours / 24)
-    
+
     if (diffMins < 1) return 'Just now'
     if (diffMins < 60) return `${diffMins} min ago`
     if (diffHours < 24) return `${diffHours} hr ago`
@@ -194,228 +158,205 @@ export default function DashboardPage() {
     return format(date, 'MMM dd, yyyy HH:mm')
   }
 
+  const greeting = getGreeting()
+
   return (
     <Layout>
-      <div className="px-4 py-8 sm:px-6 lg:px-8">
-        {/* Welcome Section */}
-        <div className="mb-8">
-          <div className="bg-white rounded-lg border border-gray-200 p-6">
-            <h1 className="text-2xl font-bold text-gray-900 mb-2">
-              Welcome back, {user.name}
-            </h1>
-            <p className="text-gray-600">
-              {isAdmin ? 'Manage your team and track attendance' : 'Track your time and manage your schedule'}
-            </p>
-            <div className="mt-4 flex flex-wrap items-center gap-4">
-              <div className="text-sm text-gray-500">
-                <span>Role: <span className="font-medium text-gray-700">{user.role}</span></span>
-                <span className="mx-2">•</span>
-                <span>Company: <span className="font-medium text-gray-700">{user.company_name}</span></span>
+      <div className="space-y-6">
+        <div className="mb-6">
+          <p className="text-sm text-slate-500">
+            {greeting}, {user.name}
+          </p>
+          <h1 className="text-2xl font-semibold text-slate-900 mt-1">Dashboard</h1>
+          <p className="mt-1 text-sm text-slate-500">
+            {isAdmin ? 'Manage your team and track attendance.' : 'Track your time and manage your schedule.'}
+          </p>
+        </div>
+
+        <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm">
+          <div className="flex flex-wrap items-center gap-3 text-sm text-slate-600">
+            <span>
+              Role: <span className="font-medium text-slate-900">{user.role}</span>
+            </span>
+            <span className="text-slate-300">·</span>
+            <span>
+              Company: <span className="font-medium text-slate-900">{user.company_name}</span>
+            </span>
+          </div>
+          <div className="mt-3 flex flex-wrap gap-2">
+            {user.email_verified && !user.verification_required ? (
+              <span className="inline-flex bg-emerald-50 text-emerald-700 border border-emerald-200 text-xs font-medium px-2.5 py-0.5 rounded-full">
+                Email verified
+              </span>
+            ) : (
+              <span className="inline-flex bg-amber-50 text-amber-700 border border-amber-200 text-xs font-medium px-2.5 py-0.5 rounded-full">
+                Email not verified
+              </span>
+            )}
+          </div>
+        </div>
+
+        {shiftNotesFeatureEnabled && (
+          <div>
+            <div className="flex flex-col gap-3 sm:flex-row sm:justify-between sm:items-center mb-4">
+              <div>
+                <h2 className="text-lg font-semibold text-slate-900">Shift notes</h2>
+                <p className="text-sm text-slate-500 mt-0.5">Recent notes from your team</p>
               </div>
-              <div className="flex items-center gap-2">
-                {user.email_verified && !user.verification_required ? (
-                  <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-green-100 text-green-800">
-                    <svg className="w-4 h-4 mr-1" fill="currentColor" viewBox="0 0 20 20">
-                      <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-                    </svg>
-                    Email Verified
-                  </span>
+              <Link
+                href={isAdmin ? '/admin/shift-log' : '/my/shift-notepad'}
+                className="text-sm font-medium text-blue-600 hover:text-blue-700 shrink-0"
+              >
+                {isAdmin ? 'View shift log' : 'My shift notepad'}
+              </Link>
+            </div>
+            <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden min-h-[200px] border-l-4 border-l-blue-600">
+              <div className="p-6">
+                {loadingNotes ? (
+                  <div className="animate-pulse space-y-4 py-4" role="status" aria-label="Loading notes">
+                    <div className="h-4 bg-slate-200 rounded w-full" />
+                    <div className="h-4 bg-slate-200 rounded w-5/6" />
+                    <div className="h-4 bg-slate-200 rounded w-4/6" />
+                  </div>
+                ) : shiftNotes.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-12 text-center">
+                    <div className="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center mb-4">
+                      <svg className="w-6 h-6 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                      </svg>
+                    </div>
+                    <p className="text-sm font-medium text-slate-700">No shift notes yet</p>
+                    <p className="text-sm text-slate-400 mt-1">Notes from shifts will show up here</p>
+                  </div>
                 ) : (
-                  <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-yellow-100 text-yellow-800">
-                    <svg className="w-4 h-4 mr-1" fill="currentColor" viewBox="0 0 20 20">
-                      <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
-                    </svg>
-                    Email Not Verified
-                  </span>
+                  <div className="space-y-6">
+                    {shiftNotes.map((note) => {
+                      const timeStr = formatDateTimeForDisplay(note.clock_in_at ?? note.updated_at, '—')
+                      return (
+                        <div key={note.id} className="border-b border-slate-100 pb-5 last:border-0 last:pb-0">
+                          <p className="text-slate-800 text-sm leading-relaxed whitespace-pre-wrap">{note.preview || '—'}</p>
+                          <p className="mt-2 text-right text-xs text-slate-500">
+                            {note.employee_name} · {timeStr}
+                          </p>
+                        </div>
+                      )
+                    })}
+                  </div>
                 )}
               </div>
             </div>
           </div>
-        </div>
+        )}
 
-        {/* Quick Actions */}
-        <div className="mb-8">
-          <h2 className="text-xl font-semibold text-gray-900 mb-4">Quick Actions</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {quickActions.map((action, index) => (
-              <Link
-                key={index}
-                href={action.href}
-                className="bg-white rounded-lg border border-gray-200 p-5 hover:border-blue-500 hover:bg-blue-50 transition-colors"
-              >
-                <h3 className="text-lg font-medium text-gray-900 mb-2">
-                  {action.title}
-                </h3>
-                <p className="text-sm text-gray-600">{action.description}</p>
-              </Link>
-            ))}
-          </div>
-        </div>
-
-        {/* Shift notes – notepad (all employees' notes so everyone can see what's going on) */}
-        <div className="mb-8">
-          <div className="flex justify-between items-center mb-4">
-            <div>
-              <h2 className="text-xl font-semibold text-gray-900">Shift notes</h2>
-              <p className="text-sm text-gray-500 mt-0.5">Notes from all employees — see what&apos;s going on</p>
-            </div>
-            <Link
-              href={isAdmin ? '/admin/shift-log' : '/my/shift-notepad'}
-              className="text-sm text-blue-600 hover:text-blue-700 font-medium"
-            >
-              {isAdmin ? 'View Shift Log' : 'My shift notepad'}
-            </Link>
-          </div>
-          <div
-            className="relative rounded-lg border border-amber-200/80 bg-[#faf8f3] shadow-sm overflow-hidden"
-            style={{ boxShadow: '2px 2px 8px rgba(0,0,0,0.06)' }}
-          >
-            {/* Notepad left margin line */}
-            <div className="absolute left-0 top-0 bottom-0 w-1 bg-red-200/60" />
-            <div className="pl-6 pr-5 py-5 min-h-[200px]">
-              {loadingNotes ? (
-                <div className="flex items-center justify-center py-12">
-                  <div className="animate-spin rounded-full h-8 w-8 border-2 border-amber-600 border-t-transparent" />
-                </div>
-              ) : shiftNotes.length === 0 ? (
-                <p className="text-gray-500 text-sm italic">No shift notes yet.</p>
-              ) : (
-                <div className="space-y-6">
-                  {shiftNotes.map((note) => {
-                    const timeStr = formatDateTimeForDisplay(
-                      note.clock_in_at ?? note.updated_at,
-                      '—'
-                    )
-                    return (
-                      <div key={note.id} className="border-b border-amber-200/50 pb-5 last:border-0 last:pb-0">
-                        {/* User-supplied preview: React text content (escaped). Do not use dangerouslySetInnerHTML. */}
-                        <p className="text-gray-800 text-sm leading-relaxed whitespace-pre-wrap font-[inherit]">
-                          {note.preview || '—'}
-                        </p>
-                        <p className="mt-2 text-right text-xs text-gray-500 font-medium">
-                          — {note.employee_name}, {timeStr}
-                        </p>
-                      </div>
-                    )
-                  })}
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-
-        {/* Stats Cards */}
         {isAdmin && (
           <>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
-              <div className="bg-white rounded-lg border border-gray-200 p-5">
-                <p className="text-sm text-gray-600 mb-1">Total Employees</p>
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+              <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
+                <p className="text-xs font-medium text-slate-500 uppercase tracking-wide">Total employees</p>
                 {loadingStats ? (
-                  <div className="animate-pulse h-8 w-16 bg-gray-200 rounded"></div>
+                  <div className="mt-2 h-9 w-20 bg-slate-200 rounded-lg animate-pulse" />
                 ) : (
-                  <p className="text-2xl font-semibold text-gray-900">{totalEmployees}</p>
+                  <p className="mt-2 text-3xl font-semibold text-slate-900">{totalEmployees}</p>
                 )}
+                <p className="mt-1 text-sm text-slate-400">All accounts</p>
               </div>
-              <div className="bg-white rounded-lg border border-gray-200 p-5">
-                <p className="text-sm text-gray-600 mb-1">Active Today</p>
+              <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
+                <p className="text-xs font-medium text-slate-500 uppercase tracking-wide">Active today</p>
                 {loadingStats ? (
-                  <div className="animate-pulse h-8 w-16 bg-gray-200 rounded"></div>
+                  <div className="mt-2 h-9 w-20 bg-slate-200 rounded-lg animate-pulse" />
                 ) : (
-                  <p className="text-2xl font-semibold text-gray-900">{activeToday}</p>
+                  <p className="mt-2 text-3xl font-semibold text-slate-900">{activeToday}</p>
                 )}
+                <p className="mt-1 text-sm text-slate-400">Currently clocked in</p>
               </div>
-              <div className="bg-white rounded-lg border border-gray-200 p-5">
-                <p className="text-sm text-gray-600 mb-1">Pending Leave</p>
+              <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
+                <p className="text-xs font-medium text-slate-500 uppercase tracking-wide">Pending leave</p>
                 {loadingStats ? (
-                  <div className="animate-pulse h-8 w-16 bg-gray-200 rounded"></div>
+                  <div className="mt-2 h-9 w-20 bg-slate-200 rounded-lg animate-pulse" />
                 ) : (
-                  <p className="text-2xl font-semibold text-gray-900">{pendingLeave}</p>
+                  <p className="mt-2 text-3xl font-semibold text-slate-900">{pendingLeave}</p>
                 )}
+                <p className="mt-1 text-sm text-slate-400">Awaiting review</p>
               </div>
             </div>
 
-            {/* Employees List */}
-            <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-              <div className="p-5 border-b border-gray-200">
-                <div className="flex justify-between items-center">
-                  <h2 className="text-xl font-semibold text-gray-900">Recent Employees</h2>
-                  <Link
-                    href="/employees"
-                    className="text-sm text-blue-600 hover:text-blue-700 font-medium"
-                  >
-                    View All
-                  </Link>
-                </div>
+            <div className="overflow-hidden border border-slate-200 rounded-xl shadow-sm bg-white">
+              <div className="p-6 border-b border-slate-200 flex justify-between items-center gap-4">
+                <h2 className="text-lg font-semibold text-slate-900">Recent employees</h2>
+                <Link href="/employees" className="text-sm font-medium text-blue-600 hover:text-blue-700 shrink-0">
+                  View all
+                </Link>
               </div>
               {loadingStats ? (
-                <div className="p-12 text-center">
-                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
-                  <p className="mt-4 text-sm text-gray-600">Loading employees...</p>
+                <div className="p-8 animate-pulse space-y-3" role="status" aria-label="Loading employees">
+                  <div className="h-10 bg-slate-100 rounded-lg" />
+                  <div className="h-10 bg-slate-100 rounded-lg" />
+                  <div className="h-10 bg-slate-100 rounded-lg" />
                 </div>
               ) : employees.length === 0 ? (
-                <div className="p-12 text-center">
-                  <p className="text-gray-500">No employees found</p>
+                <div className="flex flex-col items-center justify-center py-16 text-center px-4">
+                  <div className="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center mb-4">
+                    <svg className="w-6 h-6 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
+                    </svg>
+                  </div>
+                  <p className="text-sm font-medium text-slate-700">No employees yet</p>
+                  <p className="text-sm text-slate-400 mt-1">Add employees from the Employees page</p>
                 </div>
               ) : (
                 <div className="overflow-x-auto">
-                  <table className="min-w-full divide-y divide-gray-200">
-                    <thead className="bg-gray-50">
+                  <table className="w-full text-sm">
+                    <thead className="bg-slate-50 border-b border-slate-200">
                       <tr>
-                        <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
-                          Employee
-                        </th>
-                        <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
-                          Status
-                        </th>
-                        <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
-                          Punch Status
-                        </th>
-                        <th className="px-6 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider">
-                          Last Punch
-                        </th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wide">Employee</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wide">Status</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wide">Punch</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wide">Last punch</th>
                       </tr>
                     </thead>
-                    <tbody className="bg-white divide-y divide-gray-200">
+                    <tbody>
                       {employees.map((employee) => (
                         <tr
                           key={employee.id}
                           onClick={() => router.push(`/employees/${employee.id}`)}
-                          className="hover:bg-gray-50 transition-colors cursor-pointer"
+                          className="border-b border-slate-100 hover:bg-slate-50 transition-colors cursor-pointer last:border-0"
                         >
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            <div className="flex items-center">
-                              <div className="flex-shrink-0 h-10 w-10 rounded-full bg-blue-100 flex items-center justify-center text-blue-700 font-semibold">
+                          <td className="px-4 py-3">
+                            <div className="flex items-center min-w-0">
+                              <div className="flex-shrink-0 h-9 w-9 rounded-full bg-slate-100 flex items-center justify-center text-slate-700 text-sm font-medium">
                                 {employee.name.charAt(0).toUpperCase()}
                               </div>
-                              <div className="ml-4">
-                                <div className="text-sm font-medium text-gray-900">{employee.name}</div>
-                                <div className="text-sm text-gray-500">{employee.email}</div>
+                              <div className="ml-3 min-w-0">
+                                <div className="font-medium text-slate-900 truncate">{employee.name}</div>
+                                <div className="text-slate-500 truncate">{employee.email}</div>
                               </div>
                             </div>
                           </td>
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            <span className={`px-2 py-1 rounded-full text-xs font-semibold ${
-                              employee.status === 'active'
-                                ? 'bg-green-100 text-green-800'
-                                : 'bg-gray-100 text-gray-800'
-                            }`}>
-                              {employee.status ? employee.status.charAt(0).toUpperCase() + employee.status.slice(1).toLowerCase() : employee.status}
+                          <td className="px-4 py-3 whitespace-nowrap">
+                            <span
+                              className={`inline-flex text-xs font-medium px-2.5 py-0.5 rounded-full border ${
+                                employee.status === 'active'
+                                  ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                  : 'bg-slate-100 text-slate-600 border-slate-200'
+                              }`}
+                            >
+                              {employee.status
+                                ? employee.status.charAt(0).toUpperCase() + employee.status.slice(1).toLowerCase()
+                                : employee.status}
                             </span>
                           </td>
-                          <td className="px-6 py-4 whitespace-nowrap">
+                          <td className="px-4 py-3 whitespace-nowrap">
                             {employee.is_clocked_in ? (
-                              <span className="px-2 py-1 rounded-full text-xs font-semibold bg-yellow-100 text-yellow-800">
-                                Clocked In
+                              <span className="inline-flex bg-amber-50 text-amber-700 border border-amber-200 text-xs font-medium px-2.5 py-0.5 rounded-full">
+                                Clocked in
                               </span>
                             ) : (
-                              <span className="px-2 py-1 rounded-full text-xs font-semibold bg-gray-100 text-gray-800">
-                                Clocked Out
+                              <span className="inline-flex bg-slate-100 text-slate-600 border border-slate-200 text-xs font-medium px-2.5 py-0.5 rounded-full">
+                                Clocked out
                               </span>
                             )}
                           </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
-                            {formatLastPunch(employee.last_punch_at)}
-                          </td>
+                          <td className="px-4 py-3 text-slate-700 whitespace-nowrap">{formatLastPunch(employee.last_punch_at)}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -425,6 +366,22 @@ export default function DashboardPage() {
             </div>
           </>
         )}
+
+        <div>
+          <h2 className="text-lg font-semibold text-slate-900 mb-4">Quick actions</h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {quickActions.map((action, index) => (
+              <Link
+                key={index}
+                href={action.href}
+                className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm transition-colors hover:border-slate-300 hover:bg-slate-50/80 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
+              >
+                <h3 className="text-base font-medium text-slate-900 mb-1">{action.title}</h3>
+                <p className="text-sm text-slate-600 leading-snug">{action.description}</p>
+              </Link>
+            ))}
+          </div>
+        </div>
       </div>
     </Layout>
   )

@@ -22,6 +22,25 @@ const registerSchema = z.object({
 
 type RegisterForm = z.infer<typeof registerSchema>
 
+/** Muted strength meter: neutral track + semantic fill only where it helps (design system). */
+function getPasswordStrength(pwd: string | undefined) {
+  if (!pwd) return { strength: 0, label: '', barClass: '', labelClass: '' }
+  let strength = 0
+  if (pwd.length >= 8) strength++
+  if (/[A-Z]/.test(pwd)) strength++
+  if (/[a-z]/.test(pwd)) strength++
+  if (/[0-9]/.test(pwd)) strength++
+  if (/[^A-Za-z0-9]/.test(pwd)) strength++
+
+  if (strength <= 2) return { strength, label: 'Weak', barClass: 'bg-red-500', labelClass: 'text-red-700' }
+  if (strength <= 3) return { strength, label: 'Fair', barClass: 'bg-amber-500', labelClass: 'text-amber-800' }
+  if (strength <= 4) return { strength, label: 'Good', barClass: 'bg-blue-500', labelClass: 'text-blue-700' }
+  return { strength, label: 'Strong', barClass: 'bg-blue-600', labelClass: 'text-blue-800' }
+}
+
+const inputClass =
+  'block w-full px-3 py-2 border border-slate-200 rounded-lg bg-white text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm transition'
+
 export default function RegisterPage() {
   const router = useRouter()
   const [error, setError] = useState<string | null>(null)
@@ -37,6 +56,7 @@ export default function RegisterPage() {
   })
 
   const password = watch('admin_password')
+  const passwordStrength = getPasswordStrength(password)
 
   const onSubmit = async (data: RegisterForm) => {
     setError(null)
@@ -51,114 +71,80 @@ export default function RegisterPage() {
     }
   }
 
-  const getPasswordStrength = (pwd: string | undefined) => {
-    if (!pwd) return { strength: 0, label: '', color: '' }
-    let strength = 0
-    if (pwd.length >= 8) strength++
-    if (/[A-Z]/.test(pwd)) strength++
-    if (/[a-z]/.test(pwd)) strength++
-    if (/[0-9]/.test(pwd)) strength++
-    if (/[^A-Za-z0-9]/.test(pwd)) strength++
-
-    if (strength <= 2) return { strength, label: 'Weak', color: 'bg-red-500' }
-    if (strength <= 3) return { strength, label: 'Fair', color: 'bg-yellow-500' }
-    if (strength <= 4) return { strength, label: 'Good', color: 'bg-blue-500' }
-    return { strength, label: 'Strong', color: 'bg-green-500' }
-  }
-
-  const passwordStrength = getPasswordStrength(password)
-
   return (
-    <div className="min-h-screen flex">
-      {/* Left side - Branding */}
-      <div className="hidden lg:flex lg:w-1/2 bg-gradient-to-br from-indigo-600 via-purple-700 to-pink-800 relative overflow-hidden">
-        <div className="absolute inset-0 bg-black/10"></div>
-        <div className="relative z-10 flex flex-col justify-center px-12 text-white">
-          <div className="mb-8">
-            <h1 className="text-5xl font-bold mb-4">Get Started</h1>
-            <p className="text-xl text-indigo-100">Create your company account in minutes</p>
+    <div className="min-h-screen flex bg-slate-50">
+      {/* Left: brand panel — aligned with login (no gradients) */}
+      <div className="hidden lg:flex lg:w-1/2 bg-slate-900 text-white">
+        <div className="flex flex-col justify-center px-14 max-w-xl mx-auto w-full">
+          <div className="flex items-center gap-2 mb-6">
+            <span className="inline-block w-2 h-2 rounded-full bg-blue-500" aria-hidden />
+            <p className="text-sm font-medium uppercase tracking-wider text-slate-400">ClockInn</p>
           </div>
-          <div className="space-y-4 mt-8">
-            <div className="flex items-center space-x-3">
-              <div className="w-8 h-8 bg-white/20 rounded-full flex items-center justify-center">
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                </svg>
-              </div>
-              <span className="text-indigo-100">Free 14-day trial</span>
-            </div>
-            <div className="flex items-center space-x-3">
-              <div className="w-8 h-8 bg-white/20 rounded-full flex items-center justify-center">
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                </svg>
-              </div>
-              <span className="text-indigo-100">No credit card required</span>
-            </div>
-            <div className="flex items-center space-x-3">
-              <div className="w-8 h-8 bg-white/20 rounded-full flex items-center justify-center">
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                </svg>
-              </div>
-              <span className="text-indigo-100">Setup in under 5 minutes</span>
-            </div>
-          </div>
+          <h1 className="text-3xl font-semibold tracking-tight text-white mb-3">Create your workspace</h1>
+          <p className="text-slate-400 text-base leading-relaxed">
+            Register your company once. You&apos;ll add sites, roles, and schedules from the dashboard.
+          </p>
+          <ul className="mt-10 space-y-3 text-sm text-slate-300">
+            <li className="flex gap-2">
+              <span className="text-slate-500 shrink-0">—</span>
+              One admin account per company signup
+            </li>
+            <li className="flex gap-2">
+              <span className="text-slate-500 shrink-0">—</span>
+              Same security and roles as sign-in
+            </li>
+            <li className="flex gap-2">
+              <span className="text-slate-500 shrink-0">—</span>
+              Invite team members after onboarding
+            </li>
+          </ul>
         </div>
-        {/* Decorative circles */}
-        <div className="absolute top-0 right-0 w-96 h-96 bg-purple-400/20 rounded-full -mr-48 -mt-48"></div>
-        <div className="absolute bottom-0 left-0 w-96 h-96 bg-pink-400/20 rounded-full -ml-48 -mb-48"></div>
       </div>
 
-      {/* Right side - Register Form */}
-      <div className="w-full lg:w-1/2 flex items-center justify-center bg-gray-50 px-4 sm:px-6 lg:px-8 py-12">
+      <div className="w-full lg:w-1/2 flex items-center justify-center px-4 sm:px-6 lg:px-10 py-12">
         <div className="w-full max-w-md">
-          {/* Mobile Logo */}
-          <div className="lg:hidden text-center mb-8">
-            <h1 className="text-3xl font-bold text-gray-900">ClockInn</h1>
-            <p className="text-sm text-gray-600 mt-1">Time & Attendance</p>
+          <div className="lg:hidden text-center mb-10">
+            <div className="inline-flex items-center gap-2 justify-center mb-2">
+              <span className="inline-block w-2 h-2 rounded-full bg-blue-600" aria-hidden />
+              <span className="text-lg font-semibold text-slate-900">ClockInn</span>
+            </div>
+            <p className="text-sm text-slate-500">Create your company account</p>
           </div>
 
-          <div className="bg-white rounded-2xl shadow-xl p-8 sm:p-10">
+          <div className="rounded-lg border border-slate-200 bg-white p-8 sm:p-9 shadow-sm">
             <div className="mb-8">
-              <h2 className="text-3xl font-bold text-gray-900 mb-2">Create your account</h2>
-              <p className="text-gray-600">Start managing your team&apos;s time and attendance</p>
+              <h2 className="text-xl font-semibold text-slate-900 tracking-tight">Register</h2>
+              <p className="text-sm text-slate-500 mt-1.5">Company details and your admin login.</p>
             </div>
 
             <form className="space-y-6" onSubmit={handleSubmit(onSubmit)}>
               {error && (
-                <div className="rounded-lg bg-red-50 border border-red-200 p-4 animate-in fade-in duration-200">
-                  <div className="flex items-center">
-                    <svg className="w-5 h-5 text-red-600 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                    <div className="text-sm text-red-800">{error}</div>
-                  </div>
+                <div className="rounded-md border border-red-200 bg-red-50/80 px-4 py-3" role="alert">
+                  <p className="text-sm text-red-800">{error}</p>
                 </div>
               )}
 
               <div className="space-y-5">
                 <div>
-                  <label htmlFor="company_name" className="block text-sm font-medium text-gray-700 mb-2">
-                    Company Name
+                  <label htmlFor="company_name" className="block text-sm font-medium text-slate-700 mb-1.5">
+                    Company name
                   </label>
-                  <div className="relative">
-                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                      <svg className="h-5 w-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
-                      </svg>
-                    </div>
-                    <input
-                      {...registerField('company_name')}
-                      type="text"
-                      className="block w-full pl-10 pr-3 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-colors sm:text-sm"
-                      placeholder="Your Company Inc."
-                    />
-                  </div>
+                  <input
+                    {...registerField('company_name')}
+                    id="company_name"
+                    type="text"
+                    autoComplete="organization"
+                    className={inputClass}
+                    placeholder="Acme Hospitality"
+                  />
                   {errors.company_name && (
                     <p className="mt-1 text-sm text-red-600 flex items-center">
-                      <svg className="w-4 h-4 mr-1" fill="currentColor" viewBox="0 0 20 20">
-                        <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                      <svg className="w-4 h-4 mr-1 shrink-0" fill="currentColor" viewBox="0 0 20 20" aria-hidden>
+                        <path
+                          fillRule="evenodd"
+                          d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z"
+                          clipRule="evenodd"
+                        />
                       </svg>
                       {errors.company_name.message}
                     </p>
@@ -166,26 +152,25 @@ export default function RegisterPage() {
                 </div>
 
                 <div>
-                  <label htmlFor="admin_name" className="block text-sm font-medium text-gray-700 mb-2">
-                    Your Name
+                  <label htmlFor="admin_name" className="block text-sm font-medium text-slate-700 mb-1.5">
+                    Your name
                   </label>
-                  <div className="relative">
-                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                      <svg className="h-5 w-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                      </svg>
-                    </div>
-                    <input
-                      {...registerField('admin_name')}
-                      type="text"
-                      className="block w-full pl-10 pr-3 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-colors sm:text-sm"
-                      placeholder="John Doe"
-                    />
-                  </div>
+                  <input
+                    {...registerField('admin_name')}
+                    id="admin_name"
+                    type="text"
+                    autoComplete="name"
+                    className={inputClass}
+                    placeholder="Jane Smith"
+                  />
                   {errors.admin_name && (
                     <p className="mt-1 text-sm text-red-600 flex items-center">
-                      <svg className="w-4 h-4 mr-1" fill="currentColor" viewBox="0 0 20 20">
-                        <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                      <svg className="w-4 h-4 mr-1 shrink-0" fill="currentColor" viewBox="0 0 20 20" aria-hidden>
+                        <path
+                          fillRule="evenodd"
+                          d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z"
+                          clipRule="evenodd"
+                        />
                       </svg>
                       {errors.admin_name.message}
                     </p>
@@ -193,26 +178,25 @@ export default function RegisterPage() {
                 </div>
 
                 <div>
-                  <label htmlFor="admin_email" className="block text-sm font-medium text-gray-700 mb-2">
-                    Email Address
+                  <label htmlFor="admin_email" className="block text-sm font-medium text-slate-700 mb-1.5">
+                    Work email
                   </label>
-                  <div className="relative">
-                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                      <svg className="h-5 w-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 12a4 4 0 10-8 0 4 4 0 008 0zm0 0v1.5a2.5 2.5 0 005 0V12a9 9 0 10-9 9m4.5-1.206a8.959 8.959 0 01-4.5 1.207" />
-                      </svg>
-                    </div>
-                    <input
-                      {...registerField('admin_email')}
-                      type="email"
-                      className="block w-full pl-10 pr-3 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-colors sm:text-sm"
-                      placeholder="admin@company.com"
-                    />
-                  </div>
+                  <input
+                    {...registerField('admin_email')}
+                    id="admin_email"
+                    type="email"
+                    autoComplete="email"
+                    className={inputClass}
+                    placeholder="you@company.com"
+                  />
                   {errors.admin_email && (
                     <p className="mt-1 text-sm text-red-600 flex items-center">
-                      <svg className="w-4 h-4 mr-1" fill="currentColor" viewBox="0 0 20 20">
-                        <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                      <svg className="w-4 h-4 mr-1 shrink-0" fill="currentColor" viewBox="0 0 20 20" aria-hidden>
+                        <path
+                          fillRule="evenodd"
+                          d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z"
+                          clipRule="evenodd"
+                        />
                       </svg>
                       {errors.admin_email.message}
                     </p>
@@ -220,51 +204,49 @@ export default function RegisterPage() {
                 </div>
 
                 <div>
-                  <label htmlFor="admin_password" className="block text-sm font-medium text-gray-700 mb-2">
+                  <label htmlFor="admin_password" className="block text-sm font-medium text-slate-700 mb-1.5">
                     Password
                   </label>
-                  <div className="relative">
-                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                      <svg className="h-5 w-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-                      </svg>
-                    </div>
-                    <input
-                      {...registerField('admin_password')}
-                      type="password"
-                      className="block w-full pl-10 pr-3 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-colors sm:text-sm"
-                      placeholder="Create a strong password"
-                    />
-                  </div>
-                  
-                  {/* Password Strength Indicator */}
-                  {password && (
+                  <input
+                    {...registerField('admin_password')}
+                    id="admin_password"
+                    type="password"
+                    autoComplete="new-password"
+                    className={inputClass}
+                    placeholder="••••••••"
+                  />
+
+                  {password ? (
                     <div className="mt-2">
                       <div className="flex items-center justify-between mb-1">
-                        <span className="text-xs text-gray-600">Password strength:</span>
-                        <span className={`text-xs font-medium ${passwordStrength.color.replace('bg-', 'text-')}`}>
+                        <span className="text-xs text-slate-500">Strength</span>
+                        <span className={`text-xs font-medium ${passwordStrength.labelClass}`}>
                           {passwordStrength.label}
                         </span>
                       </div>
-                      <div className="w-full bg-gray-200 rounded-full h-2">
+                      <div className="w-full bg-slate-200 rounded-full h-1.5 overflow-hidden" aria-hidden>
                         <div
-                          className={`h-2 rounded-full transition-all duration-300 ${passwordStrength.color}`}
+                          className={`h-full rounded-full transition-[width] duration-200 ${passwordStrength.barClass}`}
                           style={{ width: `${(passwordStrength.strength / 5) * 100}%` }}
-                        ></div>
+                        />
                       </div>
                     </div>
-                  )}
+                  ) : null}
 
                   {errors.admin_password && (
                     <p className="mt-1 text-sm text-red-600 flex items-center">
-                      <svg className="w-4 h-4 mr-1" fill="currentColor" viewBox="0 0 20 20">
-                        <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                      <svg className="w-4 h-4 mr-1 shrink-0" fill="currentColor" viewBox="0 0 20 20" aria-hidden>
+                        <path
+                          fillRule="evenodd"
+                          d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z"
+                          clipRule="evenodd"
+                        />
                       </svg>
                       {errors.admin_password.message}
                     </p>
                   )}
-                  <p className="mt-2 text-xs text-gray-500">
-                    Must be at least 8 characters with uppercase, lowercase, number, and special character (e.g. !@#$%)
+                  <p className="mt-2 text-xs text-slate-500">
+                    At least 8 characters with uppercase, lowercase, and a number.
                   </p>
                 </div>
               </div>
@@ -273,15 +255,19 @@ export default function RegisterPage() {
                 <button
                   type="submit"
                   disabled={loading}
-                  className="w-full flex justify-center items-center py-3 px-4 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 transform hover:scale-[1.02] active:scale-[0.98]"
+                  className="w-full flex justify-center items-center py-2.5 px-4 rounded-md text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-600 focus:ring-offset-2 focus:ring-offset-white disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                 >
                   {loading ? (
                     <>
-                      <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" fill="none" viewBox="0 0 24 24">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" fill="none" viewBox="0 0 24 24" aria-hidden>
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                        <path
+                          className="opacity-75"
+                          fill="currentColor"
+                          d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                        />
                       </svg>
-                      Creating account...
+                      Creating account…
                     </>
                   ) : (
                     'Create account'
@@ -289,10 +275,10 @@ export default function RegisterPage() {
                 </button>
               </div>
 
-              <div className="text-center">
-                <p className="text-sm text-gray-600">
+              <div className="text-center pt-2">
+                <p className="text-sm text-slate-600">
                   Already have an account?{' '}
-                  <Link href="/login" className="font-medium text-indigo-600 hover:text-indigo-500 transition-colors">
+                  <Link href="/login" className="font-medium text-blue-600 hover:text-blue-700">
                     Sign in
                   </Link>
                 </p>
@@ -300,8 +286,8 @@ export default function RegisterPage() {
             </form>
           </div>
 
-          <p className="mt-6 text-center text-xs text-gray-500">
-            By registering, you agree to our Terms of Service and Privacy Policy
+          <p className="mt-8 text-center text-xs text-slate-400">
+            By registering you agree to our Terms of Service and Privacy Policy.
           </p>
         </div>
       </div>

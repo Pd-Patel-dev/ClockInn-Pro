@@ -1,6 +1,8 @@
 """
 Admin Cash Drawer Management Endpoints
 """
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -12,7 +14,7 @@ from io import BytesIO
 
 from app.core.database import get_db
 from app.core.dependencies import get_current_admin
-from app.core.error_handling import handle_endpoint_errors, parse_uuid
+from app.core.error_handling import handle_endpoint_errors, parse_uuid, client_error_detail
 from app.models.user import User
 from app.models.cash_drawer import CashDrawerSession, CashDrawerStatus
 from app.models.time_entry import TimeEntry
@@ -32,6 +34,8 @@ from app.services.cash_drawer_service import (
     review_cash_drawer_session,
     delete_cash_drawer_session,
 )
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -167,10 +171,10 @@ async def export_cash_drawer(
     try:
         from_date_parsed = datetime.strptime(from_date, "%Y-%m-%d").date()
         to_date_parsed = datetime.strptime(to_date, "%Y-%m-%d").date()
-    except ValueError as e:
+    except ValueError:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=f"Invalid date format. Use YYYY-MM-DD format. Error: {str(e)}",
+            detail="Invalid date format. Use YYYY-MM-DD.",
         )
     
     # Validate date range
@@ -248,10 +252,13 @@ async def export_cash_drawer(
                 },
             )
     except ValueError as e:
-        # PDF/Excel generation errors should return 500, not 400
+        logger.error("Cash drawer export failed (%s): %s", format, e, exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to generate {format.upper()} export: {str(e)}",
+            detail=client_error_detail(
+                dev_detail=f"Failed to generate {format.upper()} export: {str(e)}",
+                prod_detail="Export failed. Please try again or check server logs.",
+            ),
         )
 
 

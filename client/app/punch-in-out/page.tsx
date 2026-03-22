@@ -40,6 +40,12 @@ export default function PunchInOutPage() {
   const [location, setLocation] = useState<{ latitude: string; longitude: string } | null>(null)
   const [locationError, setLocationError] = useState<string | null>(null)
   const [locationLoading, setLocationLoading] = useState(false)
+  const [clockNow, setClockNow] = useState(() => new Date())
+
+  useEffect(() => {
+    const id = setInterval(() => setClockNow(new Date()), 1000)
+    return () => clearInterval(id)
+  }, [])
 
   // Shift note (when clocked in)
   const [shiftNote, setShiftNote] = useState<ShiftNoteCurrent | null>(null)
@@ -365,8 +371,11 @@ export default function PunchInOutPage() {
   if (!user) {
     return (
       <Layout>
-        <div className="min-h-screen flex items-center justify-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600" />
+        <div className="min-h-[40vh] flex items-center justify-center px-4">
+          <div className="animate-pulse space-y-3 w-full max-w-sm">
+            <div className="h-14 bg-slate-200 rounded-xl w-full" />
+            <div className="h-24 bg-slate-200 rounded-xl w-full" />
+          </div>
         </div>
       </Layout>
     )
@@ -374,23 +383,24 @@ export default function PunchInOutPage() {
 
   return (
     <Layout>
-      <div className="px-4 py-6 sm:px-6 lg:px-8 max-w-2xl mx-auto">
-        <h1 className="text-2xl font-semibold text-gray-900 mb-1">Punch In / Out</h1>
-        <p className="text-sm text-gray-600 mb-4">{user.name}</p>
+      <div className="max-w-7xl mx-auto space-y-6">
+        <div className="mb-6">
+          <h1 className="text-2xl font-semibold text-slate-900">Punch in / out</h1>
+          <p className="mt-1 text-sm text-slate-500">{user.name}</p>
+        </div>
 
-        {/* Location status */}
         {geofenceRequired && (
-          <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-3">
+          <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
             Punch in/out is only allowed when you are at the office.
           </p>
         )}
         <div
-          className={`mb-4 rounded-lg p-3 border flex items-center justify-center gap-2 text-sm ${
+          className={`rounded-lg p-3 border flex items-center justify-center gap-2 text-sm ${
             locationLoading
               ? 'bg-blue-50 border-blue-200 text-blue-700'
               : location
-                ? 'bg-green-50 border-green-200 text-green-700'
-                : 'bg-gray-50 border-gray-200 text-gray-600'
+                ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
+                : 'bg-slate-50 border-slate-200 text-slate-600'
           }`}
         >
           {locationLoading ? (
@@ -419,67 +429,76 @@ export default function PunchInOutPage() {
           )}
         </div>
 
-        {/* Status & Button */}
-        <div
-          className={`rounded-xl border-2 p-6 mb-6 text-center ${
-            currentStatus === 'in' ? 'bg-amber-50 border-amber-200' : 'bg-slate-50 border-slate-200'
-          }`}
-        >
-          <p className="text-sm font-medium text-gray-600 mb-1">
-            {currentStatus === 'in' ? 'Currently clocked in' : 'Currently clocked out'}
-          </p>
-          <button
-            type="button"
-            onClick={handlePunch}
-            disabled={loading}
-            className={`mt-4 w-full max-w-xs mx-auto py-4 px-6 rounded-xl font-semibold text-white shadow-md hover:opacity-95 disabled:opacity-60 disabled:cursor-not-allowed transition ${
-              currentStatus === 'in' ? 'bg-red-600 hover:bg-red-700' : 'bg-green-600 hover:bg-green-700'
+        <div className="max-w-sm mx-auto">
+          <div
+            className={`bg-white border border-slate-200 rounded-xl p-6 shadow-sm text-center ${
+              currentStatus === 'in' ? 'ring-1 ring-amber-200' : ''
             }`}
           >
-            {loading ? (
-              <span className="inline-flex items-center gap-2">
-                <svg className="animate-spin h-5 w-5" fill="none" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                </svg>
-                Processing...
-              </span>
-            ) : currentStatus === 'in' ? 'Clock Out' : 'Clock In'}
-          </button>
+            <p className="text-xs font-medium text-slate-500 uppercase tracking-wide mb-2">Current time</p>
+            <p className="text-5xl font-light text-slate-900 tabular-nums tracking-tight">
+              {format(clockNow, 'h:mm:ss a')}
+            </p>
+            <p className="text-sm text-slate-500 mt-4">
+              {currentStatus === 'in' ? 'You are clocked in' : 'You are clocked out'}
+            </p>
+            <button
+              type="button"
+              onClick={handlePunch}
+              disabled={loading}
+              className={`mt-6 w-full py-3 px-4 rounded-lg text-sm font-medium text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
+                currentStatus === 'in'
+                  ? 'bg-red-500 hover:bg-red-600'
+                  : 'bg-emerald-600 hover:bg-emerald-700'
+              }`}
+            >
+              {loading ? (
+                <span className="inline-flex items-center justify-center gap-2">
+                  <svg className="animate-spin h-5 w-5" fill="none" viewBox="0 0 24 24" aria-hidden>
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                  </svg>
+                  Processing…
+                </span>
+              ) : currentStatus === 'in' ? (
+                'Punch out'
+              ) : (
+                'Punch in'
+              )}
+            </button>
+          </div>
         </div>
 
         {message && (
-          <div className="mb-4 p-3 rounded-lg bg-green-50 text-green-800 border border-green-200 text-center text-sm">
+          <div className="p-3 rounded-lg bg-emerald-50 text-emerald-800 border border-emerald-200 text-center text-sm max-w-sm mx-auto">
             {message}
           </div>
         )}
         {error && (
-          <div className="mb-4 p-3 rounded-lg bg-red-50 text-red-800 border border-red-200 text-center text-sm">
+          <div className="p-3 rounded-lg bg-red-50 text-red-700 border border-red-200 text-center text-sm max-w-sm mx-auto">
             {error}
           </div>
         )}
 
         {/* Shift note — when clocked in */}
         {currentStatus === 'in' && (
-          <div className="mb-6 bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm">
-            <div className="px-4 py-3 border-b border-gray-200 bg-gray-50 flex items-center justify-between flex-wrap gap-2">
-              <h2 className="text-sm font-semibold text-gray-900">Shift note</h2>
-              <Link
-                href="/my/shift-notepad"
-                className="text-xs font-medium text-blue-600 hover:text-blue-700"
-              >
+          <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
+            <div className="px-6 py-3 border-b border-slate-200 bg-slate-50 flex items-center justify-between flex-wrap gap-2">
+              <h2 className="text-lg font-semibold text-slate-900">Shift note</h2>
+              <Link href="/my/shift-notepad" className="text-sm font-medium text-blue-600 hover:text-blue-700">
                 Open full notepad →
               </Link>
             </div>
             {shiftNoteLoading ? (
-              <div className="p-6 flex justify-center">
-                <div className="animate-spin rounded-full h-6 w-6 border-2 border-blue-600 border-t-transparent" />
+              <div className="p-6 animate-pulse space-y-2">
+                <div className="h-4 bg-slate-200 rounded w-1/3" />
+                <div className="h-20 bg-slate-100 rounded-lg" />
               </div>
             ) : shiftNote ? (
               <>
-                <div className="px-4 py-2 border-b border-gray-100 flex items-center gap-3 flex-wrap">
-                  <span className="text-xs text-gray-500">
-                    {shiftNoteSaveStatus === 'saving' && 'Saving...'}
+                <div className="px-6 py-2 border-b border-slate-100 flex items-center gap-3 flex-wrap">
+                  <span className="text-xs text-slate-500">
+                    {shiftNoteSaveStatus === 'saving' && 'Saving…'}
                     {shiftNoteSaveStatus === 'saved' && shiftNoteSavedAt && `Saved at ${format(shiftNoteSavedAt, 'h:mm a')}`}
                   </span>
                 </div>
@@ -489,42 +508,53 @@ export default function PunchInOutPage() {
                   disabled={!shiftNote.can_edit}
                   placeholder="Jot down notes for this shift..."
                   rows={4}
-                  className="w-full p-4 text-gray-900 placeholder-gray-400 border-0 focus:ring-0 focus:outline-none resize-y text-sm disabled:bg-gray-50 disabled:cursor-not-allowed"
+                  className="w-full p-6 text-slate-900 placeholder:text-slate-400 border-0 focus:ring-0 focus:outline-none resize-y text-sm bg-white disabled:bg-slate-50 disabled:cursor-not-allowed"
                 />
               </>
             ) : (
-              <div className="p-4 text-sm text-gray-500">
-                Shift note will appear here. If it doesn’t load, try refreshing.
-              </div>
+              <div className="p-6 text-sm text-slate-500">Shift note will appear here. If it doesn’t load, try refreshing.</div>
             )}
           </div>
         )}
 
-        {/* Last 10 time entries */}
-        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-          <div className="px-4 py-3 border-b border-gray-200 bg-gray-50">
-            <h2 className="text-sm font-semibold text-gray-900">Past 10 time entries</h2>
+        <div className="overflow-hidden border border-slate-200 rounded-xl shadow-sm bg-white">
+          <div className="px-6 py-3 border-b border-slate-200 bg-slate-50">
+            <h2 className="text-lg font-semibold text-slate-900">Past 10 time entries</h2>
           </div>
           {loadingList ? (
-            <div className="p-8 flex justify-center">
-              <div className="animate-spin rounded-full h-8 w-8 border-2 border-blue-600 border-t-transparent" />
+            <div className="p-8 animate-pulse space-y-3">
+              <div className="h-4 bg-slate-100 rounded w-full" />
+              <div className="h-4 bg-slate-100 rounded w-full" />
+              <div className="h-4 bg-slate-100 rounded w-5/6" />
             </div>
           ) : entries.length === 0 ? (
-            <div className="p-6 text-center text-gray-500 text-sm">No time entries yet.</div>
+            <div className="flex flex-col items-center justify-center py-16 text-center px-4">
+              <div className="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center mb-4">
+                <svg className="w-6 h-6 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              </div>
+              <p className="text-sm font-medium text-slate-700">No time entries yet</p>
+              <p className="text-sm text-slate-400 mt-1">Your punches will appear here</p>
+            </div>
           ) : (
-            <ul className="divide-y divide-gray-200">
+            <ul>
               {entries.map((entry) => (
-                <li key={entry.id} className="px-4 py-3 flex items-center justify-between text-sm">
+                <li key={entry.id} className="px-6 py-3 flex items-center justify-between text-sm border-b border-slate-100 last:border-0">
                   <div>
-                    <span className="font-medium text-gray-900">{formatDate(entry)}</span>
-                    <span className="text-gray-500 ml-2">
+                    <span className="font-medium text-slate-900">{formatDate(entry)}</span>
+                    <span className="text-slate-500 ml-2">
                       {formatTime(entry, 'clock_in_at')} – {formatTime(entry, 'clock_out_at')}
                     </span>
                   </div>
                   {entry.clock_out_at && entry.rounded_hours != null && (
-                    <span className="text-gray-500 tabular-nums">{entry.rounded_hours.toFixed(1)}h</span>
+                    <span className="text-slate-500 tabular-nums">{entry.rounded_hours.toFixed(1)}h</span>
                   )}
-                  {entry.clock_out_at == null && <span className="text-amber-600 font-medium">Open</span>}
+                  {entry.clock_out_at == null && (
+                    <span className="text-amber-600 text-xs font-medium px-2.5 py-0.5 rounded-full border border-amber-200 bg-amber-50">
+                      Open
+                    </span>
+                  )}
                 </li>
               ))}
             </ul>
@@ -533,149 +563,26 @@ export default function PunchInOutPage() {
 
         {/* Cash Drawer Dialog – same as PIN-based punch */}
         {showCashDialog && (
-          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm overflow-y-auto h-full w-full z-[9999] flex items-center justify-center p-4">
-            <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-lg m-4">
-              <div className="px-8 pt-8 pb-6 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-t-2xl border-b border-gray-100">
-                <div className="flex items-center justify-center mb-3">
-                  <div className="p-3 bg-blue-100 rounded-full">
-                    <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
-                    </svg>
-                  </div>
-                </div>
-                <h3 className="text-2xl font-bold text-gray-900 text-center mb-2">
-                  {currentStatus === 'in' ? 'Ending Cash Count' : 'Starting Cash Count'}
-                </h3>
-                <p className="text-sm text-gray-600 text-center">
-                  {currentStatus === 'in'
-                    ? 'Enter all cash amounts for your shift'
-                    : 'Enter the starting cash amount in the drawer'}
-                </p>
-              </div>
-              <div className="p-8">
+          <div className="fixed inset-0 bg-black/40 backdrop-blur-sm overflow-y-auto h-full w-full z-[9999] flex items-center justify-center p-4">
+            <div className="relative bg-white rounded-2xl border border-slate-200 shadow-xl w-full max-w-lg m-4 p-6">
+              <h3 className="text-lg font-semibold text-slate-900 text-center">
+                {currentStatus === 'in' ? 'Ending cash count' : 'Starting cash count'}
+              </h3>
+              <p className="text-sm text-slate-500 text-center mt-1 mb-6">
+                {currentStatus === 'in'
+                  ? 'Enter all cash amounts for your shift.'
+                  : 'Enter the starting cash amount in the drawer.'}
+              </p>
+              <div>
                 {currentStatus === 'out' ? (
-                  /* Clock-in: only starting cash */
-                  <div className="mb-8">
-                    <label className="block text-sm font-semibold text-gray-700 mb-4 text-center">
-                      Starting Cash Amount <span className="text-red-500">*</span>
-                    </label>
-                    <div className="relative">
-                      <div className="absolute inset-y-0 left-0 pl-5 flex items-center pointer-events-none">
-                        <span className="text-gray-400 text-2xl font-medium">$</span>
-                      </div>
-                      <input
-                        type="number"
-                        step="0.01"
-                        min="0"
-                        value={cashAmount}
-                        onChange={(e) => {
-                          setCashAmount(e.target.value)
-                          setCashError(null)
-                        }}
-                        onKeyDown={(e) => e.key === 'Enter' && handleCashDialogSubmit()}
-                        autoFocus
-                        className={`block w-full pl-12 pr-5 py-5 border-2 rounded-xl text-center text-3xl font-bold focus:outline-none focus:ring-4 focus:ring-blue-100 ${
-                          cashError ? 'border-red-300 bg-red-50' : 'border-gray-200 bg-gray-50 focus:border-blue-500'
-                        }`}
-                        placeholder="0.00"
-                        disabled={loading}
-                      />
-                    </div>
-                    {cashError && (
-                      <div className="mt-3 flex items-center justify-center gap-2 text-sm text-red-600">
-                        <span>{cashError}</span>
-                      </div>
-                    )}
-                    <p className="mt-3 text-xs text-gray-500 text-center">Enter the amount in dollars (e.g., 100.50)</p>
-                  </div>
-                ) : (
-                  /* Clock-out: collected cash, beverages sold, cash in drawer */
-                  <div className="space-y-6 mb-8">
+                  <div className="mb-6 space-y-5">
                     <div>
-                      <label className="block text-sm font-semibold text-gray-700 mb-3">
-                        Collected Cash Amount <span className="text-red-500">*</span>
+                      <label className="block text-sm font-medium text-slate-700 mb-1.5 text-center">
+                        Starting cash amount <span className="text-red-500">*</span>
                       </label>
                       <div className="relative">
                         <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                          <span className="text-gray-400 text-xl font-medium">$</span>
-                        </div>
-                        <input
-                          type="number"
-                          step="0.01"
-                          min="0"
-                          value={collectedCash}
-                          onChange={(e) => {
-                            setCollectedCash(e.target.value)
-                            setCashError(null)
-                          }}
-                          className={`block w-full pl-10 pr-4 py-4 border-2 rounded-xl text-lg font-semibold focus:outline-none focus:ring-4 focus:ring-blue-100 ${
-                            cashError ? 'border-red-300 bg-red-50' : 'border-gray-200 bg-gray-50 focus:border-blue-500'
-                          }`}
-                          placeholder="0.00"
-                          disabled={loading}
-                        />
-                      </div>
-                      <p className="mt-2 text-xs text-gray-500">Total cash collected from customers</p>
-                    </div>
-                    <div>
-                      <label className="block text-sm font-semibold text-gray-700 mb-3">
-                        Drop Amount <span className="text-red-500">*</span>
-                      </label>
-                      <div className="relative">
-                        <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                          <span className="text-gray-400 text-xl font-medium">$</span>
-                        </div>
-                        <input
-                          type="number"
-                          step="0.01"
-                          min="0"
-                          value={dropAmount}
-                          onChange={(e) => {
-                            setDropAmount(e.target.value)
-                            setCashError(null)
-                          }}
-                          className={`block w-full pl-10 pr-4 py-4 border-2 rounded-xl text-lg font-semibold focus:outline-none focus:ring-4 focus:ring-blue-100 ${
-                            cashError ? 'border-red-300 bg-red-50' : 'border-gray-200 bg-gray-50 focus:border-blue-500'
-                          }`}
-                          placeholder="0.00"
-                          disabled={loading}
-                        />
-                      </div>
-                      <p className="mt-2 text-xs text-gray-500">Cash removed/dropped from drawer during shift</p>
-                    </div>
-                    <div>
-                      <label className="block text-sm font-semibold text-gray-700 mb-3">
-                        Amount of beverages sold <span className="text-red-500">*</span>
-                      </label>
-                      <div className="relative">
-                        <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                          <span className="text-gray-400 text-xl font-medium">$</span>
-                        </div>
-                        <input
-                          type="number"
-                          step="0.01"
-                          min="0"
-                          value={beveragesCash}
-                          onChange={(e) => {
-                            setBeveragesCash(e.target.value)
-                            setCashError(null)
-                          }}
-                          className={`block w-full pl-10 pr-4 py-4 border-2 rounded-xl text-lg font-semibold focus:outline-none focus:ring-4 focus:ring-blue-100 ${
-                            cashError ? 'border-red-300 bg-red-50' : 'border-gray-200 bg-gray-50 focus:border-blue-500'
-                          }`}
-                          placeholder="0.00"
-                          disabled={loading}
-                        />
-                      </div>
-                      <p className="mt-2 text-xs text-gray-500">Total beverage sales during shift (all payment types)</p>
-                    </div>
-                    <div>
-                      <label className="block text-sm font-semibold text-gray-700 mb-3">
-                        Cash in Drawer <span className="text-red-500">*</span>
-                      </label>
-                      <div className="relative">
-                        <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                          <span className="text-gray-400 text-xl font-medium">$</span>
+                          <span className="text-slate-400 text-lg font-medium">$</span>
                         </div>
                         <input
                           type="number"
@@ -687,23 +594,124 @@ export default function PunchInOutPage() {
                             setCashError(null)
                           }}
                           onKeyDown={(e) => e.key === 'Enter' && handleCashDialogSubmit()}
-                          className={`block w-full pl-10 pr-4 py-4 border-2 rounded-xl text-lg font-semibold focus:outline-none focus:ring-4 focus:ring-blue-100 ${
-                            cashError ? 'border-red-300 bg-red-50' : 'border-gray-200 bg-gray-50 focus:border-blue-500'
+                          autoFocus
+                          className={`block w-full pl-10 pr-4 py-3 border rounded-lg text-center text-xl font-semibold text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
+                            cashError ? 'border-red-300' : 'border-slate-200'
                           }`}
                           placeholder="0.00"
                           disabled={loading}
                         />
                       </div>
-                      <p className="mt-2 text-xs text-gray-500">Final cash amount remaining in drawer</p>
+                    {cashError && <p className="text-xs text-red-500 mt-1 text-center">{cashError}</p>}
+                    <p className="text-xs text-slate-400 text-center">Amount in dollars (e.g. 100.50)</p>
+                    </div>
+                  </div>
+                ) : (
+                  /* Clock-out: collected cash, beverages sold, cash in drawer */
+                  <div className="space-y-5 mb-6">
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 mb-1.5">
+                        Collected cash <span className="text-red-500">*</span>
+                      </label>
+                      <div className="relative">
+                        <span className="absolute inset-y-0 left-0 pl-3 flex items-center text-slate-400 text-sm">$</span>
+                        <input
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          value={collectedCash}
+                          onChange={(e) => {
+                            setCollectedCash(e.target.value)
+                            setCashError(null)
+                          }}
+                          className={`block w-full pl-8 pr-3 py-2 border rounded-lg text-sm text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
+                            cashError ? 'border-red-300' : 'border-slate-200'
+                          }`}
+                          placeholder="0.00"
+                          disabled={loading}
+                        />
+                      </div>
+                      <p className="mt-1 text-xs text-slate-400">Total cash collected from customers</p>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 mb-1.5">
+                        Drop amount <span className="text-red-500">*</span>
+                      </label>
+                      <div className="relative">
+                        <span className="absolute inset-y-0 left-0 pl-3 flex items-center text-slate-400 text-sm">$</span>
+                        <input
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          value={dropAmount}
+                          onChange={(e) => {
+                            setDropAmount(e.target.value)
+                            setCashError(null)
+                          }}
+                          className={`block w-full pl-8 pr-3 py-2 border rounded-lg text-sm text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
+                            cashError ? 'border-red-300' : 'border-slate-200'
+                          }`}
+                          placeholder="0.00"
+                          disabled={loading}
+                        />
+                      </div>
+                      <p className="mt-1 text-xs text-slate-400">Cash removed from drawer during shift</p>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 mb-1.5">
+                        Beverages sold <span className="text-red-500">*</span>
+                      </label>
+                      <div className="relative">
+                        <span className="absolute inset-y-0 left-0 pl-3 flex items-center text-slate-400 text-sm">$</span>
+                        <input
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          value={beveragesCash}
+                          onChange={(e) => {
+                            setBeveragesCash(e.target.value)
+                            setCashError(null)
+                          }}
+                          className={`block w-full pl-8 pr-3 py-2 border rounded-lg text-sm text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
+                            cashError ? 'border-red-300' : 'border-slate-200'
+                          }`}
+                          placeholder="0.00"
+                          disabled={loading}
+                        />
+                      </div>
+                      <p className="mt-1 text-xs text-slate-400">Total beverage sales (all payment types)</p>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 mb-1.5">
+                        Cash in drawer <span className="text-red-500">*</span>
+                      </label>
+                      <div className="relative">
+                        <span className="absolute inset-y-0 left-0 pl-3 flex items-center text-slate-400 text-sm">$</span>
+                        <input
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          value={cashAmount}
+                          onChange={(e) => {
+                            setCashAmount(e.target.value)
+                            setCashError(null)
+                          }}
+                          onKeyDown={(e) => e.key === 'Enter' && handleCashDialogSubmit()}
+                          className={`block w-full pl-8 pr-3 py-2 border rounded-lg text-sm text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
+                            cashError ? 'border-red-300' : 'border-slate-200'
+                          }`}
+                          placeholder="0.00"
+                          disabled={loading}
+                        />
+                      </div>
+                      <p className="mt-1 text-xs text-slate-400">Final cash remaining in drawer</p>
                     </div>
                     {cashError && (
-                      <div className="flex items-center justify-center gap-2 text-sm text-red-600 bg-red-50 p-3 rounded-lg">
-                        <span>{cashError}</span>
-                      </div>
+                      <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2 text-center">{cashError}</p>
                     )}
                   </div>
                 )}
-                <div className="flex gap-3">
+                <div className="flex gap-3 border-t border-slate-100 pt-4">
                   <button
                     type="button"
                     onClick={handleCashDialogSubmit}
@@ -719,27 +727,25 @@ export default function PunchInOutPage() {
                           !beveragesCash ||
                           parseFloat(beveragesCash) < 0))
                     }
-                    className="flex-1 px-6 py-4 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-xl hover:from-blue-700 hover:to-indigo-700 font-semibold disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                    className="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                   >
                     {loading ? (
                       <>
-                        <svg className="animate-spin h-5 w-5" fill="none" viewBox="0 0 24 24">
+                        <svg className="animate-spin h-5 w-5" fill="none" viewBox="0 0 24 24" aria-hidden>
                           <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                           <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
                         </svg>
-                        <span>Processing...</span>
+                        <span>Processing…</span>
                       </>
                     ) : (
-                      <>
-                        <span>Continue</span>
-                      </>
+                      <span>Continue</span>
                     )}
                   </button>
                   <button
                     type="button"
                     onClick={handleCashDialogCancel}
                     disabled={loading}
-                    className="px-6 py-4 bg-gray-100 text-gray-700 rounded-xl hover:bg-gray-200 font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="px-4 py-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 text-sm font-medium rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     Cancel
                   </button>

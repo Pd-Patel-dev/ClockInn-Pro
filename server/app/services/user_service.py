@@ -3,6 +3,8 @@ from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_, func, delete as sql_delete
 from fastapi import HTTPException, status
+
+from app.core.error_handling import client_error_detail
 import logging
 
 from app.models.user import User, UserRole, UserStatus
@@ -200,9 +202,13 @@ async def create_employee(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="This PIN is already in use by another employee in your company. Please choose a different PIN.",
             )
+        logger.error("Failed to create employee: %s", e, exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to create employee: {str(e)}",
+            detail=client_error_detail(
+                dev_detail=f"Failed to create employee: {str(e)}",
+                prod_detail="Failed to create employee. Please try again.",
+            ),
         )
 
 
@@ -339,9 +345,13 @@ async def update_employee(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="This PIN is already in use by another employee in your company. Please choose a different PIN.",
             )
+        logger.error("Failed to update employee: %s", e, exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to update employee: {str(e)}",
+            detail=client_error_detail(
+                dev_detail=f"Failed to update employee: {str(e)}",
+                prod_detail="Failed to update employee. Please try again.",
+            ),
         )
 
 
@@ -478,9 +488,13 @@ async def reset_password(
         return user
     except Exception as e:
         await db.rollback()
+        logger.error("Failed to reset password: %s", e, exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to reset password: {str(e)}",
+            detail=client_error_detail(
+                dev_detail=f"Failed to reset password: {str(e)}",
+                prod_detail="Failed to reset password. Please try again.",
+            ),
         )
 
 

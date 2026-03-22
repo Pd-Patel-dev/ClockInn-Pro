@@ -265,10 +265,10 @@ export default function AdminShiftLogPage() {
   }
 
   const getDeltaColor = (deltaCents: number | null) => {
-    if (deltaCents === null) return 'text-gray-500'
+    if (deltaCents === null) return 'text-slate-500'
     if (deltaCents > 0) return 'text-green-600'
     if (deltaCents < 0) return 'text-red-600'
-    return 'text-gray-900'
+    return 'text-slate-900'
   }
 
   const getStatusBadge = (status: string) => {
@@ -277,7 +277,7 @@ export default function AdminShiftLogPage() {
       CLOSED: 'bg-green-100 text-green-800',
       REVIEW_NEEDED: 'bg-red-100 text-red-800',
     }
-    return styles[status as keyof typeof styles] || 'bg-gray-100 text-gray-800'
+    return styles[status as keyof typeof styles] || 'bg-slate-100 text-slate-800'
   }
 
   if (loading) {
@@ -295,37 +295,37 @@ export default function AdminShiftLogPage() {
       <div className="px-4 py-8 sm:px-6 lg:px-8">
         <div className="max-w-6xl mx-auto">
           <div className="mb-6">
-            <h1 className="text-2xl font-semibold text-gray-900 mb-1">Shift Log</h1>
-            <p className="text-sm text-gray-600">View everything for each shift. Click a row to open full details (clock in/out, cash drawer, beverages, shift notes).</p>
+            <h1 className="text-2xl font-semibold text-slate-900 mb-1">Shift Log</h1>
+            <p className="text-sm text-slate-600">View everything for each shift. Click a row to open full details (clock in/out, cash drawer, beverages, shift notes).</p>
           </div>
 
           {/* Filters */}
-          <div className="bg-white rounded-lg border border-gray-200 p-4 mb-6">
+          <div className="bg-white rounded-lg border border-slate-200 p-4 mb-6">
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">From Date</label>
+                <label className="block text-sm font-medium text-slate-700 mb-2">From Date</label>
                 <input
                   type="date"
                   value={fromDate}
                   onChange={(e) => setFromDate(e.target.value)}
-                  className="block w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                  className="block w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">To Date</label>
+                <label className="block text-sm font-medium text-slate-700 mb-2">To Date</label>
                 <input
                   type="date"
                   value={toDate}
                   onChange={(e) => setToDate(e.target.value)}
-                  className="block w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                  className="block w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Status</label>
+                <label className="block text-sm font-medium text-slate-700 mb-2">Status</label>
                 <select
                   value={statusFilter}
                   onChange={(e) => setStatusFilter(e.target.value)}
-                  className="block w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                  className="block w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
                 >
                   <option value="">All</option>
                   <option value="OPEN">Open</option>
@@ -353,25 +353,25 @@ export default function AdminShiftLogPage() {
           </div>
 
           {/* Sessions Table */}
-          <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+          <div className="bg-white rounded-lg border border-slate-200 overflow-hidden">
             <table className="w-full">
-              <thead className="bg-gray-50 border-b">
+              <thead className="bg-slate-50 border-b">
                 <tr>
-                  <th className="px-3 py-2 text-center text-xs font-medium text-gray-500 uppercase">Date</th>
-                  <th className="px-3 py-2 text-center text-xs font-medium text-gray-500 uppercase">Employee</th>
-                  <th className="px-3 py-2 text-center text-xs font-medium text-gray-500 uppercase">Shift</th>
-                  <th className="px-3 py-2 text-center text-xs font-medium text-gray-500 uppercase">Start</th>
-                  <th className="px-3 py-2 text-center text-xs font-medium text-gray-500 uppercase">End</th>
-                  <th className="px-3 py-2 text-center text-xs font-medium text-gray-500 uppercase">Cash collected</th>
-                  <th className="px-3 py-2 text-center text-xs font-medium text-gray-500 uppercase">Drop</th>
-                  <th className="px-3 py-2 text-center text-xs font-medium text-gray-500 uppercase" title="Total beverage sales for the shift (all payment types)">Beverages Sold</th>
-                  <th className="px-3 py-2 text-center text-xs font-medium text-gray-500 uppercase" title="Start + Collected - Drop (beverages not included)">Balance</th>
-                  <th className="px-3 py-2 text-center text-xs font-medium text-gray-500 uppercase">+/-</th>
-                  <th className="px-3 py-2 text-center text-xs font-medium text-gray-500 uppercase">Status</th>
-                  <th className="px-3 py-2 text-center text-xs font-medium text-gray-500 uppercase">Actions</th>
+                  <th className="px-3 py-2 text-center text-xs font-medium text-slate-500 uppercase">Date</th>
+                  <th className="px-3 py-2 text-center text-xs font-medium text-slate-500 uppercase">Employee</th>
+                  <th className="px-3 py-2 text-center text-xs font-medium text-slate-500 uppercase">Shift</th>
+                  <th className="px-3 py-2 text-center text-xs font-medium text-slate-500 uppercase">Start</th>
+                  <th className="px-3 py-2 text-center text-xs font-medium text-slate-500 uppercase">End</th>
+                  <th className="px-3 py-2 text-center text-xs font-medium text-slate-500 uppercase">Cash collected</th>
+                  <th className="px-3 py-2 text-center text-xs font-medium text-slate-500 uppercase">Drop</th>
+                  <th className="px-3 py-2 text-center text-xs font-medium text-slate-500 uppercase" title="Total beverage sales for the shift (all payment types)">Beverages Sold</th>
+                  <th className="px-3 py-2 text-center text-xs font-medium text-slate-500 uppercase" title="Start + Collected - Drop (beverages not included)">Balance</th>
+                  <th className="px-3 py-2 text-center text-xs font-medium text-slate-500 uppercase">+/-</th>
+                  <th className="px-3 py-2 text-center text-xs font-medium text-slate-500 uppercase">Status</th>
+                  <th className="px-3 py-2 text-center text-xs font-medium text-slate-500 uppercase">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-100">
+              <tbody className="divide-y divide-slate-100">
                 {loadingSessions ? (
                   <tr>
                     <td colSpan={10} className="px-3 py-8 text-center">
@@ -380,7 +380,7 @@ export default function AdminShiftLogPage() {
                   </tr>
                 ) : sessions.length === 0 ? (
                   <tr>
-                    <td colSpan={12} className="px-3 py-8 text-center text-gray-500 text-sm">
+                    <td colSpan={12} className="px-3 py-8 text-center text-slate-500 text-sm">
                       No shift sessions found
                     </td>
                   </tr>
@@ -389,42 +389,42 @@ export default function AdminShiftLogPage() {
                     <tr
                       key={session.id}
                       onClick={() => handleViewFullDetails(session)}
-                      className="hover:bg-gray-50 cursor-pointer"
+                      className="hover:bg-slate-50 cursor-pointer"
                     >
-                      <td className="px-3 py-2 text-sm text-gray-900 text-center">
+                      <td className="px-3 py-2 text-sm text-slate-900 text-center">
                         {format(new Date(session.start_counted_at), 'MM/dd/yy')}
                       </td>
-                      <td className="px-3 py-2 text-sm font-medium text-gray-900 text-center">
+                      <td className="px-3 py-2 text-sm font-medium text-slate-900 text-center">
                         {session.employee_name}
                       </td>
-                      <td className="px-3 py-2 text-xs text-gray-600 text-center">
+                      <td className="px-3 py-2 text-xs text-slate-600 text-center">
                         {session.clock_in_at ? (
                           <>
                             {format(new Date(session.clock_in_at), 'h:mma')}
                             {session.clock_out_at ? (
-                              <span className="text-gray-400"> - {format(new Date(session.clock_out_at), 'h:mma')}</span>
+                              <span className="text-slate-400"> - {format(new Date(session.clock_out_at), 'h:mma')}</span>
                             ) : (
                               <span className="text-yellow-600"> (open)</span>
                             )}
                           </>
                         ) : '-'}
                       </td>
-                      <td className="px-3 py-2 text-sm text-gray-900 text-center">
+                      <td className="px-3 py-2 text-sm text-slate-900 text-center">
                         {formatCurrency(session.start_cash_cents)}
                       </td>
-                      <td className="px-3 py-2 text-sm text-gray-900 text-center">
+                      <td className="px-3 py-2 text-sm text-slate-900 text-center">
                         {formatCurrency(session.end_cash_cents)}
                       </td>
-                      <td className="px-3 py-2 text-sm text-gray-900 text-center">
+                      <td className="px-3 py-2 text-sm text-slate-900 text-center">
                         {formatCurrency(session.collected_cash_cents)}
                       </td>
-                      <td className="px-3 py-2 text-sm text-gray-900 text-center">
+                      <td className="px-3 py-2 text-sm text-slate-900 text-center">
                         {formatCurrencyOptional(session.drop_amount_cents)}
                       </td>
-                      <td className="px-3 py-2 text-sm text-gray-900 text-center">
+                      <td className="px-3 py-2 text-sm text-slate-900 text-center">
                         {formatCurrency(session.beverages_cash_cents)}
                       </td>
-                      <td className="px-3 py-2 text-sm text-gray-900 text-center font-medium" title="Start + Collected - Drop">
+                      <td className="px-3 py-2 text-sm text-slate-900 text-center font-medium" title="Start + Collected - Drop">
                         {formatCurrency(session.expected_balance_cents)}
                       </td>
                       <td className={`px-3 py-2 text-sm font-medium text-center ${getDeltaColor(session.delta_cents)}`}>
@@ -441,7 +441,7 @@ export default function AdminShiftLogPage() {
                         <div className="flex gap-1 justify-center">
                           <button
                             onClick={(e) => { e.stopPropagation(); handleViewFullDetails(session); }}
-                            className="p-1 text-gray-600 hover:bg-gray-100 rounded"
+                            className="p-1 text-slate-600 hover:bg-slate-100 rounded"
                             title="View full shift details"
                           >
                             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -493,29 +493,29 @@ export default function AdminShiftLogPage() {
               <div className="absolute inset-0 bg-gray-600 bg-opacity-50" onClick={() => { setShowDetailPanel(false); setDetailSession(null); setShiftNoteDetail(null); }} />
               <div className="fixed inset-y-0 right-0 flex max-w-full pl-10">
                 <div className="w-screen max-w-lg bg-white shadow-xl overflow-y-auto">
-                  <div className="flex items-center justify-between border-b border-gray-200 px-6 py-4">
-                    <h2 className="text-lg font-semibold text-gray-900">Shift details</h2>
+                  <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4">
+                    <h2 className="text-lg font-semibold text-slate-900">Shift details</h2>
                     <button
                       type="button"
                       onClick={() => { setShowDetailPanel(false); setDetailSession(null); setShiftNoteDetail(null); }}
-                      className="text-gray-400 hover:text-gray-600 rounded p-1"
+                      className="text-slate-400 hover:text-slate-600 rounded p-1"
                     >
                       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
                     </button>
                   </div>
                   <div className="px-6 py-4 space-y-6">
                     <div>
-                      <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Employee &amp; date</h3>
-                      <p className="text-base font-medium text-gray-900">{detailSession.employee_name}</p>
-                      <p className="text-sm text-gray-600">{format(new Date(detailSession.start_counted_at), 'EEEE, MMM d, yyyy')}</p>
+                      <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Employee &amp; date</h3>
+                      <p className="text-base font-medium text-slate-900">{detailSession.employee_name}</p>
+                      <p className="text-sm text-slate-600">{format(new Date(detailSession.start_counted_at), 'EEEE, MMM d, yyyy')}</p>
                     </div>
                     <div>
-                      <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Clock in / Clock out</h3>
-                      <p className="text-sm text-gray-900">
+                      <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Clock in / Clock out</h3>
+                      <p className="text-sm text-slate-900">
                         {detailSession.clock_in_at ? (
                           <>
                             <span className="font-medium">{format(new Date(detailSession.clock_in_at), 'h:mm a')}</span>
-                            <span className="text-gray-500"> – </span>
+                            <span className="text-slate-500"> – </span>
                             {detailSession.clock_out_at ? (
                               <span className="font-medium">{format(new Date(detailSession.clock_out_at), 'h:mm a')}</span>
                             ) : (
@@ -526,30 +526,30 @@ export default function AdminShiftLogPage() {
                       </p>
                     </div>
                     <div>
-                      <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Cash drawer</h3>
+                      <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Cash drawer</h3>
                       <dl className="grid grid-cols-1 gap-2 text-sm">
                         <div className="flex justify-between">
-                          <dt className="text-gray-600">Starting balance</dt>
-                          <dd className="font-medium text-gray-900">{formatCurrency(detailSession.start_cash_cents)}</dd>
+                          <dt className="text-slate-600">Starting balance</dt>
+                          <dd className="font-medium text-slate-900">{formatCurrency(detailSession.start_cash_cents)}</dd>
                         </div>
                         <div className="flex justify-between">
-                          <dt className="text-gray-600">Cash collected</dt>
-                          <dd className="font-medium text-gray-900">{formatCurrency(detailSession.collected_cash_cents)}</dd>
+                          <dt className="text-slate-600">Cash collected</dt>
+                          <dd className="font-medium text-slate-900">{formatCurrency(detailSession.collected_cash_cents)}</dd>
                         </div>
                         <div className="flex justify-between">
-                          <dt className="text-gray-600">Drop amount</dt>
-                          <dd className="font-medium text-gray-900">{formatCurrencyOptional(detailSession.drop_amount_cents)}</dd>
+                          <dt className="text-slate-600">Drop amount</dt>
+                          <dd className="font-medium text-slate-900">{formatCurrencyOptional(detailSession.drop_amount_cents)}</dd>
                         </div>
                         <div className="flex justify-between">
-                          <dt className="text-gray-600">Amount of beverages sold</dt>
-                          <dd className="font-medium text-gray-900">{formatCurrency(detailSession.beverages_cash_cents)}</dd>
+                          <dt className="text-slate-600">Amount of beverages sold</dt>
+                          <dd className="font-medium text-slate-900">{formatCurrency(detailSession.beverages_cash_cents)}</dd>
                         </div>
                         <div className="flex justify-between">
-                          <dt className="text-gray-600">Ending balance</dt>
-                          <dd className="font-medium text-gray-900">{formatCurrency(detailSession.end_cash_cents)}</dd>
+                          <dt className="text-slate-600">Ending balance</dt>
+                          <dd className="font-medium text-slate-900">{formatCurrency(detailSession.end_cash_cents)}</dd>
                         </div>
-                        <div className="flex justify-between pt-1 border-t border-gray-100">
-                          <dt className="text-gray-600">Difference (+/-)</dt>
+                        <div className="flex justify-between pt-1 border-t border-slate-100">
+                          <dt className="text-slate-600">Difference (+/-)</dt>
                           <dd className={`font-medium ${getDeltaColor(detailSession.delta_cents)}`}>
                             {detailSession.delta_cents != null ? (
                               detailSession.delta_cents > 0 ? `+${formatCurrency(detailSession.delta_cents)}` : formatCurrency(detailSession.delta_cents)
@@ -559,18 +559,18 @@ export default function AdminShiftLogPage() {
                       </dl>
                     </div>
                     <div>
-                      <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Shift notes</h3>
+                      <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Shift notes</h3>
                       {loadingDetail ? (
                         <div className="py-8 flex justify-center">
                           <div className="animate-spin rounded-full h-8 w-8 border-2 border-blue-600 border-t-transparent" />
                         </div>
                       ) : shiftNoteDetail?.content ? (
-                        <pre className="whitespace-pre-wrap break-words font-sans text-sm text-gray-800 bg-gray-50 rounded-lg p-4 border border-gray-200 max-h-64 overflow-y-auto overflow-x-hidden">
+                        <pre className="whitespace-pre-wrap break-words font-sans text-sm text-slate-800 bg-slate-50 rounded-lg p-4 border border-slate-200 max-h-64 overflow-y-auto overflow-x-hidden">
                           {/* User-supplied: text only (React escapes). Do not use dangerouslySetInnerHTML. */}
                           {shiftNoteDetail.content}
                         </pre>
                       ) : (
-                        <p className="text-sm text-gray-500 italic">No shift note for this shift.</p>
+                        <p className="text-sm text-slate-500 italic">No shift note for this shift.</p>
                       )}
                     </div>
                   </div>
@@ -582,15 +582,15 @@ export default function AdminShiftLogPage() {
           {/* Edit Dialog */}
           {showEditDialog && selectedSession && (
             <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center p-4">
-              <div className="relative bg-white rounded-xl shadow-2xl w-full max-w-md m-4">
-                <div className="flex justify-between items-center px-8 py-6 border-b border-gray-200">
-                  <h3 className="text-xl font-bold text-gray-900">Edit Shift Session</h3>
+              <div className="relative bg-white rounded-xl shadow-xl w-full max-w-md m-4">
+                <div className="flex justify-between items-center px-8 py-6 border-b border-slate-200">
+                  <h3 className="text-xl font-bold text-slate-900">Edit Shift Session</h3>
                   <button
                     onClick={() => {
                       setShowEditDialog(false)
                       setSelectedSession(null)
                     }}
-                    className="text-gray-400 hover:text-gray-600 text-3xl leading-none"
+                    className="text-slate-400 hover:text-slate-600 text-3xl leading-none"
                   >
                     ×
                   </button>
@@ -598,29 +598,29 @@ export default function AdminShiftLogPage() {
                 <form onSubmit={editForm.handleSubmit(onSubmitEdit)} className="p-8">
                   <div className="space-y-4">
                     <div>
-                      <label className="block text-sm font-semibold text-gray-700 mb-2">Start Cash ($)</label>
+                      <label className="block text-sm font-semibold text-slate-700 mb-2">Start Cash ($)</label>
                       <input
                         type="number"
                         step="0.01"
                         {...editForm.register('start_cash_cents')}
-                        className="block w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        className="block w-full px-4 py-3 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-semibold text-gray-700 mb-2">End Cash ($)</label>
+                      <label className="block text-sm font-semibold text-slate-700 mb-2">End Cash ($)</label>
                       <input
                         type="number"
                         step="0.01"
                         {...editForm.register('end_cash_cents')}
-                        className="block w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        className="block w-full px-4 py-3 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-semibold text-gray-700 mb-2">Reason *</label>
+                      <label className="block text-sm font-semibold text-slate-700 mb-2">Reason *</label>
                       <textarea
                         {...editForm.register('reason')}
                         rows={3}
-                        className="block w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        className="block w-full px-4 py-3 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                         placeholder="Enter reason for editing"
                       />
                       {editForm.formState.errors.reason && (
@@ -628,7 +628,7 @@ export default function AdminShiftLogPage() {
                       )}
                     </div>
                   </div>
-                  <div className="flex gap-4 pt-6 mt-8 border-t border-gray-200">
+                  <div className="flex gap-4 pt-6 mt-8 border-t border-slate-200">
                     <button
                       type="submit"
                       className="flex-1 px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-semibold text-sm"
@@ -641,7 +641,7 @@ export default function AdminShiftLogPage() {
                         setShowEditDialog(false)
                         setSelectedSession(null)
                       }}
-                      className="px-6 py-3 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 font-semibold text-sm"
+                      className="px-6 py-3 bg-slate-100 text-slate-700 rounded-lg hover:bg-slate-200 font-semibold text-sm"
                     >
                       Cancel
                     </button>
@@ -667,39 +667,39 @@ export default function AdminShiftLogPage() {
 
           {showReviewDialog && selectedSession && (
             <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center p-4">
-              <div className="relative bg-white rounded-xl shadow-2xl w-full max-w-md m-4">
-                <div className="flex justify-between items-center px-8 py-6 border-b border-gray-200">
-                  <h3 className="text-xl font-bold text-gray-900">Review Shift Session</h3>
+              <div className="relative bg-white rounded-xl shadow-xl w-full max-w-md m-4">
+                <div className="flex justify-between items-center px-8 py-6 border-b border-slate-200">
+                  <h3 className="text-xl font-bold text-slate-900">Review Shift Session</h3>
                   <button
                     onClick={() => {
                       setShowReviewDialog(false)
                       setSelectedSession(null)
                     }}
-                    className="text-gray-400 hover:text-gray-600 text-3xl leading-none"
+                    className="text-slate-400 hover:text-slate-600 text-3xl leading-none"
                   >
                     ×
                   </button>
                 </div>
                 <form onSubmit={(e) => { e.preventDefault(); onSubmitReview(); }} className="p-8">
                   <div className="space-y-4 mb-6">
-                    <div className="bg-gray-50 p-4 rounded-lg">
-                      <p className="text-sm text-gray-600 mb-2">Employee: <span className="font-semibold">{selectedSession.employee_name}</span></p>
-                      <p className="text-sm text-gray-600 mb-2">Start Cash: <span className="font-semibold">{formatCurrency(selectedSession.start_cash_cents)}</span></p>
-                      <p className="text-sm text-gray-600 mb-2">End Cash: <span className="font-semibold">{formatCurrency(selectedSession.end_cash_cents)}</span></p>
-                      <p className="text-sm text-gray-600">Delta: <span className={`font-semibold ${selectedSession.delta_cents && selectedSession.delta_cents < 0 ? 'text-red-600' : ''}`}>{formatCurrency(selectedSession.delta_cents)}</span></p>
+                    <div className="bg-slate-50 p-4 rounded-lg">
+                      <p className="text-sm text-slate-600 mb-2">Employee: <span className="font-semibold">{selectedSession.employee_name}</span></p>
+                      <p className="text-sm text-slate-600 mb-2">Start Cash: <span className="font-semibold">{formatCurrency(selectedSession.start_cash_cents)}</span></p>
+                      <p className="text-sm text-slate-600 mb-2">End Cash: <span className="font-semibold">{formatCurrency(selectedSession.end_cash_cents)}</span></p>
+                      <p className="text-sm text-slate-600">Delta: <span className={`font-semibold ${selectedSession.delta_cents && selectedSession.delta_cents < 0 ? 'text-red-600' : ''}`}>{formatCurrency(selectedSession.delta_cents)}</span></p>
                     </div>
                     <div>
-                      <label className="block text-sm font-semibold text-gray-700 mb-2">Review Note</label>
+                      <label className="block text-sm font-semibold text-slate-700 mb-2">Review Note</label>
                       <textarea
                         value={reviewNote}
                         onChange={(e) => setReviewNote(e.target.value)}
                         rows={3}
-                        className="block w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        className="block w-full px-4 py-3 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                         placeholder="Enter review notes (optional)"
                       />
                     </div>
                   </div>
-                  <div className="flex gap-4 pt-6 border-t border-gray-200">
+                  <div className="flex gap-4 pt-6 border-t border-slate-200">
                     <button
                       type="submit"
                       className="flex-1 px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 font-semibold text-sm"
@@ -712,7 +712,7 @@ export default function AdminShiftLogPage() {
                         setShowReviewDialog(false)
                         setSelectedSession(null)
                       }}
-                      className="px-6 py-3 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 font-semibold text-sm"
+                      className="px-6 py-3 bg-slate-100 text-slate-700 rounded-lg hover:bg-slate-200 font-semibold text-sm"
                     >
                       Cancel
                     </button>

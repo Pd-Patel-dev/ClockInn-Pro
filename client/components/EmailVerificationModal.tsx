@@ -139,8 +139,8 @@ export default function EmailVerificationModal({
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6">
-        <h2 className="text-2xl font-bold text-gray-900 mb-2">Verify Your Email</h2>
-        <p className="text-gray-600 mb-6">
+        <h2 className="text-2xl font-bold text-slate-900 mb-2">Verify Your Email</h2>
+        <p className="text-slate-600 mb-6">
           For your security, please verify your email to continue. A 6-digit code has been sent to <strong>{email}</strong>.
         </p>
 
@@ -151,7 +151,7 @@ export default function EmailVerificationModal({
         )}
 
         <div className="mb-6">
-          <label className="block text-sm font-medium text-gray-700 mb-2">
+          <label className="block text-sm font-medium text-slate-700 mb-2">
             Enter 6-digit code
           </label>
           <div className="flex gap-2 justify-center" onPaste={handlePaste}>
@@ -168,7 +168,7 @@ export default function EmailVerificationModal({
                 onChange={(e) => handlePinChange(index, e.target.value)}
                 onKeyDown={(e) => handleKeyDown(index, e)}
                 disabled={loading}
-                className="w-12 h-14 text-center text-2xl font-semibold border-2 border-gray-300 rounded-lg focus:border-teal-500 focus:ring-2 focus:ring-teal-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="w-12 h-14 text-center text-2xl font-semibold border-2 border-slate-300 rounded-lg focus:border-teal-500 focus:ring-2 focus:ring-teal-200 disabled:opacity-50 disabled:cursor-not-allowed"
               />
             ))}
           </div>
@@ -187,7 +187,7 @@ export default function EmailVerificationModal({
             <button
               onClick={handleSendPin}
               disabled={resendCooldown > 0 || sending}
-              className="text-sm text-teal-600 hover:text-teal-700 disabled:text-gray-400 disabled:cursor-not-allowed"
+              className="text-sm text-teal-600 hover:text-teal-700 disabled:text-slate-400 disabled:cursor-not-allowed"
             >
               {sending ? 'Sending...' : resendCooldown > 0 ? `Resend code in ${resendCooldown}s` : 'Resend code'}
             </button>
@@ -196,7 +196,7 @@ export default function EmailVerificationModal({
           {onClose && (
             <button
               onClick={onClose}
-              className="text-sm text-gray-500 hover:text-gray-700"
+              className="text-sm text-slate-500 hover:text-slate-700"
             >
               Cancel
             </button>

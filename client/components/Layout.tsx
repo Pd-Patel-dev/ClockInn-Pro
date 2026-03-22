@@ -1,9 +1,9 @@
 'use client'
 
-import { useEffect, useState, useRef } from 'react'
+import { useEffect, useState, useRef, useMemo } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
 import { getCurrentUser, logout, User } from '@/lib/auth'
-import { initializeAuth, startTokenRefreshInterval, stopTokenRefreshInterval } from '@/lib/api'
+import api, { initializeAuth, startTokenRefreshInterval, stopTokenRefreshInterval } from '@/lib/api'
 import Link from 'next/link'
 
 export default function Layout({ children }: { children: React.ReactNode }) {
@@ -14,6 +14,8 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   const [sideMenuOpen, setSideMenuOpen] = useState(false)
   const [openDropdown, setOpenDropdown] = useState<string | null>(null)
   const dropdownRefs = useRef<{ [key: string]: HTMLDivElement | null }>({})
+  /** From GET /company/info — hide shift notepad / shift log when company disables feature */
+  const [shiftNotesEnabled, setShiftNotesEnabled] = useState(true)
 
   // Lock body scroll when side menu is open (below 950px)
   useEffect(() => {
@@ -118,6 +120,24 @@ export default function Layout({ children }: { children: React.ReactNode }) {
     }
   }, [router, pathname, user?.email])
 
+  useEffect(() => {
+    if (!user) return
+    let cancelled = false
+    api
+      .get('/company/info')
+      .then((res) => {
+        if (!cancelled) {
+          setShiftNotesEnabled(res.data?.settings?.shift_notes_enabled !== false)
+        }
+      })
+      .catch(() => {
+        /* keep default true on error */
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [user?.id])
+
   // Stop token refresh interval when component unmounts (e.g., on logout)
   useEffect(() => {
     return () => {
@@ -142,6 +162,60 @@ export default function Layout({ children }: { children: React.ReactNode }) {
     }
   }, [openDropdown])
 
+  const employeeLinks = useMemo(() => {
+    const all = [
+      { href: '/dashboard', label: 'Dashboard' },
+      { href: '/punch-in-out', label: 'Punch In/Out' },
+      { href: '/my/shift-notepad', label: 'Shift Notepad' },
+      { href: '/my-schedule', label: 'My Schedule' },
+      { href: '/logs', label: 'My Logs' },
+      { href: '/leave', label: 'Leave' },
+    ]
+    if (!shiftNotesEnabled) {
+      return all.filter((l) => l.href !== '/my/shift-notepad')
+    }
+    return all
+  }, [shiftNotesEnabled])
+
+  const adminNavGroups = useMemo(
+    () => [
+      {
+        type: 'single' as const,
+        items: [
+          { href: '/dashboard', label: 'Dashboard' },
+          { href: '/punch-in-out', label: 'Punch In/Out' },
+        ],
+      },
+      {
+        type: 'dropdown' as const,
+        label: 'Team',
+        items: [
+          { href: '/employees', label: 'Employees' },
+          { href: '/leave-requests', label: 'Leave Requests' },
+          { href: '/roles', label: 'Roles & Permissions' },
+        ],
+      },
+      {
+        type: 'dropdown' as const,
+        label: 'Scheduling',
+        items: [
+          { href: '/schedules', label: 'Schedules' },
+          { href: '/time-entries', label: 'Time Entries' },
+          ...(shiftNotesEnabled ? [{ href: '/admin/shift-log', label: 'Shift Log' }] : []),
+        ],
+      },
+      {
+        type: 'single' as const,
+        items: [
+          { href: '/payroll', label: 'Payroll' },
+          { href: '/reports', label: 'Reports' },
+          { href: '/settings', label: 'Settings' },
+        ],
+      },
+    ],
+    [shiftNotesEnabled]
+  )
+
   const handleLogout = async () => {
     stopTokenRefreshInterval() // Stop proactive refresh
     await logout()
@@ -151,10 +225,10 @@ export default function Layout({ children }: { children: React.ReactNode }) {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
-          <div className="mt-4 h-4 w-24 bg-gray-200 rounded mx-auto animate-pulse"></div>
+      <div className="min-h-screen flex items-center justify-center bg-slate-50">
+        <div className="text-center" role="status" aria-live="polite" aria-label="Loading">
+          <div className="mx-auto h-9 w-9 rounded-full border-2 border-slate-200 border-t-blue-600 animate-spin" />
+          <p className="mt-4 text-sm text-slate-500">Loading…</p>
         </div>
       </div>
     )
@@ -167,52 +241,6 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   const isAdmin = user.role === 'ADMIN'
   const isEmployee = ['MAINTENANCE', 'FRONTDESK', 'HOUSEKEEPING'].includes(user.role)
   const isDeveloper = user.role === 'DEVELOPER'
-
-  const employeeLinks = [
-    { href: '/dashboard', label: 'Dashboard' },
-    { href: '/punch-in-out', label: 'Punch In/Out' },
-    { href: '/my/shift-notepad', label: 'Shift Notepad' },
-    { href: '/my-schedule', label: 'My Schedule' },
-    { href: '/logs', label: 'My Logs' },
-    { href: '/leave', label: 'Leave' },
-  ]
-
-  // Admin navigation: primary links first, then grouped dropdowns, then Reports & Settings
-  const adminNavGroups = [
-    {
-      type: 'single',
-      items: [
-        { href: '/dashboard', label: 'Dashboard' },
-        { href: '/punch-in-out', label: 'Punch In/Out' },
-      ],
-    },
-    {
-      type: 'dropdown',
-      label: 'Team',
-      items: [
-        { href: '/employees', label: 'Employees' },
-        { href: '/leave-requests', label: 'Leave Requests' },
-        { href: '/roles', label: 'Roles & Permissions' },
-      ],
-    },
-    {
-      type: 'dropdown',
-      label: 'Scheduling',
-      items: [
-        { href: '/schedules', label: 'Schedules' },
-        { href: '/time-entries', label: 'Time Entries' },
-        { href: '/admin/shift-log', label: 'Shift Log' },
-      ],
-    },
-    {
-      type: 'single',
-      items: [
-        { href: '/payroll', label: 'Payroll' },
-        { href: '/reports', label: 'Reports' },
-        { href: '/settings', label: 'Settings' },
-      ],
-    },
-  ]
 
   const developerLinks = [
     { href: '/developer', label: 'Developer Portal' },
@@ -233,19 +261,20 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-slate-50">
       {/* Navigation */}
-      <nav className="bg-white border-b border-gray-200">
+      <nav className="bg-slate-900 shadow-sm">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between h-14">
             <div className="flex">
               <div className="flex-shrink-0 flex items-center">
-                <Link href="/dashboard" className="text-xl font-semibold text-gray-900">
+                <Link href="/dashboard" className="inline-flex items-center text-xl font-semibold text-white">
+                  <span className="inline-block w-2 h-2 rounded-full bg-blue-500 mr-2" aria-hidden />
                   ClockInn
                 </Link>
               </div>
               {/* Desktop Navigation - from 950px */}
-              <div className="hidden min-[950px]:ml-8 min-[950px]:flex min-[950px]:space-x-1 min-[950px]:items-center">
+              <div className="hidden min-[950px]:ml-8 min-[950px]:flex min-[950px]:gap-1 min-[950px]:items-center">
                 {isAdmin ? (
                   adminNavGroups.map((group, idx) => {
                     if (group.type === 'single') {
@@ -253,10 +282,10 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                         <Link
                           key={item.href}
                           href={item.href}
-                          className={`inline-flex items-center px-3 py-2 text-sm font-medium border-b-2 transition-colors ${
+                          className={`inline-flex items-center rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
                             isActive(item.href)
-                              ? 'border-blue-600 text-blue-600'
-                              : 'border-transparent text-gray-700 hover:text-gray-900 hover:border-gray-300'
+                              ? 'bg-slate-700 text-white'
+                              : 'text-slate-300 hover:text-white hover:bg-slate-700'
                           }`}
                         >
                           {item.label}
@@ -278,11 +307,12 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                           className="relative"
                         >
                           <button
+                            type="button"
                             onClick={() => setOpenDropdown(openDropdown === dropdownId ? null : dropdownId)}
-                            className={`inline-flex items-center px-3 py-2 text-sm font-medium border-b-2 transition-colors ${
+                            className={`inline-flex items-center rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
                               isActiveGroup
-                                ? 'border-blue-600 text-blue-600'
-                                : 'border-transparent text-gray-700 hover:text-gray-900 hover:border-gray-300'
+                                ? 'bg-slate-700 text-white'
+                                : 'text-slate-300 hover:text-white hover:bg-slate-700'
                             }`}
                           >
                             {group.label}
@@ -298,7 +328,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                             </svg>
                           </button>
                           {openDropdown === dropdownId && (
-                            <div className="absolute top-full left-0 mt-1 w-48 bg-white rounded-md shadow-lg border border-gray-200 z-50">
+                            <div className="absolute top-full left-0 mt-1 w-48 bg-slate-800 border border-slate-700 rounded-lg shadow-xl z-50">
                               <div className="py-1">
                                 {group.items.map((item) => (
                                   <Link
@@ -307,8 +337,8 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                                     onClick={() => setOpenDropdown(null)}
                                     className={`block px-4 py-2 text-sm transition-colors ${
                                       isActive(item.href)
-                                        ? 'bg-blue-50 text-blue-600 font-medium'
-                                        : 'text-gray-700 hover:bg-gray-50 hover:text-gray-900'
+                                        ? 'bg-slate-700 text-white font-medium'
+                                        : 'text-slate-300 hover:bg-slate-700 hover:text-white'
                                     }`}
                                   >
                                     {item.label}
@@ -326,10 +356,10 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                   <Link
                     key={link.href}
                     href={link.href}
-                    className={`inline-flex items-center px-3 py-2 text-sm font-medium border-b-2 transition-colors ${
+                    className={`inline-flex items-center rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
                       isActive(link.href)
-                        ? 'border-blue-600 text-blue-600'
-                        : 'border-transparent text-gray-700 hover:text-gray-900 hover:border-gray-300'
+                        ? 'bg-slate-700 text-white'
+                        : 'text-slate-300 hover:text-white hover:bg-slate-700'
                     }`}
                   >
                     {link.label}
@@ -340,12 +370,18 @@ export default function Layout({ children }: { children: React.ReactNode }) {
             </div>
             {/* User Menu + Hamburger (responsive) */}
             <div className="flex items-center gap-2 sm:gap-3">
-              <div className="hidden sm:block">
-                <p className="text-sm text-gray-700 truncate max-w-[120px] lg:max-w-[180px]">{user.name}</p>
+              <div className="hidden sm:flex sm:items-center sm:gap-2">
+                <div
+                  className="w-8 h-8 rounded-full bg-slate-700 flex items-center justify-center text-xs font-semibold text-white uppercase shrink-0"
+                  title={user.name}
+                >
+                  {user.name.trim().slice(0, 2).toUpperCase() || '?'}
+                </div>
               </div>
               <button
+                type="button"
                 onClick={handleLogout}
-                className="px-3 py-1.5 text-sm text-gray-700 hover:text-gray-900 hover:bg-gray-100 rounded"
+                className="text-slate-300 hover:text-white hover:bg-slate-700 px-3 py-1.5 text-sm rounded-md transition-colors"
               >
                 Logout
               </button>
@@ -353,7 +389,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
               <button
                 type="button"
                 onClick={() => setSideMenuOpen(!sideMenuOpen)}
-                className="min-[950px]:hidden inline-flex items-center justify-center p-2 rounded-md text-gray-700 hover:text-gray-900 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-blue-500"
+                className="min-[950px]:hidden inline-flex items-center justify-center p-2 rounded-md text-slate-300 hover:text-white hover:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-slate-500"
                 aria-expanded={sideMenuOpen}
                 aria-label={sideMenuOpen ? 'Close menu' : 'Open menu'}
               >
@@ -390,12 +426,12 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         aria-label="Main navigation"
       >
         <div className="flex flex-col h-full">
-          <div className="flex items-center justify-between h-14 px-4 border-b border-gray-200">
-            <span className="text-lg font-semibold text-gray-900">Menu</span>
+          <div className="flex items-center justify-between h-14 px-4 bg-slate-900 border-b border-slate-700">
+            <span className="text-lg font-semibold text-white">Menu</span>
             <button
               type="button"
               onClick={() => setSideMenuOpen(false)}
-              className="p-2 rounded-md text-gray-500 hover:text-gray-700 hover:bg-gray-100"
+              className="p-2 rounded-md text-slate-300 hover:text-white hover:bg-slate-700"
               aria-label="Close menu"
             >
               <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -403,7 +439,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
               </svg>
             </button>
           </div>
-          <nav className="flex-1 overflow-y-auto py-4 px-2">
+          <nav className="flex-1 overflow-y-auto py-4 px-2 bg-white">
             <div className="space-y-1">
               {isAdmin ? (
                 adminNavGroups.map((group, idx) => {
@@ -415,7 +451,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                         onClick={() => setSideMenuOpen(false)}
                         className={`block px-3 py-2.5 text-sm font-medium rounded-lg transition-colors ${
                           isActive(item.href)
-                            ? 'bg-blue-100 text-blue-700'
+                            ? 'bg-blue-50 text-blue-700'
                             : 'text-gray-700 hover:bg-gray-100'
                         }`}
                       >
@@ -431,7 +467,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                           onClick={() => setOpenDropdown(openDropdown === dropdownId ? null : dropdownId)}
                           className={`w-full flex items-center justify-between px-3 py-2.5 text-sm font-medium rounded-lg transition-colors ${
                             isDropdownActive(group.items)
-                              ? 'bg-blue-100 text-blue-700'
+                              ? 'bg-blue-50 text-blue-700'
                               : 'text-gray-700 hover:bg-gray-100'
                           }`}
                         >
@@ -456,7 +492,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                               }}
                               className={`block px-3 py-2 text-sm rounded-lg transition-colors ${
                                 isActive(item.href)
-                                  ? 'bg-blue-50 text-blue-600 font-medium'
+                                  ? 'bg-blue-50 text-blue-700 font-medium'
                                   : 'text-gray-600 hover:bg-gray-50'
                               }`}
                             >
@@ -476,7 +512,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                     onClick={() => setSideMenuOpen(false)}
                     className={`block px-3 py-2.5 text-sm font-medium rounded-lg transition-colors ${
                       isActive(link.href)
-                        ? 'bg-blue-100 text-blue-700'
+                        ? 'bg-blue-50 text-blue-700'
                         : 'text-gray-700 hover:bg-gray-100'
                     }`}
                   >
@@ -486,12 +522,17 @@ export default function Layout({ children }: { children: React.ReactNode }) {
               )}
             </div>
           </nav>
-          <div className="border-t border-gray-200 p-3">
-            <p className="text-xs text-gray-500 truncate px-2">{user.name}</p>
+          <div className="border-t border-gray-200 bg-slate-50 p-3">
+            <div className="flex items-center gap-3 px-2 min-w-0">
+              <div className="w-8 h-8 rounded-full bg-slate-700 flex items-center justify-center text-xs font-semibold text-white uppercase shrink-0">
+                {user.name.trim().slice(0, 2).toUpperCase() || '?'}
+              </div>
+              <p className="text-xs text-gray-700 font-medium truncate">{user.name}</p>
+            </div>
           </div>
         </div>
       </aside>
-      <main className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">{children}</main>
+      <main className="max-w-7xl mx-auto w-full py-8 px-4 sm:px-6 lg:px-8">{children}</main>
     </div>
   )
 }

@@ -222,7 +222,7 @@ export function ShiftTimeline({ shifts, weekDays, onShiftClick, loading, today, 
     return (
       <div className="bg-white/60 backdrop-blur-xl rounded-2xl border border-white/50 shadow-[0_8px_32px_rgba(0,0,0,0.06)] p-16 flex items-center justify-center min-h-[400px]">
         <div className="animate-spin rounded-full h-10 w-10 border-2 border-blue-500/60 border-t-transparent" />
-        <span className="ml-3 text-sm font-medium text-gray-600">Loading shifts...</span>
+        <span className="ml-3 text-sm font-medium text-slate-600">Loading shifts...</span>
       </div>
     )
   }
@@ -232,11 +232,11 @@ export function ShiftTimeline({ shifts, weekDays, onShiftClick, loading, today, 
       <div className="flex w-full min-w-0 pb-8" style={{ minHeight: TOTAL_HEIGHT + HEADER_HEIGHT }}>
         {/* Time column - clear 2-hour slots */}
         <div
-          className="flex-shrink-0 sticky left-0 z-20 border-r border-gray-200/70 bg-gray-50/90"
+          className="flex-shrink-0 sticky left-0 z-20 border-r border-slate-200/70 bg-slate-50/90"
           style={{ width: TIME_COL_WIDTH }}
         >
           <div
-            className="flex items-center justify-center border-b border-gray-200/70 bg-white/90 text-[10px] font-semibold uppercase tracking-wider text-gray-400"
+            className="flex items-center justify-center border-b border-slate-200/70 bg-white/90 text-[10px] font-semibold uppercase tracking-wider text-slate-400"
             style={{ height: HEADER_HEIGHT }}
           >
             Time
@@ -257,13 +257,13 @@ export function ShiftTimeline({ shifts, weekDays, onShiftClick, loading, today, 
             {EVEN_DISPLAY_HOURS.map((hour) => (
               <div
                 key={hour}
-                className="absolute left-0 right-0 flex items-center justify-end pr-2 border-t border-gray-200/60 z-10"
+                className="absolute left-0 right-0 flex items-center justify-end pr-2 border-t border-slate-200/60 z-10"
                 style={{
                   top: hour * HOUR_HEIGHT,
                   height: SLOT_HEIGHT,
                 }}
               >
-                <span className="text-xs font-medium tabular-nums text-gray-600">
+                <span className="text-xs font-medium tabular-nums text-slate-600">
                   {displayHourToLabel(hour, dayStartHour)}
                 </span>
               </div>
@@ -292,7 +292,7 @@ export function ShiftTimeline({ shifts, weekDays, onShiftClick, loading, today, 
           return (
             <div
               key={dayKey}
-              className={`flex-1 min-w-0 relative border-r border-gray-200/60 last:border-r-0 ${isToday ? 'bg-blue-50/30' : 'bg-white/50'}`}
+              className={`flex-1 min-w-0 relative border-r border-slate-200/60 last:border-r-0 ${isToday ? 'bg-blue-50/30' : 'bg-white/50'}`}
               style={{
                 height: TOTAL_HEIGHT + HEADER_HEIGHT,
                 overflow: 'visible',
@@ -300,14 +300,14 @@ export function ShiftTimeline({ shifts, weekDays, onShiftClick, loading, today, 
               }}
             >
               <div
-                className="sticky top-0 z-10 flex flex-col items-center justify-center border-b border-gray-200/70 bg-white/95"
+                className="sticky top-0 z-10 flex flex-col items-center justify-center border-b border-slate-200/70 bg-white/95"
                 style={{ height: HEADER_HEIGHT }}
               >
-                <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-500">
+                <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">
                   {format(day, 'EEE')}
                 </span>
                 <span
-                  className={`text-base font-bold mt-0.5 ${isToday ? 'text-blue-600' : 'text-gray-900'}`}
+                  className={`text-base font-bold mt-0.5 ${isToday ? 'text-blue-600' : 'text-slate-900'}`}
                 >
                   {format(day, 'd')}
                 </span>
@@ -341,13 +341,13 @@ export function ShiftTimeline({ shifts, weekDays, onShiftClick, loading, today, 
                 {EVEN_DISPLAY_HOURS.slice(1).map((hour) => (
                   <div
                     key={hour}
-                    className="absolute left-0 right-0 border-t border-gray-200/70"
+                    className="absolute left-0 right-0 border-t border-slate-200/70"
                     style={{ top: hour * HOUR_HEIGHT }}
                   />
                 ))}
                 {/* Overnight band (11p–7a): subtle background so after-11pm shifts read clearly */}
                 <div
-                  className="absolute left-0 right-0 pointer-events-none border-t border-indigo-200/40"
+                  className="absolute left-0 right-0 pointer-events-none border-t border-blue-200/40"
                   style={{
                     top: 16 * HOUR_HEIGHT,
                     height: 8 * HOUR_HEIGHT,
@@ -378,7 +378,7 @@ export function ShiftTimeline({ shifts, weekDays, onShiftClick, loading, today, 
                       key={`${shift.id}-${seg.dayKey}-${isContinuation ? 'cont' : 'start'}-${idx}`}
                       className={`absolute rounded-lg cursor-pointer overflow-hidden border border-white/50 shadow-sm
                         transition-all duration-200 ease-out
-                        ${isHovered ? 'scale-[1.01] shadow-md ring-2 ring-blue-400/40 ring-inset' : 'scale-100'}`}
+                        ${isHovered ? 'scale-[1.01] shadow-sm ring-2 ring-blue-400/40 ring-inset' : 'scale-100'}`}
                       style={{
                         top: `${top}px`,
                         height: `${height}px`,
@@ -452,12 +452,12 @@ export function ShiftTimeline({ shifts, weekDays, onShiftClick, loading, today, 
           if (norm.invalid) {
             return (
               <div
-                className="fixed z-[100] pointer-events-none bg-white rounded-xl shadow-lg border border-gray-200/80 p-4 max-w-[280px]"
+                className="fixed z-[100] pointer-events-none bg-white rounded-xl shadow-sm border border-slate-200/80 p-4 max-w-[280px]"
                 style={tooltipStyle}
               >
-                <div className="font-semibold text-gray-900 text-sm">{shift.employee_name}</div>
+                <div className="font-semibold text-slate-900 text-sm">{shift.employee_name}</div>
                 <div className="text-xs text-amber-700 mt-1.5 font-medium">Invalid time</div>
-                <div className="text-[11px] text-gray-500 mt-1">Start/end time could not be parsed.</div>
+                <div className="text-[11px] text-slate-500 mt-1">Start/end time could not be parsed.</div>
               </div>
             )
           }
@@ -465,17 +465,17 @@ export function ShiftTimeline({ shifts, weekDays, onShiftClick, loading, today, 
           const night = isNightShift(shift, startAt, endAt)
           return (
             <div
-              className="fixed z-[100] pointer-events-none bg-white rounded-xl shadow-lg border border-gray-200/80 p-4 max-w-[280px]"
+              className="fixed z-[100] pointer-events-none bg-white rounded-xl shadow-sm border border-slate-200/80 p-4 max-w-[280px]"
               style={tooltipStyle}
             >
-              <div className="font-semibold text-gray-900 text-sm">{shift.employee_name}</div>
-              <div className="text-xs text-gray-600 mt-1.5">
+              <div className="font-semibold text-slate-900 text-sm">{shift.employee_name}</div>
+              <div className="text-xs text-slate-600 mt-1.5">
                 {format(startAt, 'EEE, MMM d · h:mm a')} – {format(endAt, 'h:mm a')}
               </div>
-              <div className="text-xs font-medium text-gray-700 mt-1">
+              <div className="text-xs font-medium text-slate-700 mt-1">
                 Total: {durationMinutes >= 60 ? `${Math.floor(durationMinutes / 60)}h ${durationMinutes % 60}m` : `${durationMinutes}m`}
               </div>
-              {shift.job_role && <div className="text-xs text-gray-500 mt-1">{shift.job_role}</div>}
+              {shift.job_role && <div className="text-xs text-slate-500 mt-1">{shift.job_role}</div>}
               {night && (
                 <span className="inline-block mt-2 px-2 py-1 rounded-md text-xs font-medium bg-purple-100 text-purple-800">
                   Night shift

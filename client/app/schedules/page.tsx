@@ -8,9 +8,10 @@ import { useToast } from '@/components/Toast'
 import logger from '@/lib/logger'
 import { format, startOfWeek, endOfWeek, addDays, addWeeks, subWeeks, parseISO } from 'date-fns'
 import { getEmployeeColor } from '@/lib/employeeColors'
-import { parseTime24, toApiTime24 } from '@/lib/time'
+import { parseTime24, toApiTime24, toTime12h } from '@/lib/time'
 import { ShiftTimeline } from '@/components/ShiftTimeline'
 import TimeInput12h from '@/components/TimeInput12h'
+import ConfirmationDialog from '@/components/ConfirmationDialog'
 
 interface Shift {
   id: string
@@ -42,6 +43,11 @@ export default function SchedulesPage() {
   const [selectedEmployee, setSelectedEmployee] = useState<string>('')
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [sendingEmployeeId, setSendingEmployeeId] = useState<string | null>(null)
+  const [sendScheduleTarget, setSendScheduleTarget] = useState<{
+    id: string
+    name: string
+    email: string
+  } | null>(null)
   const [authErrorOccurred, setAuthErrorOccurred] = useState(false)
   const [scheduleDayStartHour, setScheduleDayStartHour] = useState(7)
   const [scheduleDayEndHour, setScheduleDayEndHour] = useState(7)
@@ -378,7 +384,11 @@ export default function SchedulesPage() {
     }
   }
 
-  const handleSendSchedule = async (employeeId: string) => {
+  const openSendScheduleDialog = (employeeId: string, employeeName: string, employeeEmail: string) => {
+    setSendScheduleTarget({ id: employeeId, name: employeeName, email: employeeEmail })
+  }
+
+  const executeSendSchedule = async (employeeId: string) => {
     const weekStartDateStr = format(weekStart, 'yyyy-MM-dd')
     setSendingEmployeeId(employeeId)
     try {
@@ -399,6 +409,13 @@ export default function SchedulesPage() {
     }
   }
 
+  const handleConfirmSendSchedule = () => {
+    if (!sendScheduleTarget) return
+    const id = sendScheduleTarget.id
+    setSendScheduleTarget(null)
+    void executeSendSchedule(id)
+  }
+
   const getStatusColor = (status: string) => {
     switch (status.toUpperCase()) {
       case 'PUBLISHED':
@@ -410,7 +427,7 @@ export default function SchedulesPage() {
       case 'CANCELLED':
         return 'bg-red-50 text-red-700 border border-red-200'
       default:
-        return 'bg-gray-50 text-gray-700 border border-gray-200'
+        return 'bg-slate-50 text-slate-700 border border-slate-200'
     }
   }
 
@@ -449,22 +466,20 @@ export default function SchedulesPage() {
       byDay.get(d)!.push(shift)
     })
 
-    const formatTimeNoSeconds = (t: string) => {
-      if (!t) return '—'
-      const parts = String(t).trim().split(':')
-      const h = parts[0] ? parseInt(parts[0], 10) : 0
-      const m = parts[1] !== undefined ? parseInt(parts[1], 10) : 0
-      const hour = isNaN(h) ? 0 : h
-      const min = isNaN(m) ? 0 : m
-      return `${hour.toString().padStart(2, '0')}:${min.toString().padStart(2, '0')}`
+    /** 12-hour time for print/PDF (e.g. 9:00 AM, 2:30 PM) */
+    const formatTime12ForPrint = (t: string) => {
+      if (!t || !parseTime24(t)) return '—'
+      const { hour12, minute, ampm } = toTime12h(t)
+      const mm = String(minute).padStart(2, '0')
+      return `${hour12}:${mm} ${ampm}`
     }
 
     const formatCell = (dayShifts: Shift[] | undefined) => {
       if (!dayShifts || dayShifts.length === 0) return '<span class="cell-empty">—</span>'
       return dayShifts
         .map((s) => {
-          const start = formatTimeNoSeconds(s.start_time)
-          const end = formatTimeNoSeconds(s.end_time)
+          const start = formatTime12ForPrint(s.start_time)
+          const end = formatTime12ForPrint(s.end_time)
           const br = s.break_minutes ? ` <span class="cell-break">(${s.break_minutes}m break)</span>` : ''
           return `<span class="cell-time">${start} – ${end}</span>${br}`
         })
@@ -590,19 +605,19 @@ export default function SchedulesPage() {
 
   return (
     <Layout>
-      <div className="min-h-screen bg-gradient-to-br from-slate-100 via-gray-50 to-indigo-50/30">
+      <div className="min-h-screen bg-gradient-to-br from-slate-100 via-gray-50 to-blue-50/30">
         <div className="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 py-8">
           {/* Header */}
           <div className="mb-6">
             <div className="flex justify-between items-start">
               <div>
-                <h1 className="text-2xl font-bold text-gray-900 tracking-tight">Schedule</h1>
-                <p className="mt-1 text-sm text-gray-500">View and manage shifts for the selected week</p>
+                <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Schedule</h1>
+                <p className="mt-1 text-sm text-slate-500">View and manage shifts for the selected week</p>
               </div>
               <div className="flex gap-3">
                 <button
                   onClick={handlePrintSchedule}
-                  className="inline-flex items-center px-5 py-2.5 bg-white/80 text-gray-700 font-medium rounded-xl shadow-[6px_6px_12px_rgba(0,0,0,0.06),-6px_-6px_12px_rgba(255,255,255,0.9)] border border-white/60 backdrop-blur-sm hover:shadow-[4px_4px_8px_rgba(0,0,0,0.08),-4px_-4px_8px_rgba(255,255,255,0.8)] hover:bg-white/90 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-gray-400/50"
+                  className="inline-flex items-center px-5 py-2.5 bg-white/80 text-slate-700 font-medium rounded-xl shadow-[6px_6px_12px_rgba(0,0,0,0.06),-6px_-6px_12px_rgba(255,255,255,0.9)] border border-white/60 backdrop-blur-sm hover:shadow-[4px_4px_8px_rgba(0,0,0,0.08),-4px_-4px_8px_rgba(255,255,255,0.8)] hover:bg-white/90 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-gray-400/50"
                 >
                   <svg className="h-5 w-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
@@ -635,7 +650,7 @@ export default function SchedulesPage() {
           <div className="bg-white/60 backdrop-blur-xl rounded-2xl border border-white/50 shadow-[0_8px_32px_rgba(0,0,0,0.06)] p-4 mb-4">
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 items-end">
               <div className="lg:col-span-3">
-                <label className="block text-sm font-semibold text-gray-700 mb-2">Department</label>
+                <label className="block text-sm font-semibold text-slate-700 mb-2">Department</label>
                 <select
                   value={selectedDepartment}
                   onChange={(e) => {
@@ -647,7 +662,7 @@ export default function SchedulesPage() {
                       }
                     }
                   }}
-                  className="block w-full px-4 py-2.5 rounded-xl bg-white/80 border border-white/60 shadow-[inset_4px_4px_8px_rgba(0,0,0,0.04)] backdrop-blur-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-400/40 focus:border-blue-300/50 transition-all"
+                  className="block w-full px-4 py-2.5 rounded-xl bg-white/80 border border-white/60 shadow-[inset_4px_4px_8px_rgba(0,0,0,0.04)] backdrop-blur-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-400/40 focus:border-blue-300/50 transition-all"
                 >
                   <option value="">All Departments</option>
                   <option value="FRONTDESK">Front Desk</option>
@@ -656,11 +671,11 @@ export default function SchedulesPage() {
                 </select>
               </div>
               <div className="lg:col-span-3">
-                <label className="block text-sm font-semibold text-gray-700 mb-2">Employee</label>
+                <label className="block text-sm font-semibold text-slate-700 mb-2">Employee</label>
                 <select
                   value={selectedEmployee}
                   onChange={(e) => setSelectedEmployee(e.target.value)}
-                  className="block w-full px-4 py-2.5 rounded-xl bg-white/80 border border-white/60 shadow-[inset_4px_4px_8px_rgba(0,0,0,0.04)] backdrop-blur-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-400/40 focus:border-blue-300/50 transition-all"
+                  className="block w-full px-4 py-2.5 rounded-xl bg-white/80 border border-white/60 shadow-[inset_4px_4px_8px_rgba(0,0,0,0.04)] backdrop-blur-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-400/40 focus:border-blue-300/50 transition-all"
                 >
                   <option value="">All Employees</option>
                   {filteredEmployees.map((emp) => (
@@ -672,19 +687,19 @@ export default function SchedulesPage() {
               </div>
               
               <div className="lg:col-span-4">
-                <label className="block text-sm font-semibold text-gray-700 mb-2">Week</label>
+                <label className="block text-sm font-semibold text-slate-700 mb-2">Week</label>
                 <div className="flex items-center">
                   <button
                     onClick={() => setCurrentWeek(subWeeks(currentWeek, 1))}
                     className="p-2.5 rounded-l-xl bg-white/70 border border-white/50 shadow-[4px_4px_8px_rgba(0,0,0,0.05),-2px_-2px_6px_rgba(255,255,255,0.8)] hover:shadow-[inset_2px_2px_4px_rgba(0,0,0,0.06)] hover:bg-white/90 focus:outline-none focus:ring-2 focus:ring-blue-400/40 transition-all"
                     aria-label="Previous week"
                   >
-                    <svg className="h-5 w-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <svg className="h-5 w-5 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
                     </svg>
                   </button>
-                  <div className="flex-1 px-6 py-2.5 border-y border-gray-200/80 bg-white/50 text-center backdrop-blur-sm">
-                    <span className="text-sm font-semibold text-gray-900">
+                  <div className="flex-1 px-6 py-2.5 border-y border-slate-200/80 bg-white/50 text-center backdrop-blur-sm">
+                    <span className="text-sm font-semibold text-slate-900">
                       {format(weekStart, 'MMM d')} - {format(weekEnd, 'MMM d, yyyy')}
                     </span>
                   </div>
@@ -693,7 +708,7 @@ export default function SchedulesPage() {
                     className="p-2.5 rounded-r-xl bg-white/70 border border-white/50 shadow-[4px_4px_8px_rgba(0,0,0,0.05),-2px_-2px_6px_rgba(255,255,255,0.8)] hover:shadow-[inset_2px_2px_4px_rgba(0,0,0,0.06)] hover:bg-white/90 focus:outline-none focus:ring-2 focus:ring-blue-400/40 transition-all"
                     aria-label="Next week"
                   >
-                    <svg className="h-5 w-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <svg className="h-5 w-5 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                     </svg>
                   </button>
@@ -703,7 +718,7 @@ export default function SchedulesPage() {
               <div className="lg:col-span-2">
                 <button
                   onClick={() => setCurrentWeek(new Date())}
-                  className="w-full px-4 py-2.5 rounded-xl bg-white/70 text-gray-700 font-medium shadow-[4px_4px_10px_rgba(0,0,0,0.06),-4px_-4px_10px_rgba(255,255,255,0.9)] border border-white/50 hover:shadow-[inset_2px_2px_6px_rgba(0,0,0,0.05)] hover:bg-white/90 focus:outline-none focus:ring-2 focus:ring-gray-400/30 transition-all"
+                  className="w-full px-4 py-2.5 rounded-xl bg-white/70 text-slate-700 font-medium shadow-[4px_4px_10px_rgba(0,0,0,0.06),-4px_-4px_10px_rgba(255,255,255,0.9)] border border-white/50 hover:shadow-[inset_2px_2px_6px_rgba(0,0,0,0.05)] hover:bg-white/90 focus:outline-none focus:ring-2 focus:ring-gray-400/30 transition-all"
                 >
                   Today
                 </button>
@@ -716,7 +731,7 @@ export default function SchedulesPage() {
             <div className="bg-white/60 backdrop-blur-xl rounded-2xl border border-white/50 shadow-[0_8px_32px_rgba(0,0,0,0.06)] p-16">
               <div className="text-center">
                 <div className="animate-spin rounded-full h-12 w-12 border-2 border-blue-500/60 border-t-transparent mx-auto"></div>
-                <p className="mt-4 text-gray-600 font-medium">Loading shifts...</p>
+                <p className="mt-4 text-slate-600 font-medium">Loading shifts...</p>
               </div>
             </div>
           ) : (
@@ -733,8 +748,8 @@ export default function SchedulesPage() {
                 />
               </div>
               {/* Side panel: employees, week total, Edit, Send */}
-              <aside className="w-[240px] flex-shrink-0 bg-white/70 rounded-xl border border-gray-200/80 p-3 max-h-[calc(100vh-200px)] overflow-auto">
-                <p className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">Employees · Week total</p>
+              <aside className="w-[240px] flex-shrink-0 bg-white/70 rounded-xl border border-slate-200/80 p-3 max-h-[calc(100vh-200px)] overflow-auto">
+                <p className="text-xs font-medium text-slate-500 uppercase tracking-wider mb-2">Employees · Week total</p>
                 <ul className="space-y-1.5">
                   {filteredEmployees.map((emp) => {
                     const totalMinutes = employeeWeekTotals[emp.id] ?? 0
@@ -743,17 +758,17 @@ export default function SchedulesPage() {
                     return (
                       <li
                         key={emp.id}
-                        className="flex items-center gap-2 py-2 px-2 rounded-lg hover:bg-gray-50/80 border-b border-gray-100 last:border-0"
+                        className="flex items-center gap-2 py-2 px-2 rounded-lg hover:bg-slate-50/80 border-b border-slate-100 last:border-0"
                       >
                         <div className="flex-1 min-w-0">
-                          <span className="block text-sm font-medium text-gray-900 truncate" title={emp.name}>{emp.name}</span>
-                          <span className="block text-xs text-gray-500">{hoursLabel}</span>
+                          <span className="block text-sm font-medium text-slate-900 truncate" title={emp.name}>{emp.name}</span>
+                          <span className="block text-xs text-slate-500">{hoursLabel}</span>
                         </div>
                         <div className="flex items-center gap-1 shrink-0">
                           <button
                             type="button"
                             onClick={() => router.push(`/schedules/week/edit?employee_id=${emp.id}&week_start=${format(weekStart, 'yyyy-MM-dd')}`)}
-                            className="p-1.5 rounded-md text-gray-500 hover:bg-gray-200 hover:text-gray-700 focus:outline-none focus:ring-1 focus:ring-gray-400"
+                            className="p-1.5 rounded-md text-slate-500 hover:bg-slate-200 hover:text-slate-700 focus:outline-none focus:ring-1 focus:ring-gray-400"
                             title="Edit shifts"
                           >
                             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -762,7 +777,7 @@ export default function SchedulesPage() {
                           </button>
                           <button
                             type="button"
-                            onClick={() => handleSendSchedule(emp.id)}
+                            onClick={() => openSendScheduleDialog(emp.id, emp.name, emp.email)}
                             disabled={sendingEmployeeId === emp.id}
                             className="p-1.5 rounded-md text-blue-600 hover:bg-blue-50 hover:text-blue-700 disabled:opacity-50 focus:outline-none focus:ring-1 focus:ring-blue-400"
                             title="Send schedule"
@@ -777,7 +792,7 @@ export default function SchedulesPage() {
                   })}
                 </ul>
                 {filteredEmployees.length === 0 && (
-                  <p className="text-xs text-gray-500 py-2">No employees in this view.</p>
+                  <p className="text-xs text-slate-500 py-2">No employees in this view.</p>
                 )}
               </aside>
             </div>
@@ -793,15 +808,15 @@ export default function SchedulesPage() {
               className="bg-white/85 backdrop-blur-xl rounded-2xl shadow-[0_25px_50px_-12px_rgba(0,0,0,0.2),0_0_0_1px_rgba(255,255,255,0.5)] border border-white/60 max-w-md w-full mx-4 transform transition-all"
               onClick={(e) => e.stopPropagation()}
             >
-              <div className="p-6 border-b border-gray-200/60">
+              <div className="p-6 border-b border-slate-200/60">
                 <div className="flex items-center justify-between">
                   <div>
-                    <h2 className="text-2xl font-bold text-gray-900">Create New Shift</h2>
-                    <p className="text-sm text-gray-500 mt-1">Schedule a shift for an employee</p>
+                    <h2 className="text-2xl font-bold text-slate-900">Create New Shift</h2>
+                    <p className="text-sm text-slate-500 mt-1">Schedule a shift for an employee</p>
                   </div>
                   <button
                     onClick={() => setShowCreateModal(false)}
-                    className="text-gray-400 hover:text-gray-600 transition-colors p-1 rounded-lg hover:bg-gray-100"
+                    className="text-slate-400 hover:text-slate-600 transition-colors p-1 rounded-lg hover:bg-slate-100"
                     aria-label="Close"
                   >
                     <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -813,13 +828,13 @@ export default function SchedulesPage() {
               <div className="p-6">
                   <div className="space-y-5">
                     <div>
-                      <label className="block text-sm font-semibold text-gray-700 mb-2">
+                      <label className="block text-sm font-semibold text-slate-700 mb-2">
                         Employee <span className="text-red-500">*</span>
                       </label>
                       <select
                         value={formData.employee_id}
                         onChange={(e) => setFormData({ ...formData, employee_id: e.target.value })}
-                        className="block w-full px-4 py-2.5 rounded-xl bg-white/90 border border-white/60 shadow-[inset_4px_4px_8px_rgba(0,0,0,0.04)] backdrop-blur-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-400/40 focus:border-blue-300/50 transition-all"
+                        className="block w-full px-4 py-2.5 rounded-xl bg-white/90 border border-white/60 shadow-[inset_4px_4px_8px_rgba(0,0,0,0.04)] backdrop-blur-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-400/40 focus:border-blue-300/50 transition-all"
                         required
                       >
                         <option value="">Select Employee</option>
@@ -831,14 +846,14 @@ export default function SchedulesPage() {
                       </select>
                     </div>
                     <div>
-                      <label className="block text-sm font-semibold text-gray-700 mb-2">
+                      <label className="block text-sm font-semibold text-slate-700 mb-2">
                         Date <span className="text-red-500">*</span>
                       </label>
                       <input
                         type="date"
                         value={formData.shift_date}
                         onChange={(e) => setFormData({ ...formData, shift_date: e.target.value })}
-                        className="block w-full px-4 py-2.5 border border-gray-300 rounded-lg bg-white text-gray-900 shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                        className="block w-full px-4 py-2.5 border border-slate-300 rounded-lg bg-white text-slate-900 shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
                         required
                       />
                     </div>
@@ -858,36 +873,36 @@ export default function SchedulesPage() {
                           onChange={(v) => setFormData({ ...formData, end_time: v })}
                           className="w-full"
                         />
-                        <p className="mt-1 text-xs text-gray-500">For overnight (e.g. 11 PM–7 AM) set end next day: 7:00 AM</p>
+                        <p className="mt-1 text-xs text-slate-500">For overnight (e.g. 11 PM–7 AM) set end next day: 7:00 AM</p>
                       </div>
                     </div>
                     <div>
-                      <label className="block text-sm font-semibold text-gray-700 mb-2">Break (minutes)</label>
+                      <label className="block text-sm font-semibold text-slate-700 mb-2">Break (minutes)</label>
                       <input
                         type="number"
                         value={formData.break_minutes}
                         onChange={(e) => setFormData({ ...formData, break_minutes: parseInt(e.target.value) || 0 })}
-                        className="block w-full px-4 py-2.5 border border-gray-300 rounded-lg bg-white text-gray-900 shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                        className="block w-full px-4 py-2.5 border border-slate-300 rounded-lg bg-white text-slate-900 shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
                         min="0"
                         placeholder="0"
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-semibold text-gray-700 mb-2">Notes</label>
+                      <label className="block text-sm font-semibold text-slate-700 mb-2">Notes</label>
                       <textarea
                         value={formData.notes}
                         onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-                        className="block w-full px-4 py-2.5 border border-gray-300 rounded-lg bg-white text-gray-900 shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors resize-none"
+                        className="block w-full px-4 py-2.5 border border-slate-300 rounded-lg bg-white text-slate-900 shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors resize-none"
                         rows={3}
                         placeholder="Optional notes for this shift..."
                       />
                     </div>
                   </div>
                 </div>
-                <div className="mt-8 flex justify-end space-x-3 pt-6 border-t border-gray-200/60">
+                <div className="mt-8 flex justify-end space-x-3 pt-6 border-t border-slate-200/60">
                   <button
                     onClick={() => setShowCreateModal(false)}
-                    className="px-5 py-2.5 rounded-xl bg-white/80 text-gray-700 font-medium shadow-[4px_4px_10px_rgba(0,0,0,0.06),-4px_-4px_10px_rgba(255,255,255,0.8)] border border-white/50 hover:shadow-[inset_2px_2px_6px_rgba(0,0,0,0.05)] hover:bg-white/90 focus:outline-none focus:ring-2 focus:ring-gray-400/30 transition-all"
+                    className="px-5 py-2.5 rounded-xl bg-white/80 text-slate-700 font-medium shadow-[4px_4px_10px_rgba(0,0,0,0.06),-4px_-4px_10px_rgba(255,255,255,0.8)] border border-white/50 hover:shadow-[inset_2px_2px_6px_rgba(0,0,0,0.05)] hover:bg-white/90 focus:outline-none focus:ring-2 focus:ring-gray-400/30 transition-all"
                   >
                     Cancel
                   </button>
@@ -901,6 +916,21 @@ export default function SchedulesPage() {
               </div>
             </div>
           )}
+
+        <ConfirmationDialog
+          isOpen={!!sendScheduleTarget}
+          type="warning"
+          title="Send email to employee?"
+          message={
+            sendScheduleTarget
+              ? `You are about to send an email to this employee.\n\nEmployee: ${sendScheduleTarget.name}\nEmail will be sent to: ${sendScheduleTarget.email || 'their registered email address'}\n\nDo you want to continue?`
+              : ''
+          }
+          confirmText="Send email"
+          cancelText="Cancel"
+          onConfirm={handleConfirmSendSchedule}
+          onCancel={() => setSendScheduleTarget(null)}
+        />
         </div>
       </div>
     </Layout>

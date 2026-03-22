@@ -88,7 +88,7 @@ export default function MySchedulePage() {
       case 'CANCELLED':
         return 'bg-red-50 text-red-700 border border-red-200'
       default:
-        return 'bg-gray-50 text-gray-700 border border-gray-200'
+        return 'bg-slate-50 text-slate-700 border border-slate-200'
     }
   }
 
@@ -224,8 +224,8 @@ export default function MySchedulePage() {
       <div className="px-4 py-6 sm:px-0">
         {/* Header */}
         <div className="mb-6">
-          <h1 className="text-2xl font-bold text-gray-900">My Schedule</h1>
-          <p className="text-sm text-gray-600 mt-1">View your upcoming shifts</p>
+          <h1 className="text-2xl font-bold text-slate-900">My Schedule</h1>
+          <p className="text-sm text-slate-600 mt-1">View your upcoming shifts</p>
         </div>
 
         {/* Week Navigation */}
@@ -233,7 +233,7 @@ export default function MySchedulePage() {
           <div className="flex items-center justify-between">
             <button
               onClick={() => setCurrentWeek(subWeeks(currentWeek, 1))}
-              className="p-2 border border-gray-300 rounded-md hover:bg-gray-50"
+              className="p-2 border border-slate-300 rounded-md hover:bg-slate-50"
             >
               <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
@@ -246,7 +246,7 @@ export default function MySchedulePage() {
             </div>
             <button
               onClick={() => setCurrentWeek(addWeeks(currentWeek, 1))}
-              className="p-2 border border-gray-300 rounded-md hover:bg-gray-50"
+              className="p-2 border border-slate-300 rounded-md hover:bg-slate-50"
             >
               <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
@@ -267,11 +267,11 @@ export default function MySchedulePage() {
         {loading ? (
           <div className="text-center py-12">
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
-            <p className="mt-4 text-gray-600">Loading schedule...</p>
+            <p className="mt-4 text-slate-600">Loading schedule...</p>
           </div>
         ) : (
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-            <div className="grid grid-cols-7 border-b border-gray-200 bg-gradient-to-b from-gray-50 to-white">
+          <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+            <div className="grid grid-cols-7 border-b border-slate-200 bg-gradient-to-b from-slate-50 to-white">
               {weekDays.map((day, idx) => {
                 const isToday = isSameDay(day, new Date())
                 return (
@@ -282,12 +282,12 @@ export default function MySchedulePage() {
                     }`}
                   >
                     <div className={`text-xs font-semibold uppercase tracking-wider ${
-                      isToday ? 'text-blue-600' : 'text-gray-500'
+                      isToday ? 'text-blue-600' : 'text-slate-500'
                     }`}>
                       {format(day, 'EEE')}
                     </div>
                     <div className={`text-xl font-bold mt-2 ${
-                      isToday ? 'text-blue-600' : 'text-gray-900'
+                      isToday ? 'text-blue-600' : 'text-slate-900'
                     }`}>
                       {format(day, 'd')}
                     </div>
@@ -309,12 +309,12 @@ export default function MySchedulePage() {
                     key={idx}
                     className={`p-3 border-r last:border-r-0 border-b min-h-[200px] min-w-[140px] overflow-hidden ${
                       isToday ? 'bg-blue-50/30' : 'bg-white'
-                    } hover:bg-gray-50/50 transition-colors`}
+                    } hover:bg-slate-50/50 transition-colors`}
                   >
                     <div className="space-y-2.5 h-full">
                       {dayShifts.length === 0 && (
                         <div className="text-center py-8">
-                          <p className="text-xs text-gray-400 font-medium">No shifts</p>
+                          <p className="text-xs text-slate-400 font-medium">No shifts</p>
                         </div>
                       )}
                       {dayShifts.map((segment, segIdx) => {
@@ -353,7 +353,7 @@ export default function MySchedulePage() {
                         return (
                           <div
                             key={`${shift.id}-${isSegment ? segment.segmentIndex : 'single'}-${segIdx}`}
-                            className="group p-2.5 border-l-4 rounded-lg transition-all duration-200 shadow-sm hover:shadow-md hover:scale-[1.01] active:scale-[0.99] w-full min-w-0 overflow-hidden"
+                            className="group p-2.5 border-l-4 rounded-lg transition-all duration-200 shadow-sm hover:shadow-sm hover:scale-[1.01] active:scale-[0.99] w-full min-w-0 overflow-hidden"
                             style={{
                               ...segmentStyles as CSSProperties,
                               borderLeftWidth: '4px',
@@ -454,20 +454,20 @@ export default function MySchedulePage() {
         {/* Summary */}
         {!loading && shifts.length > 0 && (
           <div className="mt-6 bg-white rounded-lg shadow p-4">
-            <h3 className="text-lg font-semibold text-gray-900 mb-3">Week Summary</h3>
+            <h3 className="text-lg font-semibold text-slate-900 mb-3">Week Summary</h3>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div>
-                <div className="text-sm text-gray-600">Total Shifts</div>
-                <div className="text-2xl font-bold text-gray-900">{shifts.length}</div>
+                <div className="text-sm text-slate-600">Total Shifts</div>
+                <div className="text-2xl font-bold text-slate-900">{shifts.length}</div>
               </div>
               <div>
-                <div className="text-sm text-gray-600">Approved Shifts</div>
+                <div className="text-sm text-slate-600">Approved Shifts</div>
                 <div className="text-2xl font-bold text-green-600">
                   {shifts.filter(s => s.status.toUpperCase() === 'APPROVED').length}
                 </div>
               </div>
               <div>
-                <div className="text-sm text-gray-600">Published Shifts</div>
+                <div className="text-sm text-slate-600">Published Shifts</div>
                 <div className="text-2xl font-bold text-blue-600">
                   {shifts.filter(s => s.status.toUpperCase() === 'PUBLISHED').length}
                 </div>

@@ -113,7 +113,7 @@ function SetPasswordContent() {
 
   if (success) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
+      <div className="min-h-screen flex items-center justify-center bg-slate-50 py-12 px-4 sm:px-6 lg:px-8">
         <div className="max-w-md w-full space-y-8">
           <div className="bg-white rounded-lg shadow-xl p-8 text-center">
             <div className="mb-4">
@@ -123,8 +123,8 @@ function SetPasswordContent() {
                 </svg>
               </div>
             </div>
-            <h1 className="text-2xl font-bold text-gray-900 mb-2">Password Set Successfully!</h1>
-            <p className="text-gray-600 mb-4">
+            <h1 className="text-2xl font-bold text-slate-900 mb-2">Password Set Successfully!</h1>
+            <p className="text-slate-600 mb-4">
               Your password has been set. Redirecting to login...
             </p>
           </div>
@@ -135,24 +135,24 @@ function SetPasswordContent() {
 
   if (loadingUserInfo) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+      <div className="min-h-screen flex items-center justify-center bg-slate-50">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-teal-600 mx-auto"></div>
-          <div className="mt-4 text-gray-600">Loading...</div>
+          <div className="mt-4 text-slate-600">Loading...</div>
         </div>
       </div>
     )
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
+    <div className="min-h-screen flex items-center justify-center bg-slate-50 py-12 px-4 sm:px-6 lg:px-8">
       <div className="max-w-md w-full space-y-8">
         <div className="bg-white rounded-lg shadow-xl p-8">
           <div className="text-center mb-8">
-            <h1 className="text-3xl font-bold text-gray-900 mb-2">
+            <h1 className="text-3xl font-bold text-slate-900 mb-2">
               {userName ? `Welcome, ${userName}!` : 'Set Your Password'}
             </h1>
-            <p className="text-gray-600">
+            <p className="text-slate-600">
               {userName 
                 ? `Please set a password for your account to get started.`
                 : 'Please set a password for your account to get started.'
@@ -168,34 +168,34 @@ function SetPasswordContent() {
 
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
             <div>
-              <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-2">
+              <label htmlFor="password" className="block text-sm font-medium text-slate-700 mb-2">
                 New Password
               </label>
               <input
                 {...register('password')}
                 type="password"
                 id="password"
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+                className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
                 placeholder="Enter your password"
                 disabled={loading || !token}
               />
               {errors.password && (
                 <p className="mt-1 text-sm text-red-600">{errors.password.message}</p>
               )}
-              <p className="mt-1 text-xs text-gray-500">
+              <p className="mt-1 text-xs text-slate-500">
                 Must be at least 8 characters with uppercase, lowercase, and a number
               </p>
             </div>
 
             <div>
-              <label htmlFor="confirmPassword" className="block text-sm font-medium text-gray-700 mb-2">
+              <label htmlFor="confirmPassword" className="block text-sm font-medium text-slate-700 mb-2">
                 Confirm Password
               </label>
               <input
                 {...register('confirmPassword')}
                 type="password"
                 id="confirmPassword"
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+                className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
                 placeholder="Confirm your password"
                 disabled={loading || !token}
               />
@@ -227,7 +227,7 @@ function SetPasswordContent() {
 export default function SetPasswordPage() {
   return (
     <Suspense fallback={
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+      <div className="min-h-screen flex items-center justify-center bg-slate-50">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-teal-600"></div>
       </div>
     }>

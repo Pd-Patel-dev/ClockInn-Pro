@@ -98,7 +98,7 @@ function SetPasswordContent() {
 
   if (!ready) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+      <div className="min-h-screen flex items-center justify-center bg-slate-50">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600" />
       </div>
     )
@@ -106,7 +106,7 @@ function SetPasswordContent() {
 
   if (success) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4">
+      <div className="min-h-screen flex items-center justify-center bg-slate-50 py-12 px-4">
         <div className="max-w-md w-full">
           <div className="bg-white rounded-2xl shadow-xl p-8 text-center">
             <div className="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-green-100 mb-4">
@@ -114,8 +114,8 @@ function SetPasswordContent() {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
               </svg>
             </div>
-            <h1 className="text-2xl font-bold text-gray-900 mb-2">Password reset successfully</h1>
-            <p className="text-gray-600">Redirecting to login...</p>
+            <h1 className="text-2xl font-bold text-slate-900 mb-2">Password reset successfully</h1>
+            <p className="text-slate-600">Redirecting to login...</p>
           </div>
         </div>
       </div>
@@ -124,25 +124,25 @@ function SetPasswordContent() {
 
   return (
     <div className="min-h-screen flex">
-      <div className="hidden lg:flex lg:w-1/2 bg-gradient-to-br from-blue-600 via-blue-700 to-indigo-800 relative overflow-hidden">
+      <div className="hidden lg:flex lg:w-1/2 bg-gradient-to-br from-blue-600 via-blue-700 to-blue-800 relative overflow-hidden">
         <div className="absolute inset-0 bg-black/10" />
         <div className="relative z-10 flex flex-col justify-center px-12 text-white">
           <h1 className="text-5xl font-bold mb-4">ClockInn</h1>
           <p className="text-xl text-blue-100">Time & Attendance Management</p>
         </div>
       </div>
-      <div className="w-full lg:w-1/2 flex items-center justify-center bg-gray-50 px-4 sm:px-6 lg:px-8">
+      <div className="w-full lg:w-1/2 flex items-center justify-center bg-slate-50 px-4 sm:px-6 lg:px-8">
         <div className="w-full max-w-md">
           <div className="lg:hidden text-center mb-8">
-            <h1 className="text-3xl font-bold text-gray-900">ClockInn</h1>
+            <h1 className="text-3xl font-bold text-slate-900">ClockInn</h1>
           </div>
           <div className="bg-white rounded-2xl shadow-xl p-8 sm:p-10">
-            <h2 className="text-3xl font-bold text-gray-900 mb-2">Set new password</h2>
-            <p className="text-gray-600 mb-6">
+            <h2 className="text-3xl font-bold text-slate-900 mb-2">Set new password</h2>
+            <p className="text-slate-600 mb-6">
               Enter your new password for your account. Code was sent to your registered email only.
             </p>
-            <p className="text-sm text-gray-600 mb-6">
-              Account: <strong className="text-gray-700">{email}</strong>
+            <p className="text-sm text-slate-600 mb-6">
+              Account: <strong className="text-slate-700">{email}</strong>
             </p>
 
             {error && (
@@ -153,32 +153,32 @@ function SetPasswordContent() {
 
             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
               <div>
-                <label htmlFor="new_password" className="block text-sm font-medium text-gray-700 mb-2">
+                <label htmlFor="new_password" className="block text-sm font-medium text-slate-700 mb-2">
                   New password
                 </label>
                 <input
                   {...form.register('new_password')}
                   type="password"
                   autoComplete="new-password"
-                  className="block w-full px-3 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                  className="block w-full px-3 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500"
                   placeholder="New password"
                 />
                 {form.formState.errors.new_password && (
                   <p className="mt-1 text-sm text-red-600">{form.formState.errors.new_password.message}</p>
                 )}
-                <p className="mt-1 text-xs text-gray-500">
+                <p className="mt-1 text-xs text-slate-500">
                   At least 8 characters, with uppercase, lowercase, and a number
                 </p>
               </div>
               <div>
-                <label htmlFor="confirm_password" className="block text-sm font-medium text-gray-700 mb-2">
+                <label htmlFor="confirm_password" className="block text-sm font-medium text-slate-700 mb-2">
                   Confirm password
                 </label>
                 <input
                   {...form.register('confirm_password')}
                   type="password"
                   autoComplete="new-password"
-                  className="block w-full px-3 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                  className="block w-full px-3 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500"
                   placeholder="Confirm password"
                 />
                 {form.formState.errors.confirm_password && (
@@ -188,14 +188,14 @@ function SetPasswordContent() {
               <button
                 type="submit"
                 disabled={loading}
-                className="w-full py-3 px-4 rounded-lg text-sm font-medium text-white bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
+                className="w-full py-3 px-4 rounded-lg text-sm font-medium text-white bg-gradient-to-r from-blue-600 to-blue-600 hover:from-blue-700 hover:to-blue-700 focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
               >
                 {loading ? 'Resetting...' : 'Reset password'}
               </button>
             </form>
 
             <div className="mt-6 text-center">
-              <BackButton fallbackHref="/login" className="text-sm text-gray-500 hover:text-gray-700">
+              <BackButton fallbackHref="/login" className="text-sm text-slate-500 hover:text-slate-700">
                 Back to login
               </BackButton>
             </div>
@@ -210,7 +210,7 @@ export default function SetPasswordPage() {
   return (
     <Suspense
       fallback={
-        <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="min-h-screen flex items-center justify-center bg-slate-50">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600" />
         </div>
       }

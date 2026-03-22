@@ -194,10 +194,10 @@ export default function EditShiftPage() {
           Back to Shift
         </BackButton>
 
-        <h1 className="text-2xl font-bold text-gray-900 mb-2">Edit Shift</h1>
-        <p className="text-sm text-gray-600 mb-6">{shift.employee_name}</p>
+        <h1 className="text-2xl font-bold text-slate-900 mb-2">Edit Shift</h1>
+        <p className="text-sm text-slate-600 mb-6">{shift.employee_name}</p>
 
-        <form onSubmit={handleSubmit} className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+        <form onSubmit={handleSubmit} className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
           <div className="p-6 space-y-5">
             {Object.keys(fieldErrors).length > 0 && (
               <div className="rounded-lg bg-red-50 border border-red-200 p-3 text-sm text-red-800">
@@ -205,12 +205,12 @@ export default function EditShiftPage() {
               </div>
             )}
             <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-2">Date</label>
+              <label className="block text-sm font-semibold text-slate-700 mb-2">Date</label>
               <input
                 type="date"
                 value={formData.shift_date}
                 onChange={(e) => setFormData({ ...formData, shift_date: e.target.value })}
-                className={`block w-full px-4 py-2.5 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${fieldErrors.shift_date ? 'border-red-500 bg-red-50' : 'border-gray-300'}`}
+                className={`block w-full px-4 py-2.5 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${fieldErrors.shift_date ? 'border-red-500 bg-red-50' : 'border-slate-300'}`}
                 required
               />
               {fieldErrors.shift_date && <p className="mt-1 text-sm text-red-600">{fieldErrors.shift_date}</p>}
@@ -233,29 +233,29 @@ export default function EditShiftPage() {
                   onChange={(v) => setFormData({ ...formData, end_time: v })}
                   className="w-full"
                 />
-                <p className="mt-1 text-xs text-gray-500">Overnight: use next day end time (e.g. 7:00 AM)</p>
+                <p className="mt-1 text-xs text-slate-500">Overnight: use next day end time (e.g. 7:00 AM)</p>
                 {fieldErrors.end_time && <p className="mt-1 text-sm text-red-600">{fieldErrors.end_time}</p>}
               </div>
             </div>
 
             <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-2">Break (minutes)</label>
+              <label className="block text-sm font-semibold text-slate-700 mb-2">Break (minutes)</label>
               <input
                 type="number"
                 min={0}
                 value={formData.break_minutes}
                 onChange={(e) => setFormData({ ...formData, break_minutes: parseInt(e.target.value, 10) || 0 })}
-                className={`block w-full px-4 py-2.5 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${fieldErrors.break_minutes ? 'border-red-500 bg-red-50' : 'border-gray-300'}`}
+                className={`block w-full px-4 py-2.5 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${fieldErrors.break_minutes ? 'border-red-500 bg-red-50' : 'border-slate-300'}`}
               />
               {fieldErrors.break_minutes && <p className="mt-1 text-sm text-red-600">{fieldErrors.break_minutes}</p>}
             </div>
 
             <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-2">Status</label>
+              <label className="block text-sm font-semibold text-slate-700 mb-2">Status</label>
               <select
                 value={formData.status}
                 onChange={(e) => setFormData({ ...formData, status: e.target.value })}
-                className={`block w-full px-4 py-2.5 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${fieldErrors.status ? 'border-red-500 bg-red-50' : 'border-gray-300'}`}
+                className={`block w-full px-4 py-2.5 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${fieldErrors.status ? 'border-red-500 bg-red-50' : 'border-slate-300'}`}
               >
                 <option value="DRAFT">Draft</option>
                 <option value="PUBLISHED">Published</option>
@@ -271,40 +271,40 @@ export default function EditShiftPage() {
                   type="checkbox"
                   checked={formData.requires_approval}
                   onChange={(e) => setFormData({ ...formData, requires_approval: e.target.checked })}
-                  className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                  className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
                 />
-                <span className="text-sm font-semibold text-gray-700">Requires approval</span>
+                <span className="text-sm font-semibold text-slate-700">Requires approval</span>
               </label>
             </div>
 
             <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-2">Job role</label>
+              <label className="block text-sm font-semibold text-slate-700 mb-2">Job role</label>
               <input
                 type="text"
                 value={formData.job_role}
                 onChange={(e) => setFormData({ ...formData, job_role: e.target.value })}
-                className="block w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                className="block w-full px-4 py-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 placeholder="Optional"
               />
             </div>
 
             <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-2">Notes</label>
+              <label className="block text-sm font-semibold text-slate-700 mb-2">Notes</label>
               <textarea
                 value={formData.notes}
                 onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
                 rows={3}
-                className="block w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-none"
+                className="block w-full px-4 py-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-none"
                 placeholder="Optional notes"
               />
             </div>
           </div>
 
-          <div className="px-6 py-4 bg-gray-50 border-t border-gray-200 flex justify-end gap-3">
+          <div className="px-6 py-4 bg-slate-50 border-t border-slate-200 flex justify-end gap-3">
             <button
               type="button"
               onClick={() => router.back()}
-              className="px-4 py-2.5 border border-gray-300 rounded-lg text-gray-700 font-medium hover:bg-gray-100"
+              className="px-4 py-2.5 border border-slate-300 rounded-lg text-slate-700 font-medium hover:bg-slate-100"
             >
               Cancel
             </button>

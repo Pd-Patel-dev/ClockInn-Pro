@@ -239,10 +239,10 @@ function VerifyEmailContent() {
 
   if (checkingUser) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+      <div className="min-h-screen flex items-center justify-center bg-slate-50">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-teal-600 mx-auto"></div>
-          <div className="mt-4 text-gray-600">Loading...</div>
+          <div className="mt-4 text-slate-600">Loading...</div>
         </div>
       </div>
     )
@@ -250,7 +250,7 @@ function VerifyEmailContent() {
 
   if (verificationSuccess) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
+      <div className="min-h-screen flex items-center justify-center bg-slate-50 py-12 px-4 sm:px-6 lg:px-8">
         <div className="max-w-md w-full space-y-8">
           <div className="bg-white rounded-lg shadow-xl p-8 text-center">
             <div className="mb-4">
@@ -260,8 +260,8 @@ function VerifyEmailContent() {
                 </svg>
               </div>
             </div>
-            <h1 className="text-2xl font-bold text-gray-900 mb-2">Email Verified Successfully!</h1>
-            <p className="text-gray-600 mb-4">
+            <h1 className="text-2xl font-bold text-slate-900 mb-2">Email Verified Successfully!</h1>
+            <p className="text-slate-600 mb-4">
               Redirecting to dashboard...
             </p>
             <div className="mt-4">
@@ -275,14 +275,14 @@ function VerifyEmailContent() {
 
   if (verifying) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
+      <div className="min-h-screen flex items-center justify-center bg-slate-50 py-12 px-4 sm:px-6 lg:px-8">
         <div className="max-w-md w-full space-y-8">
           <div className="bg-white rounded-lg shadow-xl p-8 text-center">
             <div className="mb-4">
               <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-teal-600 mx-auto"></div>
             </div>
-            <h1 className="text-2xl font-bold text-gray-900 mb-2">Verifying Email...</h1>
-            <p className="text-gray-600">
+            <h1 className="text-2xl font-bold text-slate-900 mb-2">Verifying Email...</h1>
+            <p className="text-slate-600">
               Please wait while we verify your email address.
             </p>
           </div>
@@ -292,20 +292,20 @@ function VerifyEmailContent() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
+    <div className="min-h-screen flex items-center justify-center bg-slate-50 py-12 px-4 sm:px-6 lg:px-8">
       <div className="max-w-md w-full space-y-8">
         <div className="bg-white rounded-lg shadow-xl p-8">
           <div className="text-center mb-8">
-            <h1 className="text-3xl font-bold text-gray-900 mb-2">Verify Your Email</h1>
-            <p className="text-gray-600">
+            <h1 className="text-3xl font-bold text-slate-900 mb-2">Verify Your Email</h1>
+            <p className="text-slate-600">
               For your security, please verify your email to continue.
             </p>
-            <p className="text-sm text-gray-500 mt-2">
-              We send the verification code to your <strong className="text-gray-700">registered email</strong> only.
+            <p className="text-sm text-slate-500 mt-2">
+              We send the verification code to your <strong className="text-slate-700">registered email</strong> only.
             </p>
             {email && (
-              <p className="text-sm text-gray-500 mt-1">
-                A 6-digit code has been sent to <strong className="text-gray-700">{email}</strong>
+              <p className="text-sm text-slate-500 mt-1">
+                A 6-digit code has been sent to <strong className="text-slate-700">{email}</strong>
               </p>
             )}
           </div>
@@ -317,7 +317,7 @@ function VerifyEmailContent() {
           )}
 
           <div className="mb-6">
-            <label className="block text-sm font-medium text-gray-700 mb-3 text-center">
+            <label className="block text-sm font-medium text-slate-700 mb-3 text-center">
               Enter 6-digit code
             </label>
             <div className="flex gap-3 justify-center" onPaste={handlePaste}>
@@ -335,7 +335,7 @@ function VerifyEmailContent() {
                   onKeyDown={(e) => handleKeyDown(index, e)}
                   disabled={loading}
                   autoFocus={index === 0}
-                  className="w-14 h-16 text-center text-3xl font-semibold border-2 border-gray-300 rounded-lg focus:border-teal-500 focus:ring-2 focus:ring-teal-200 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  className="w-14 h-16 text-center text-3xl font-semibold border-2 border-slate-300 rounded-lg focus:border-teal-500 focus:ring-2 focus:ring-teal-200 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                 />
               ))}
             </div>
@@ -354,14 +354,14 @@ function VerifyEmailContent() {
               <button
                 onClick={() => handleSendPin()}
                 disabled={resendCooldown > 0 || sending}
-                className="text-sm text-teal-600 hover:text-teal-700 disabled:text-gray-400 disabled:cursor-not-allowed font-medium"
+                className="text-sm text-teal-600 hover:text-teal-700 disabled:text-slate-400 disabled:cursor-not-allowed font-medium"
               >
                 {sending ? 'Sending...' : resendCooldown > 0 ? `Resend code in ${resendCooldown}s` : 'Resend code'}
               </button>
             </div>
 
-            <div className="text-center pt-4 border-t border-gray-200">
-              <BackButton fallbackHref="/login" className="text-sm text-gray-500 hover:text-gray-700">
+            <div className="text-center pt-4 border-t border-slate-200">
+              <BackButton fallbackHref="/login" className="text-sm text-slate-500 hover:text-slate-700">
                 Back to Login
               </BackButton>
             </div>
@@ -381,7 +381,7 @@ function VerifyEmailContent() {
 export default function VerifyEmailPage() {
   return (
     <Suspense fallback={
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+      <div className="min-h-screen flex items-center justify-center bg-slate-50">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
       </div>
     }>

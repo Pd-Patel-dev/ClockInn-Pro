@@ -7,11 +7,17 @@ raw exception messages. The generic handler returns a fixed message in productio
 from functools import wraps
 from typing import Callable, Any
 from uuid import UUID
-import os
 from fastapi import HTTPException, status
 import logging
 
+from app.core.environment import is_production_environment
+
 logger = logging.getLogger(__name__)
+
+
+def client_error_detail(*, dev_detail: str, prod_detail: str = "An error occurred. Please try again later.") -> str:
+    """Return dev_detail only when not in production; avoids leaking DB/internal messages to clients."""
+    return dev_detail if not is_production_environment() else prod_detail
 
 
 def _is_schema_error(e: Exception) -> bool:
@@ -45,9 +51,13 @@ def parse_uuid(uuid_string: str, entity_name: str = "ID") -> UUID:
     try:
         return UUID(uuid_string)
     except ValueError:
+        if is_production_environment():
+            detail = f"Invalid {entity_name.lower()}. Must be a valid UUID."
+        else:
+            detail = f"Invalid {entity_name.lower()}: '{uuid_string}'. Must be a valid UUID."
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Invalid {entity_name.lower()}: '{uuid_string}'. Must be a valid UUID.",
+            detail=detail,
         )
 
 
@@ -80,7 +90,7 @@ def handle_endpoint_errors(
                 raise
             except ValueError as e:
                 # Handle value errors (e.g., invalid enum values, invalid dates)
-                is_dev = os.getenv("ENVIRONMENT", "").lower() not in ["prod", "production"]
+                is_dev = not is_production_environment()
                 if log_error:
                     logger.warning(f"Value error in {op_name}: {str(e)}")
                 # In production, do not send str(e) to client (may contain paths or internal details)
@@ -93,7 +103,6 @@ def handle_endpoint_errors(
                 # Catch all other unexpected exceptions. Never send stack traces or internal paths to client in production.
                 error_detail = str(e)
                 error_type = type(e).__name__
-                error_lower = error_detail.lower()
 
                 # Detect schema/relation/column errors (missing table or column = migrations not run)
                 is_schema_error = _is_schema_error(e)
@@ -111,7 +120,7 @@ def handle_endpoint_errors(
                         }
                     )
 
-                is_dev = os.getenv("ENVIRONMENT", "").lower() not in ["prod", "production"]
+                is_dev = not is_production_environment()
 
                 if is_schema_error:
                     # 503 so client knows it's a server/config issue, not a bug; safe message in prod too

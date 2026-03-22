@@ -16,10 +16,14 @@ Example:
     python create_developer_supabase.py
 """
 import asyncio
+import logging
 import secrets
 import sys
 import os
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
 
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent))
@@ -175,11 +179,11 @@ async def create_developer_account_supabase():
             print("   4. Configure Gmail API in Developer Portal")
             print("=" * 60)
             
-        except Exception as e:
-            print(f"\n✗ Error creating developer account: {e}")
-            print(f"   Error type: {type(e).__name__}")
+        except Exception:
+            logger.exception("Error creating developer account")
+            print("\n✗ Error creating developer account. Details were logged above; they are not shown here to avoid leaking paths or DB info.")
             await db.rollback()
-            raise
+            sys.exit(1)
         finally:
             await engine.dispose()
 

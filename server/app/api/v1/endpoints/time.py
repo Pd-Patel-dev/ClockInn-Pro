@@ -138,8 +138,8 @@ async def punch_endpoint(
     
     if not employee:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Employee not found",
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid email or PIN",
         )
     
     # Check if employee's email is verified (respects company email_verification_required)

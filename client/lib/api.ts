@@ -16,7 +16,27 @@ const api = axios.create({
   withCredentials: true,
 })
 
-// Access token only in memory + localStorage. Refresh token is in HttpOnly cookie (not readable by JS).
+/**
+ * Access token storage (trade-off documented)
+ *
+ * **Where:** `access_token` is stored in `localStorage` (and mirrored in memory). The **refresh token** is **not**
+ * stored here — it is issued as an **HttpOnly, Secure** cookie and sent automatically (`withCredentials: true`).
+ *
+ * **Risk:** Any **XSS** on the app origin can execute script and **read `localStorage`**, exfiltrating the current
+ * access token. The refresh token remains **not readable by JavaScript**, so XSS alone cannot directly read it
+ * (though a compromised page could still trigger authenticated requests in the browser).
+ *
+ * **Mitigations in place:**
+ * - **Short access token lifetime** (e.g. ~15 minutes) — stolen tokens expire quickly; attacker window is limited.
+ * - **Refresh token in HttpOnly cookie** — not exposed to JS; rotation/revocation handled server-side.
+ * - **No long-term secrets** should depend solely on the access token; treat it as a short-lived session credential.
+ * - **Defense in depth:** strict **CSP**, input validation, and **sanitization** of user-controlled content (e.g.
+ *   React text escaping, avoid `dangerouslySetInnerHTML` for untrusted data) to reduce XSS likelihood.
+ *
+ * **Trade-off:** SPAs commonly use memory or `localStorage` for the bearer access token for tab/refresh continuity;
+ * alternatives (e.g. BFF-only cookies for access token) change architecture. This project accepts the documented
+ * trade-off above with the listed mitigations.
+ */
 let accessToken: string | null = null
 
 // Helper function to validate JWT token format
@@ -314,7 +334,18 @@ api.interceptors.response.use(
     // Log error responses for debugging (limit to prevent spam)
     // Skip logging expected 401s from /users/me (normal when not logged in)
     const isExpected401 = error.response?.status === 401 && originalRequest.url?.includes('/users/me')
-    if (process.env.NODE_ENV === 'development' && error.response && !error.config?.url?.includes('/auth/refresh') && !isExpected401) {
+    // Shift notes return 403 when company disables the feature — not an app error
+    const isShiftNotesDisabled403 =
+      error.response?.status === 403 &&
+      typeof originalRequest.url === 'string' &&
+      originalRequest.url.includes('shift-notes')
+    if (
+      process.env.NODE_ENV === 'development' &&
+      error.response &&
+      !error.config?.url?.includes('/auth/refresh') &&
+      !isExpected401 &&
+      !isShiftNotesDisabled403
+    ) {
       // Only log first few errors to prevent spam
       if (!(window as any).__errorLogCount) {
         (window as any).__errorLogCount = 0

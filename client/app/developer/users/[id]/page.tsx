@@ -154,7 +154,7 @@ export default function DeveloperUserPage() {
     return (
       <Layout>
         <div className="px-4 py-8">
-          <p className="text-gray-600">User not found.</p>
+          <p className="text-slate-600">User not found.</p>
           <BackButton fallbackHref="/developer" className="mt-2 text-blue-600 hover:underline">
             Back to Developer Portal
           </BackButton>
@@ -173,8 +173,8 @@ export default function DeveloperUserPage() {
           Back
         </BackButton>
 
-        <h1 className="text-2xl font-bold text-gray-900 mb-1">Edit User (Developer)</h1>
-        <p className="text-sm text-gray-600 mb-6">
+        <h1 className="text-2xl font-bold text-slate-900 mb-1">Edit User (Developer)</h1>
+        <p className="text-sm text-slate-600 mb-6">
           {isSuperAccount(user) ? 'Super account (no company)' : `${user.company_name} — modify user info and verification`}
         </p>
 
@@ -199,24 +199,24 @@ export default function DeveloperUserPage() {
             </Select>
           </FormField>
 
-          <div className="border-t border-gray-200 pt-4">
-            <h3 className="text-sm font-semibold text-gray-900 mb-3">Verification</h3>
+          <div className="border-t border-slate-200 pt-4">
+            <h3 className="text-sm font-semibold text-slate-900 mb-3">Verification</h3>
             <div className="space-y-3">
               <label className="flex items-center gap-2">
                 <input
                   type="checkbox"
                   {...form.register('email_verified')}
-                  className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                  className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
                 />
-                <span className="text-sm text-gray-700">Email verified</span>
+                <span className="text-sm text-slate-700">Email verified</span>
               </label>
               <label className="flex items-center gap-2">
                 <input
                   type="checkbox"
                   {...form.register('verification_required')}
-                  className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                  className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
                 />
-                <span className="text-sm text-gray-700">Verification required</span>
+                <span className="text-sm text-slate-700">Verification required</span>
               </label>
             </div>
           </div>
@@ -245,7 +245,7 @@ export default function DeveloperUserPage() {
             </button>
             <BackButton
               fallbackHref={isSuperAccount(user) ? '/developer' : `/developer/companies/${user.company_id}`}
-              className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200"
+              className="px-4 py-2 bg-slate-100 text-slate-700 rounded-lg hover:bg-slate-200"
               showArrow={false}
             >
               Cancel

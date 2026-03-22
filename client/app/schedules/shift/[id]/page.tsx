@@ -111,11 +111,11 @@ export default function ShiftDetailPage() {
       case 'APPROVED':
         return 'bg-green-100 text-green-800'
       case 'DRAFT':
-        return 'bg-gray-100 text-gray-800'
+        return 'bg-slate-100 text-slate-800'
       case 'CANCELLED':
         return 'bg-red-100 text-red-800'
       default:
-        return 'bg-gray-100 text-gray-800'
+        return 'bg-slate-100 text-slate-800'
     }
   }
 
@@ -182,8 +182,8 @@ export default function ShiftDetailPage() {
           </BackButton>
           <div className="flex justify-between items-center">
             <div>
-              <h1 className="text-2xl font-bold text-gray-900">Shift Details</h1>
-              <p className="text-sm text-gray-600 mt-1">{shift.employee_name}</p>
+              <h1 className="text-2xl font-bold text-slate-900">Shift Details</h1>
+              <p className="text-sm text-slate-600 mt-1">{shift.employee_name}</p>
             </div>
             {isAdmin && (
               <div className="flex space-x-2">
@@ -220,23 +220,23 @@ export default function ShiftDetailPage() {
               {/* Left Column */}
               <div className="space-y-4">
                 <div>
-                  <label className="text-sm font-medium text-gray-500">Employee</label>
-                  <p className="mt-1 text-lg text-gray-900">{shift.employee_name}</p>
+                  <label className="text-sm font-medium text-slate-500">Employee</label>
+                  <p className="mt-1 text-lg text-slate-900">{shift.employee_name}</p>
                 </div>
 
                 <div>
-                  <label className="text-sm font-medium text-gray-500">Date</label>
-                  <p className="mt-1 text-lg text-gray-900">
+                  <label className="text-sm font-medium text-slate-500">Date</label>
+                  <p className="mt-1 text-lg text-slate-900">
                     {format(parseISO(shift.shift_date), 'EEEE, MMMM d, yyyy')}
                   </p>
                 </div>
 
                 <div>
-                  <label className="text-sm font-medium text-gray-500">Time</label>
-                  <p className="mt-1 text-lg text-gray-900">
+                  <label className="text-sm font-medium text-slate-500">Time</label>
+                  <p className="mt-1 text-lg text-slate-900">
                     {format(startAt, 'h:mm a')} - {format(endAt, 'h:mm a')}
                     {overnight && (
-                      <span className="ml-2 text-sm text-gray-500">
+                      <span className="ml-2 text-sm text-slate-500">
                         (ends {format(endAt, 'MMM d')})
                       </span>
                     )}
@@ -244,7 +244,7 @@ export default function ShiftDetailPage() {
                 </div>
 
                 <div>
-                  <label className="text-sm font-medium text-gray-500">Status</label>
+                  <label className="text-sm font-medium text-slate-500">Status</label>
                   <p className="mt-1">
                     <span className={`inline-block px-3 py-1 rounded-full text-sm font-medium ${getStatusColor(shift.status)}`}>
                       {shift.status.charAt(0) + shift.status.slice(1).toLowerCase()}
@@ -256,11 +256,11 @@ export default function ShiftDetailPage() {
               {/* Right Column */}
               <div className="space-y-4">
                 <div>
-                  <label className="text-sm font-medium text-gray-500">Duration</label>
-                  <p className="mt-1 text-lg text-gray-900">
+                  <label className="text-sm font-medium text-slate-500">Duration</label>
+                  <p className="mt-1 text-lg text-slate-900">
                     {durationHours.toFixed(2)} hours
                     {shift.break_minutes > 0 && (
-                      <span className="text-sm text-gray-500 ml-2">
+                      <span className="text-sm text-slate-500 ml-2">
                         ({workHours.toFixed(2)} work hours, {shift.break_minutes} min break)
                       </span>
                     )}
@@ -269,30 +269,30 @@ export default function ShiftDetailPage() {
 
                 {shift.job_role && (
                   <div>
-                    <label className="text-sm font-medium text-gray-500">Job Role</label>
-                    <p className="mt-1 text-lg text-gray-900">{shift.job_role}</p>
+                    <label className="text-sm font-medium text-slate-500">Job Role</label>
+                    <p className="mt-1 text-lg text-slate-900">{shift.job_role}</p>
                   </div>
                 )}
 
                 {shift.requires_approval && (
                   <div>
-                    <label className="text-sm font-medium text-gray-500">Requires Approval</label>
-                    <p className="mt-1 text-lg text-gray-900">Yes</p>
+                    <label className="text-sm font-medium text-slate-500">Requires Approval</label>
+                    <p className="mt-1 text-lg text-slate-900">Yes</p>
                   </div>
                 )}
 
                 {shift.approved_by && shift.approved_at && (
                   <div>
-                    <label className="text-sm font-medium text-gray-500">Approved</label>
-                    <p className="mt-1 text-lg text-gray-900">
+                    <label className="text-sm font-medium text-slate-500">Approved</label>
+                    <p className="mt-1 text-lg text-slate-900">
                       {format(parseISO(shift.approved_at), 'MMM d, yyyy h:mm a')}
                     </p>
                   </div>
                 )}
 
                 <div>
-                  <label className="text-sm font-medium text-gray-500">Created</label>
-                  <p className="mt-1 text-sm text-gray-600">
+                  <label className="text-sm font-medium text-slate-500">Created</label>
+                  <p className="mt-1 text-sm text-slate-600">
                     {format(parseISO(shift.created_at), 'MMM d, yyyy h:mm a')}
                   </p>
                 </div>
@@ -300,9 +300,9 @@ export default function ShiftDetailPage() {
             </div>
 
             {shift.notes && (
-              <div className="mt-6 pt-6 border-t border-gray-200">
-                <label className="text-sm font-medium text-gray-500">Notes</label>
-                <p className="mt-2 text-gray-900 whitespace-pre-wrap">{/* User text: React escapes */}{shift.notes}</p>
+              <div className="mt-6 pt-6 border-t border-slate-200">
+                <label className="text-sm font-medium text-slate-500">Notes</label>
+                <p className="mt-2 text-slate-900 whitespace-pre-wrap">{/* User text: React escapes */}{shift.notes}</p>
               </div>
             )}
           </div>

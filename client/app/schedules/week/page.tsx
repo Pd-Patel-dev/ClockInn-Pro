@@ -267,17 +267,17 @@ function BulkWeekShiftContent() {
     <Layout>
       <div className="container mx-auto px-4 py-8 max-w-7xl">
         <div className="mb-8">
-          <BackButton fallbackHref="/schedules" className="mb-4 inline-flex items-center gap-1.5 text-gray-600 hover:text-gray-900">
+          <BackButton fallbackHref="/schedules" className="mb-4 inline-flex items-center gap-1.5 text-slate-600 hover:text-slate-900">
             Back to Schedule
           </BackButton>
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">Create Shifts for Week</h1>
-          <p className="text-gray-600">Create shifts for an employee for an entire week</p>
+          <h1 className="text-3xl font-bold text-slate-900 mb-2">Create Shifts for Week</h1>
+          <p className="text-slate-600">Create shifts for an employee for an entire week</p>
         </div>
         
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-6">
+        <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 mb-6">
           {/* Week Picker */}
           <div className="mb-6">
-            <label className="block text-sm font-semibold text-gray-700 mb-2">
+            <label className="block text-sm font-semibold text-slate-700 mb-2">
               Week Starting (Monday)
             </label>
             <div className="flex items-center gap-4">
@@ -290,7 +290,7 @@ function BulkWeekShiftContent() {
                     }
                   }
                 }}
-                className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
+                className="px-4 py-2 border border-slate-300 rounded-lg hover:bg-slate-50"
               >
                 ← Previous
               </button>
@@ -307,9 +307,9 @@ function BulkWeekShiftContent() {
                     }
                   }
                 }}
-                className="px-4 py-2 border border-gray-300 rounded-lg"
+                className="px-4 py-2 border border-slate-300 rounded-lg"
               />
-              <span className="text-gray-600">
+              <span className="text-slate-600">
                 {currentWeek && !isNaN(currentWeek.getTime()) 
                   ? `${format(currentWeek, 'MMM d')} - ${format(addDays(currentWeek, 6), 'MMM d, yyyy')}`
                   : 'Invalid date'
@@ -324,7 +324,7 @@ function BulkWeekShiftContent() {
                     }
                   }
                 }}
-                className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
+                className="px-4 py-2 border border-slate-300 rounded-lg hover:bg-slate-50"
               >
                 Next →
               </button>
@@ -333,13 +333,13 @@ function BulkWeekShiftContent() {
           
           {/* Employee Selection */}
           <div className="mb-6">
-            <label className="block text-sm font-semibold text-gray-700 mb-2">
+            <label className="block text-sm font-semibold text-slate-700 mb-2">
               Employee <span className="text-red-500">*</span>
             </label>
             <select
               value={selectedEmployeeId}
               onChange={(e) => setSelectedEmployeeId(e.target.value)}
-              className="block w-full md:w-64 px-4 py-2.5 border border-gray-300 rounded-lg bg-white text-gray-900 shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+              className="block w-full md:w-64 px-4 py-2.5 border border-slate-300 rounded-lg bg-white text-slate-900 shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
               required
             >
               <option value="">Select Employee</option>
@@ -353,7 +353,7 @@ function BulkWeekShiftContent() {
           
           {/* Mode Toggle */}
           <div className="mb-6">
-            <label className="block text-sm font-semibold text-gray-700 mb-2">Mode</label>
+            <label className="block text-sm font-semibold text-slate-700 mb-2">Mode</label>
             <div className="flex gap-4">
               <label className="flex items-center space-x-2 cursor-pointer">
                 <input
@@ -400,21 +400,21 @@ function BulkWeekShiftContent() {
                 />
               </div>
               <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">Break (min)</label>
+                <label className="block text-sm font-semibold text-slate-700 mb-2">Break (min)</label>
                 <input
                   type="number"
                   value={template.break_minutes}
                   onChange={(e) => setTemplate({ ...template, break_minutes: parseInt(e.target.value) || 0 })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg"
                   min="0"
                 />
               </div>
               <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">Status</label>
+                <label className="block text-sm font-semibold text-slate-700 mb-2">Status</label>
                 <select
                   value={template.status}
                   onChange={(e) => setTemplate({ ...template, status: e.target.value as any })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg"
                 >
                   <option value="DRAFT">Draft</option>
                   <option value="PUBLISHED">Published</option>
@@ -427,16 +427,16 @@ function BulkWeekShiftContent() {
           {/* Per Day Configuration */}
           {mode === 'per_day' && (
             <div className="mb-6">
-              <label className="block text-sm font-semibold text-gray-700 mb-3">Day Configuration</label>
+              <label className="block text-sm font-semibold text-slate-700 mb-3">Day Configuration</label>
               <div className="space-y-3">
                 {dayLabels.map(({ key, label }) => (
-                  <div key={key} className="flex items-center gap-4 p-3 border border-gray-200 rounded-lg">
+                  <div key={key} className="flex items-center gap-4 p-3 border border-slate-200 rounded-lg">
                     <label className="flex items-center space-x-2 min-w-[120px]">
                       <input
                         type="checkbox"
                         checked={days[key].enabled}
                         onChange={(e) => updateDay(key, { enabled: e.target.checked })}
-                        className="rounded border-gray-300 text-blue-600"
+                        className="rounded border-slate-300 text-blue-600"
                       />
                       <span className="text-sm font-medium">{label}</span>
                     </label>
@@ -447,7 +447,7 @@ function BulkWeekShiftContent() {
                           onChange={(v) => updateDay(key, { start_time: v })}
                           className="flex-shrink-0"
                         />
-                        <span className="text-gray-400">–</span>
+                        <span className="text-slate-400">–</span>
                         <TimeInput12h
                           value={days[key].end_time || '17:00'}
                           onChange={(v) => updateDay(key, { end_time: v })}
@@ -458,7 +458,7 @@ function BulkWeekShiftContent() {
                           placeholder="Break (min)"
                           value={days[key].break_minutes || ''}
                           onChange={(e) => updateDay(key, { break_minutes: parseInt(e.target.value) || 0 })}
-                          className="px-3 py-1.5 border border-gray-300 rounded text-sm w-24"
+                          className="px-3 py-1.5 border border-slate-300 rounded text-sm w-24"
                           min="0"
                         />
                       </>
@@ -471,7 +471,7 @@ function BulkWeekShiftContent() {
           
           {/* Days Selection */}
           <div className="mb-6">
-            <label className="block text-sm font-semibold text-gray-700 mb-2">Enabled Days</label>
+            <label className="block text-sm font-semibold text-slate-700 mb-2">Enabled Days</label>
             <div className="flex flex-wrap gap-2">
               {dayLabels.map(({ key, label }) => (
                 <label key={key} className="flex items-center space-x-2 cursor-pointer">
@@ -479,7 +479,7 @@ function BulkWeekShiftContent() {
                     type="checkbox"
                     checked={days[key].enabled}
                     onChange={(e) => updateDay(key, { enabled: e.target.checked })}
-                    className="rounded border-gray-300 text-blue-600"
+                    className="rounded border-slate-300 text-blue-600"
                   />
                   <span className="text-sm">{label}</span>
                 </label>
@@ -489,11 +489,11 @@ function BulkWeekShiftContent() {
           
           {/* Conflict Policy */}
           <div className="mb-6">
-            <label className="block text-sm font-semibold text-gray-700 mb-2">Conflict Policy</label>
+            <label className="block text-sm font-semibold text-slate-700 mb-2">Conflict Policy</label>
             <select
               value={conflictPolicy}
               onChange={(e) => setConflictPolicy(e.target.value as any)}
-              className="w-full md:w-64 px-3 py-2 border border-gray-300 rounded-lg"
+              className="w-full md:w-64 px-3 py-2 border border-slate-300 rounded-lg"
             >
               <option value="skip">Skip conflicting shifts</option>
               <option value="overwrite">Overwrite conflicting shifts</option>
@@ -504,15 +504,15 @@ function BulkWeekShiftContent() {
           
           {/* Timezone */}
           <div className="mb-6">
-            <label className="block text-sm font-semibold text-gray-700 mb-2">Timezone</label>
+            <label className="block text-sm font-semibold text-slate-700 mb-2">Timezone</label>
             <input
               type="text"
               value={timezone}
               onChange={(e) => setTimezone(e.target.value)}
-              className="w-full md:w-64 px-3 py-2 border border-gray-300 rounded-lg"
+              className="w-full md:w-64 px-3 py-2 border border-slate-300 rounded-lg"
               placeholder="America/Chicago"
             />
-            <p className="text-xs text-gray-500 mt-1">IANA timezone identifier (e.g., America/Chicago). Sent with the request for context; shift dates and times are created as entered (no conversion applied yet).</p>
+            <p className="text-xs text-slate-500 mt-1">IANA timezone identifier (e.g., America/Chicago). Sent with the request for context; shift dates and times are created as entered (no conversion applied yet).</p>
           </div>
           
           {/* Actions */}
@@ -520,7 +520,7 @@ function BulkWeekShiftContent() {
             <button
               onClick={handlePreview}
               disabled={previewing || creating}
-              className="px-6 py-2.5 bg-gray-600 text-white font-medium rounded-lg hover:bg-gray-700 disabled:opacity-50"
+              className="px-6 py-2.5 bg-gray-600 text-white font-medium rounded-lg hover:bg-slate-700 disabled:opacity-50"
             >
               {previewing ? 'Previewing...' : 'Preview'}
             </button>
@@ -536,23 +536,23 @@ function BulkWeekShiftContent() {
         
         {/* Preview Results */}
         {preview && (
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-            <h2 className="text-xl font-bold text-gray-900 mb-4">Preview Results</h2>
+          <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
+            <h2 className="text-xl font-bold text-slate-900 mb-4">Preview Results</h2>
             
             <div className="mb-4 grid grid-cols-2 md:grid-cols-4 gap-4">
               <div className="p-3 bg-blue-50 rounded-lg">
-                <div className="text-sm text-gray-600">Total Shifts</div>
+                <div className="text-sm text-slate-600">Total Shifts</div>
                 <div className="text-2xl font-bold text-blue-600">{preview.total_shifts}</div>
               </div>
               <div className="p-3 bg-red-50 rounded-lg">
-                <div className="text-sm text-gray-600">Conflicts</div>
+                <div className="text-sm text-slate-600">Conflicts</div>
                 <div className="text-2xl font-bold text-red-600">{preview.total_conflicts}</div>
               </div>
             </div>
             
             {preview.conflicts.length > 0 && (
               <div className="mb-4">
-                <h3 className="text-lg font-semibold text-gray-900 mb-2">Conflicts</h3>
+                <h3 className="text-lg font-semibold text-slate-900 mb-2">Conflicts</h3>
                 <div className="space-y-2 max-h-48 overflow-y-auto">
                   {preview.conflicts.map((conflict: any, idx: number) => (
                     <div key={idx} className="p-3 bg-red-50 border border-red-200 rounded text-sm">
@@ -565,13 +565,13 @@ function BulkWeekShiftContent() {
             
             {preview.shifts_to_create.length > 0 && (
               <div>
-                <h3 className="text-lg font-semibold text-gray-900 mb-2">Shifts to Create</h3>
+                <h3 className="text-lg font-semibold text-slate-900 mb-2">Shifts to Create</h3>
                 <div className="space-y-2 max-h-96 overflow-y-auto">
                   {preview.shifts_to_create.slice(0, 50).map((shift, idx) => (
                     <div
                       key={idx}
                       className={`p-3 border rounded text-sm ${
-                        shift.has_conflict ? 'bg-yellow-50 border-yellow-200' : 'bg-gray-50 border-gray-200'
+                        shift.has_conflict ? 'bg-yellow-50 border-yellow-200' : 'bg-slate-50 border-slate-200'
                       }`}
                     >
                       <strong>{shift.employee_name}</strong> - {shift.shift_date}: {shift.start_time} - {shift.end_time}
@@ -579,7 +579,7 @@ function BulkWeekShiftContent() {
                     </div>
                   ))}
                   {preview.shifts_to_create.length > 50 && (
-                    <div className="text-sm text-gray-500 p-2">
+                    <div className="text-sm text-slate-500 p-2">
                       ... and {preview.shifts_to_create.length - 50} more shifts
                     </div>
                   )}

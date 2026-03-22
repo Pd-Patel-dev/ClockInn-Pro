@@ -63,6 +63,7 @@ server/gmail_token.json
 
 # Supabase temp files
 supabase/.temp/
+server/supabase/.temp/
 
 # Markdown files (except README.md and deployment docs)
 APP_REVIEW_SUGGESTIONS.md

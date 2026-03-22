@@ -124,7 +124,7 @@ export default function AdminReportsPage() {
         <div className="bg-white shadow rounded-lg p-6">
           <div className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700">Range Type</label>
+              <label className="block text-sm font-medium text-slate-700">Range Type</label>
               <select
                 value={formData.range_type}
                 onChange={(e) => {
@@ -135,7 +135,7 @@ export default function AdminReportsPage() {
                     setFormData((prev) => ({ ...prev, end_date: '' }))
                   }
                 }}
-                className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm"
+                className="mt-1 block w-full px-3 py-2 border border-slate-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
               >
                 <option value="none">None (Custom Range)</option>
                 <option value="weekly">Weekly</option>
@@ -145,62 +145,62 @@ export default function AdminReportsPage() {
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700">Start Date</label>
+                <label className="block text-sm font-medium text-slate-700">Start Date</label>
                 <input
                   type="date"
                   value={formData.start_date}
                   onChange={(e) => setFormData({ ...formData, start_date: e.target.value })}
-                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm"
+                  className="mt-1 block w-full px-3 py-2 border border-slate-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700">End Date</label>
+                <label className="block text-sm font-medium text-slate-700">End Date</label>
                 <input
                   type="date"
                   value={formData.end_date}
                   onChange={(e) => setFormData({ ...formData, end_date: e.target.value })}
                   disabled={formData.range_type !== 'none'}
-                  className={`mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm ${
-                    formData.range_type !== 'none' ? 'bg-gray-100 cursor-not-allowed' : ''
+                  className={`mt-1 block w-full px-3 py-2 border border-slate-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm ${
+                    formData.range_type !== 'none' ? 'bg-slate-100 cursor-not-allowed' : ''
                   }`}
                 />
                 {formData.range_type !== 'none' && (
-                  <p className="mt-1 text-xs text-gray-500">Automatically calculated based on range type</p>
+                  <p className="mt-1 text-xs text-slate-500">Automatically calculated based on range type</p>
                 )}
               </div>
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700">Format</label>
+              <label className="block text-sm font-medium text-slate-700">Format</label>
               <select
                 value={formData.format}
                 onChange={(e) => setFormData({ ...formData, format: e.target.value })}
-                className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm"
+                className="mt-1 block w-full px-3 py-2 border border-slate-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
               >
                 <option value="pdf">PDF</option>
                 <option value="xlsx">Excel</option>
               </select>
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className="block text-sm font-medium text-slate-700 mb-2">
                 Employees (leave empty for all)
               </label>
-              <div className="max-h-48 overflow-y-auto border border-gray-300 rounded-md p-2">
+              <div className="max-h-48 overflow-y-auto border border-slate-300 rounded-md p-2">
                 {employees.map((employee) => (
                   <label key={employee.id} className="flex items-center space-x-2 py-1">
                     <input
                       type="checkbox"
                       checked={formData.employee_ids.includes(employee.id)}
                       onChange={() => toggleEmployee(employee.id)}
-                      className="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                      className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
                     />
-                    <span className="text-sm text-gray-700">{employee.name}</span>
+                    <span className="text-sm text-slate-700">{employee.name}</span>
                   </label>
                 ))}
               </div>
             </div>
             <button
               onClick={handleExport}
-              className="w-full px-4 py-2 bg-primary-600 text-white rounded-md hover:bg-primary-700"
+              className="w-full px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
             >
               Generate Report
             </button>

@@ -161,7 +161,7 @@ export default function AdminPayrollPage() {
           <h1 className="text-2xl font-bold">Payroll</h1>
           <button
             onClick={() => setShowGenerateForm(!showGenerateForm)}
-            className="px-4 py-2 bg-primary-600 text-white rounded-md hover:bg-primary-700"
+            className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
           >
             {showGenerateForm ? 'Cancel' : 'Generate Payroll'}
           </button>
@@ -172,29 +172,29 @@ export default function AdminPayrollPage() {
           <h2 className="text-lg font-semibold mb-4">Filters</h2>
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">From Date</label>
+              <label className="block text-sm font-medium text-slate-700 mb-1">From Date</label>
               <input
                 type="date"
                 value={filters.from_date}
                 onChange={(e) => setFilters({ ...filters, from_date: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm"
+                className="w-full px-3 py-2 border border-slate-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">To Date</label>
+              <label className="block text-sm font-medium text-slate-700 mb-1">To Date</label>
               <input
                 type="date"
                 value={filters.to_date}
                 onChange={(e) => setFilters({ ...filters, to_date: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm"
+                className="w-full px-3 py-2 border border-slate-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Status</label>
               <select
                 value={filters.status}
                 onChange={(e) => setFilters({ ...filters, status: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm"
+                className="w-full px-3 py-2 border border-slate-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
               >
                 <option value="">All</option>
                 <option value="DRAFT">Draft</option>
@@ -203,11 +203,11 @@ export default function AdminPayrollPage() {
               </select>
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Payroll Type</label>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Payroll Type</label>
               <select
                 value={filters.payroll_type}
                 onChange={(e) => setFilters({ ...filters, payroll_type: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm"
+                className="w-full px-3 py-2 border border-slate-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
               >
                 <option value="">All</option>
                 <option value="WEEKLY">Weekly</option>
@@ -218,7 +218,7 @@ export default function AdminPayrollPage() {
           <div className="mt-4">
             <button
               onClick={() => setFilters({ from_date: '', to_date: '', status: '', payroll_type: '' })}
-              className="px-4 py-2 text-sm text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200"
+              className="px-4 py-2 text-sm text-slate-700 bg-slate-100 rounded-md hover:bg-slate-200"
             >
               Clear Filters
             </button>
@@ -230,10 +230,10 @@ export default function AdminPayrollPage() {
             <h2 className="text-xl font-semibold mb-4">Generate New Payroll</h2>
             <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700">Payroll Type</label>
+                <label className="block text-sm font-medium text-slate-700">Payroll Type</label>
                 <select
                   {...register('payroll_type')}
-                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm"
+                  className="mt-1 block w-full px-3 py-2 border border-slate-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
                 >
                   <option value="WEEKLY">Weekly</option>
                   <option value="BIWEEKLY">Biweekly</option>
@@ -244,11 +244,11 @@ export default function AdminPayrollPage() {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700">Start Date</label>
+                <label className="block text-sm font-medium text-slate-700">Start Date</label>
                 <input
                   {...register('start_date')}
                   type="date"
-                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm"
+                  className="mt-1 block w-full px-3 py-2 border border-slate-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
                 />
                 {errors.start_date && (
                   <p className="mt-1 text-sm text-red-600">{errors.start_date.message}</p>
@@ -257,12 +257,12 @@ export default function AdminPayrollPage() {
 
               {computedEndDate && (
                 <div>
-                  <label className="block text-sm font-medium text-gray-700">End Date (computed)</label>
+                  <label className="block text-sm font-medium text-slate-700">End Date (computed)</label>
                   <input
                     type="date"
                     value={computedEndDate}
                     disabled
-                    className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm bg-gray-100 text-gray-500 sm:text-sm cursor-not-allowed"
+                    className="mt-1 block w-full px-3 py-2 border border-slate-300 rounded-md shadow-sm bg-slate-100 text-slate-500 sm:text-sm cursor-not-allowed"
                   />
                 </div>
               )}
@@ -272,16 +272,16 @@ export default function AdminPayrollPage() {
                   <input
                     {...register('include_inactive')}
                     type="checkbox"
-                    className="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                    className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
                   />
-                  <span className="ml-2 text-sm text-gray-700">Include inactive employees</span>
+                  <span className="ml-2 text-sm text-slate-700">Include inactive employees</span>
                 </label>
               </div>
 
               <button
                 type="submit"
                 disabled={generating}
-                className="px-4 py-2 bg-primary-600 text-white rounded-md hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {generating ? (
                   <>
@@ -300,18 +300,18 @@ export default function AdminPayrollPage() {
           <div className="text-center py-8">Loading...</div>
         ) : (
           <div className="bg-white shadow rounded-lg overflow-hidden">
-            <div className="px-6 py-4 border-b border-gray-200">
+            <div className="px-6 py-4 border-b border-slate-200">
               <h2 className="text-lg font-semibold">Payroll Runs</h2>
             </div>
-            <div className="divide-y divide-gray-200">
+            <div className="divide-y divide-slate-200">
               {payrollRuns.length === 0 ? (
-                <div className="px-6 py-4 text-center text-gray-500">No payroll runs found</div>
+                <div className="px-6 py-4 text-center text-slate-500">No payroll runs found</div>
               ) : (
                 payrollRuns.map((run) => (
                   <Link
                     key={run.id}
                     href={`/payroll/${run.id}`}
-                    className="block px-6 py-4 hover:bg-gray-50 transition-colors"
+                    className="block px-6 py-4 hover:bg-slate-50 transition-colors"
                   >
                     <div className="flex justify-between items-start">
                       <div>
@@ -319,7 +319,7 @@ export default function AdminPayrollPage() {
                           {run.payroll_type} - {new Date(run.period_start_date).toLocaleDateString()} to{' '}
                           {new Date(run.period_end_date).toLocaleDateString()}
                         </div>
-                        <div className="text-sm text-gray-500 mt-1">
+                        <div className="text-sm text-slate-500 mt-1">
                           {run.employee_count} employees • {formatCurrency(run.total_gross_pay_cents)} total
                         </div>
                       </div>

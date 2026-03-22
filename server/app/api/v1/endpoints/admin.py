@@ -7,7 +7,7 @@ from typing import Optional
 import logging
 
 from app.core.dependencies import get_current_admin, get_db
-from app.core.error_handling import handle_endpoint_errors
+from app.core.error_handling import handle_endpoint_errors, client_error_detail
 from app.models.user import User
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.services.verification_service import cleanup_expired_verification_data
@@ -44,9 +44,12 @@ async def cleanup_verification_data_endpoint(
         result = await cleanup_expired_verification_data(db, older_than_hours=older_than_hours)
         return CleanupResponse(**result)
     except Exception as e:
-        logger.error(f"Failed to cleanup verification data: {e}")
+        logger.error("Failed to cleanup verification data: %s", e, exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to cleanup verification data: {str(e)}",
+            detail=client_error_detail(
+                dev_detail=f"Failed to cleanup verification data: {str(e)}",
+                prod_detail="Cleanup failed. Please try again or check server logs.",
+            ),
         )
 

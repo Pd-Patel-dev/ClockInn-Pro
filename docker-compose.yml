@@ -42,6 +42,22 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
+  # Optional: shared login lockout across API replicas — `docker compose --profile redis up -d`
+  # and set REDIS_URL=redis://redis:6379/0 on the api service (e.g. in .env).
+  redis:
+    image: redis:7-alpine
+    container_name: clockinn_redis
+    profiles:
+      - redis
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
   web:
     build:
       context: ./client
@@ -51,7 +67,9 @@ services:
     volumes:
       - ./client:/app
       - /app/node_modules
-    # - /app/.next  # Commented out so restarts get a fresh build and pick up new routes
+      # Keep webpack chunks inside the container only — avoids MODULE_NOT_FOUND ./NNN.js when
+      # host .next gets out of sync with the running dev server (common with bind mounts).
+      - /app/.next
     ports:
       - "3000:3000"
     environment:

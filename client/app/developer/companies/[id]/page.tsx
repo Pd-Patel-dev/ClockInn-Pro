@@ -124,7 +124,7 @@ export default function DeveloperCompanyPage() {
     return (
       <Layout>
         <div className="px-4 py-8">
-          <p className="text-gray-600">Company not found.</p>
+          <p className="text-slate-600">Company not found.</p>
           <Link href="/developer" className="text-blue-600 hover:underline mt-2 inline-block">Back to Developer Portal</Link>
         </div>
       </Layout>
@@ -140,37 +140,37 @@ export default function DeveloperCompanyPage() {
           Back to Developer Portal
         </BackButton>
 
-        <h1 className="text-2xl font-bold text-gray-900 mb-1">{company.name}</h1>
-        <p className="text-sm text-gray-600 mb-6">Company details and users (developer only)</p>
+        <h1 className="text-2xl font-bold text-slate-900 mb-1">{company.name}</h1>
+        <p className="text-sm text-slate-600 mb-6">Company details and users (developer only)</p>
 
         {/* Company info */}
         <div className="bg-white rounded-lg shadow p-6 mb-6">
-          <h2 className="text-lg font-semibold text-gray-900 mb-4">Company Info</h2>
+          <h2 className="text-lg font-semibold text-slate-900 mb-4">Company Info</h2>
           <dl className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
-              <dt className="text-sm text-gray-600">ID</dt>
-              <dd className="text-sm font-medium text-gray-900">{company.id}</dd>
+              <dt className="text-sm text-slate-600">ID</dt>
+              <dd className="text-sm font-medium text-slate-900">{company.id}</dd>
             </div>
             <div>
-              <dt className="text-sm text-gray-600">Slug</dt>
-              <dd className="text-sm font-medium text-gray-900">{company.slug}</dd>
+              <dt className="text-sm text-slate-600">Slug</dt>
+              <dd className="text-sm font-medium text-slate-900">{company.slug}</dd>
             </div>
             <div>
-              <dt className="text-sm text-gray-600">Kiosk enabled</dt>
+              <dt className="text-sm text-slate-600">Kiosk enabled</dt>
               <dd className="text-sm font-medium">{company.kiosk_enabled ? 'Yes' : 'No'}</dd>
             </div>
             <div>
-              <dt className="text-sm text-gray-600">Created</dt>
+              <dt className="text-sm text-slate-600">Created</dt>
               <dd className="text-sm font-medium">{company.created_at ? new Date(company.created_at).toLocaleString() : '—'}</dd>
             </div>
             {company.admin && (
               <>
                 <div>
-                  <dt className="text-sm text-gray-600">Admin</dt>
+                  <dt className="text-sm text-slate-600">Admin</dt>
                   <dd className="text-sm font-medium">{company.admin.name} ({company.admin.email})</dd>
                 </div>
                 <div>
-                  <dt className="text-sm text-gray-600">Admin last login</dt>
+                  <dt className="text-sm text-slate-600">Admin last login</dt>
                   <dd className="text-sm font-medium">{company.admin.last_login_at ? new Date(company.admin.last_login_at).toLocaleString() : '—'}</dd>
                 </div>
               </>
@@ -180,14 +180,14 @@ export default function DeveloperCompanyPage() {
 
         {/* Settings */}
         <div className="bg-white rounded-lg shadow p-6 mb-6">
-          <h2 className="text-lg font-semibold text-gray-900 mb-4">Settings</h2>
+          <h2 className="text-lg font-semibold text-slate-900 mb-4">Settings</h2>
 
           {/* Email verification (developer can disable per company) */}
-          <div className="mb-6 pb-6 border-b border-gray-200">
+          <div className="mb-6 pb-6 border-b border-slate-200">
             <div className="flex items-center justify-between gap-4">
               <div>
-                <p className="text-sm font-medium text-gray-900">Require email verification</p>
-                <p className="text-xs text-gray-500 mt-0.5">
+                <p className="text-sm font-medium text-slate-900">Require email verification</p>
+                <p className="text-xs text-slate-500 mt-0.5">
                   When off, users of this company can use the app without verifying their email.
                 </p>
               </div>
@@ -211,7 +211,7 @@ export default function DeveloperCompanyPage() {
                   }
                 }}
                 className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50 ${
-                  s.email_verification_required !== false ? 'bg-blue-600' : 'bg-gray-200'
+                  s.email_verification_required !== false ? 'bg-blue-600' : 'bg-slate-200'
                 }`}
               >
                 <span
@@ -222,14 +222,14 @@ export default function DeveloperCompanyPage() {
               </button>
             </div>
             {savingEmailVerification && (
-              <p className="text-xs text-gray-500 mt-2">Saving…</p>
+              <p className="text-xs text-slate-500 mt-2">Saving…</p>
             )}
           </div>
 
           {/* Punch location (geofence) */}
-          <div className="mb-6 pb-6 border-b border-gray-200">
-            <p className="text-sm font-medium text-gray-900 mb-2">Require punch at office location</p>
-            <p className="text-xs text-gray-500 mb-3">
+          <div className="mb-6 pb-6 border-b border-slate-200">
+            <p className="text-sm font-medium text-slate-900 mb-2">Require punch at office location</p>
+            <p className="text-xs text-slate-500 mb-3">
               When on, employees can only punch in/out when within the configured radius of the office. Set office coordinates and radius, then enable.
             </p>
             <div className="flex flex-wrap items-end gap-4">
@@ -259,9 +259,9 @@ export default function DeveloperCompanyPage() {
                     }
                   }}
                   disabled={savingGeofence}
-                  className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                  className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
                 />
-                <span className="text-sm text-gray-700">Enabled</span>
+                <span className="text-sm text-slate-700">Enabled</span>
               </label>
               <div className="flex items-center gap-2">
                 <input
@@ -270,7 +270,7 @@ export default function DeveloperCompanyPage() {
                   placeholder="Latitude"
                   value={geofenceLat}
                   onChange={(e) => setGeofenceLat(e.target.value)}
-                  className="w-28 px-2 py-1.5 border border-gray-300 rounded text-sm"
+                  className="w-28 px-2 py-1.5 border border-slate-300 rounded text-sm"
                 />
                 <input
                   type="number"
@@ -278,7 +278,7 @@ export default function DeveloperCompanyPage() {
                   placeholder="Longitude"
                   value={geofenceLon}
                   onChange={(e) => setGeofenceLon(e.target.value)}
-                  className="w-28 px-2 py-1.5 border border-gray-300 rounded text-sm"
+                  className="w-28 px-2 py-1.5 border border-slate-300 rounded text-sm"
                 />
                 <input
                   type="number"
@@ -286,9 +286,9 @@ export default function DeveloperCompanyPage() {
                   max={5000}
                   value={geofenceRadius}
                   onChange={(e) => setGeofenceRadius(parseInt(e.target.value, 10) || 100)}
-                  className="w-20 px-2 py-1.5 border border-gray-300 rounded text-sm"
+                  className="w-20 px-2 py-1.5 border border-slate-300 rounded text-sm"
                 />
-                <span className="text-xs text-gray-500">m radius</span>
+                <span className="text-xs text-slate-500">m radius</span>
                 <button
                   type="button"
                   disabled={geofenceGettingLocation || typeof navigator === 'undefined' || !navigator.geolocation}
@@ -305,7 +305,7 @@ export default function DeveloperCompanyPage() {
                       { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 }
                     )
                   }}
-                  className="px-3 py-1.5 text-sm bg-gray-100 text-gray-700 rounded border border-gray-300 hover:bg-gray-200 disabled:opacity-50"
+                  className="px-3 py-1.5 text-sm bg-slate-100 text-slate-700 rounded border border-slate-300 hover:bg-slate-200 disabled:opacity-50"
                 >
                   {geofenceGettingLocation ? 'Getting…' : 'Current location'}
                 </button>
@@ -340,16 +340,16 @@ export default function DeveloperCompanyPage() {
               </button>
             </div>
             {s.geofence_enabled && (s.office_latitude != null || s.office_longitude != null) && (
-              <p className="text-xs text-gray-600 mt-2">
+              <p className="text-xs text-slate-600 mt-2">
                 Office: {s.office_latitude}, {s.office_longitude} · radius {s.geofence_radius_meters ?? 100} m
               </p>
             )}
           </div>
 
           {/* Kiosk: only allow on office network */}
-          <div className="mb-6 pb-6 border-b border-gray-200">
-            <p className="text-sm font-medium text-gray-900 mb-2">Kiosk: restrict to office network</p>
-            <p className="text-xs text-gray-500 mb-3">
+          <div className="mb-6 pb-6 border-b border-slate-200">
+            <p className="text-sm font-medium text-slate-900 mb-2">Kiosk: restrict to office network</p>
+            <p className="text-xs text-slate-500 mb-3">
               When on, the kiosk only works from the listed IPs or CIDR ranges (office network).
             </p>
             <div className="flex flex-wrap items-end gap-4">
@@ -373,13 +373,13 @@ export default function DeveloperCompanyPage() {
                     }).catch((err: any) => logger.error('Update kiosk network failed', err as Error)).finally(() => setSavingKioskNetwork(false))
                   }}
                   disabled={savingKioskNetwork}
-                  className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                  className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
                 />
-                <span className="text-sm text-gray-700">Enabled</span>
+                <span className="text-sm text-slate-700">Enabled</span>
               </label>
               <div className="flex-1 min-w-[200px]">
                 <div className="flex items-center gap-2 mb-1">
-                  <span className="text-sm text-gray-700">Allowed IPs (one per line)</span>
+                  <span className="text-sm text-slate-700">Allowed IPs (one per line)</span>
                   <button
                     type="button"
                     disabled={kioskFetchingMyIp}
@@ -397,7 +397,7 @@ export default function DeveloperCompanyPage() {
                         setKioskFetchingMyIp(false)
                       }
                     }}
-                    className="px-3 py-1.5 text-sm bg-gray-100 text-gray-700 rounded border border-gray-300 hover:bg-gray-200 disabled:opacity-50"
+                    className="px-3 py-1.5 text-sm bg-slate-100 text-slate-700 rounded border border-slate-300 hover:bg-slate-200 disabled:opacity-50"
                   >
                     {kioskFetchingMyIp ? '…' : 'Add my current IP'}
                   </button>
@@ -407,9 +407,9 @@ export default function DeveloperCompanyPage() {
                   onChange={(e) => setKioskAllowedIpsText(e.target.value)}
                   placeholder={'192.168.1.0/24\n10.0.0.1'}
                   rows={3}
-                  className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm font-mono"
+                  className="w-full px-2 py-1.5 border border-slate-300 rounded text-sm font-mono"
                 />
-                <p className="text-xs text-gray-500 mt-1">Use “Add my current IP” when at the office. If you always see the same IP from different networks, configure your reverse proxy to send the real client IP (X-Real-IP or X-Forwarded-For).</p>
+                <p className="text-xs text-slate-500 mt-1">Use “Add my current IP” when at the office. If you always see the same IP from different networks, configure your reverse proxy to send the real client IP (X-Real-IP or X-Forwarded-For).</p>
               </div>
               <button
                 type="button"
@@ -441,50 +441,50 @@ export default function DeveloperCompanyPage() {
           </div>
 
           <dl className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
-            <div><dt className="text-gray-600">Timezone</dt><dd className="font-medium">{s.timezone}</dd></div>
-            <div><dt className="text-gray-600">Payroll week start</dt><dd className="font-medium">Day {s.payroll_week_start_day}</dd></div>
-            <div><dt className="text-gray-600">Overtime enabled</dt><dd className="font-medium">{s.overtime_enabled ? 'Yes' : 'No'}</dd></div>
-            <div><dt className="text-gray-600">Overtime threshold (hrs/week)</dt><dd className="font-medium">{s.overtime_threshold_hours_per_week}</dd></div>
-            <div><dt className="text-gray-600">Rounding</dt><dd className="font-medium">{s.rounding_policy}</dd></div>
-            <div><dt className="text-gray-600">Breaks paid</dt><dd className="font-medium">{s.breaks_paid ? 'Yes' : 'No'}</dd></div>
+            <div><dt className="text-slate-600">Timezone</dt><dd className="font-medium">{s.timezone}</dd></div>
+            <div><dt className="text-slate-600">Payroll week start</dt><dd className="font-medium">Day {s.payroll_week_start_day}</dd></div>
+            <div><dt className="text-slate-600">Overtime enabled</dt><dd className="font-medium">{s.overtime_enabled ? 'Yes' : 'No'}</dd></div>
+            <div><dt className="text-slate-600">Overtime threshold (hrs/week)</dt><dd className="font-medium">{s.overtime_threshold_hours_per_week}</dd></div>
+            <div><dt className="text-slate-600">Rounding</dt><dd className="font-medium">{s.rounding_policy}</dd></div>
+            <div><dt className="text-slate-600">Breaks paid</dt><dd className="font-medium">{s.breaks_paid ? 'Yes' : 'No'}</dd></div>
             {s.cash_drawer_enabled != null && (
-              <div><dt className="text-gray-600">Cash drawer</dt><dd className="font-medium">{s.cash_drawer_enabled ? 'Yes' : 'No'}</dd></div>
+              <div><dt className="text-slate-600">Cash drawer</dt><dd className="font-medium">{s.cash_drawer_enabled ? 'Yes' : 'No'}</dd></div>
             )}
             {s.shift_notes_enabled != null && (
-              <div><dt className="text-gray-600">Shift notes</dt><dd className="font-medium">{s.shift_notes_enabled ? 'Yes' : 'No'}</dd></div>
+              <div><dt className="text-slate-600">Shift notes</dt><dd className="font-medium">{s.shift_notes_enabled ? 'Yes' : 'No'}</dd></div>
             )}
           </dl>
         </div>
 
         {/* Users */}
         <div className="bg-white rounded-lg shadow overflow-hidden">
-          <div className="px-6 py-4 border-b border-gray-200">
-            <h2 className="text-lg font-semibold text-gray-900">Users</h2>
-            <p className="text-sm text-gray-600">Click a user to edit (including verification).</p>
+          <div className="px-6 py-4 border-b border-slate-200">
+            <h2 className="text-lg font-semibold text-slate-900">Users</h2>
+            <p className="text-sm text-slate-600">Click a user to edit (including verification).</p>
           </div>
           <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
+            <table className="min-w-full divide-y divide-slate-200">
+              <thead className="bg-slate-50">
                 <tr>
-                  <th className="px-4 py-2 text-left text-xs font-medium text-gray-700 uppercase">Name</th>
-                  <th className="px-4 py-2 text-left text-xs font-medium text-gray-700 uppercase">Email</th>
-                  <th className="px-4 py-2 text-left text-xs font-medium text-gray-700 uppercase">Role</th>
-                  <th className="px-4 py-2 text-left text-xs font-medium text-gray-700 uppercase">Status</th>
-                  <th className="px-4 py-2 text-left text-xs font-medium text-gray-700 uppercase">Verified</th>
-                  <th className="px-4 py-2 text-left text-xs font-medium text-gray-700 uppercase">Actions</th>
+                  <th className="px-4 py-2 text-left text-xs font-medium text-slate-700 uppercase">Name</th>
+                  <th className="px-4 py-2 text-left text-xs font-medium text-slate-700 uppercase">Email</th>
+                  <th className="px-4 py-2 text-left text-xs font-medium text-slate-700 uppercase">Role</th>
+                  <th className="px-4 py-2 text-left text-xs font-medium text-slate-700 uppercase">Status</th>
+                  <th className="px-4 py-2 text-left text-xs font-medium text-slate-700 uppercase">Verified</th>
+                  <th className="px-4 py-2 text-left text-xs font-medium text-slate-700 uppercase">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-200">
+              <tbody className="divide-y divide-slate-200">
                 {users.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="px-4 py-8 text-center text-gray-500">No users</td>
+                    <td colSpan={6} className="px-4 py-8 text-center text-slate-500">No users</td>
                   </tr>
                 ) : (
                   users.map((u) => (
-                    <tr key={u.id} className="hover:bg-gray-50">
-                      <td className="px-4 py-3 text-sm font-medium text-gray-900">{u.name}</td>
-                      <td className="px-4 py-3 text-sm text-gray-600">{u.email}</td>
-                      <td className="px-4 py-3 text-sm text-gray-600">
+                    <tr key={u.id} className="hover:bg-slate-50">
+                      <td className="px-4 py-3 text-sm font-medium text-slate-900">{u.name}</td>
+                      <td className="px-4 py-3 text-sm text-slate-600">{u.email}</td>
+                      <td className="px-4 py-3 text-sm text-slate-600">
                         {u.role}
                         {u.role === 'DEVELOPER' && (
                           <span className="ml-2 px-1.5 py-0.5 rounded text-xs bg-slate-100 text-slate-600">Super account</span>
@@ -492,7 +492,7 @@ export default function DeveloperCompanyPage() {
                       </td>
                       <td className="px-4 py-3">
                         <span className={`px-2 py-1 rounded text-xs font-medium ${
-                          u.status === 'active' ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
+                          u.status === 'active' ? 'bg-green-100 text-green-800' : 'bg-slate-100 text-slate-800'
                         }`}>
                           {u.status}
                         </span>

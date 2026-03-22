@@ -88,7 +88,7 @@ export default function MyLeavePage() {
       'pending': { color: 'text-yellow-800', bg: 'bg-yellow-100' },
       'rejected': { color: 'text-red-800', bg: 'bg-red-100' },
     }
-    const style = statusMap[status.toLowerCase()] || { color: 'text-gray-800', bg: 'bg-gray-100' }
+    const style = statusMap[status.toLowerCase()] || { color: 'text-slate-800', bg: 'bg-slate-100' }
     return (
       <span className={`px-3 py-1 rounded-full text-xs font-semibold ${style.bg} ${style.color}`}>
         {status}
@@ -102,8 +102,8 @@ export default function MyLeavePage() {
         {/* Header */}
         <div className="flex justify-between items-center mb-6">
           <div>
-            <h1 className="text-2xl font-semibold text-gray-900 mb-1">My Leave Requests</h1>
-            <p className="text-sm text-gray-600">Request time off and track your leave</p>
+            <h1 className="text-2xl font-semibold text-slate-900 mb-1">My Leave Requests</h1>
+            <p className="text-sm text-slate-600">Request time off and track your leave</p>
           </div>
           <button
             onClick={() => setShowForm(!showForm)}
@@ -115,14 +115,14 @@ export default function MyLeavePage() {
 
         {/* Form Card */}
         {showForm && (
-          <div className="bg-white rounded-lg border border-gray-200 p-6 mb-6">
-            <h2 className="text-lg font-semibold text-gray-900 mb-4">New Leave Request</h2>
+          <div className="bg-white rounded-lg border border-slate-200 p-6 mb-6">
+            <h2 className="text-lg font-semibold text-slate-900 mb-4">New Leave Request</h2>
             <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Leave Type</label>
+                <label className="block text-sm font-medium text-slate-700 mb-2">Leave Type</label>
                 <select
                   {...register('type')}
-                  className="block w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                  className="block w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
                 >
                   <option value="vacation">Vacation</option>
                   <option value="sick">Sick Leave</option>
@@ -135,22 +135,22 @@ export default function MyLeavePage() {
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Start Date</label>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">Start Date</label>
                   <input
                     {...register('start_date')}
                     type="date"
-                    className="block w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                    className="block w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
                   />
                   {errors.start_date && (
                     <p className="mt-1 text-sm text-red-600">{errors.start_date.message}</p>
                   )}
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">End Date</label>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">End Date</label>
                   <input
                     {...register('end_date')}
                     type="date"
-                    className="block w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                    className="block w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
                   />
                   {errors.end_date && (
                     <p className="mt-1 text-sm text-red-600">{errors.end_date.message}</p>
@@ -158,11 +158,11 @@ export default function MyLeavePage() {
                 </div>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Reason (optional)</label>
+                <label className="block text-sm font-medium text-slate-700 mb-2">Reason (optional)</label>
                 <textarea
                   {...register('reason')}
                   rows={4}
-                  className="block w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                  className="block w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
                   placeholder="Please provide a reason for your leave request..."
                 />
               </div>
@@ -182,40 +182,40 @@ export default function MyLeavePage() {
         {loading ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {Array.from({ length: 6 }).map((_, idx) => (
-              <div key={idx} className="bg-white rounded-lg border border-gray-200 p-5 animate-pulse">
-                <div className="h-6 bg-gray-200 rounded mb-4 w-24"></div>
-                <div className="h-4 bg-gray-200 rounded mb-2 w-full"></div>
-                <div className="h-4 bg-gray-200 rounded w-3/4"></div>
+              <div key={idx} className="bg-white rounded-lg border border-slate-200 p-5 animate-pulse">
+                <div className="h-6 bg-slate-200 rounded mb-4 w-24"></div>
+                <div className="h-4 bg-slate-200 rounded mb-2 w-full"></div>
+                <div className="h-4 bg-slate-200 rounded w-3/4"></div>
               </div>
             ))}
           </div>
         ) : requests.length === 0 ? (
-          <div className="bg-white rounded-lg border border-gray-200 p-12 text-center">
-            <p className="text-gray-500 font-medium">No leave requests found</p>
-            <p className="text-gray-400 text-sm mt-1">Click &quot;Request Leave&quot; to create your first request</p>
+          <div className="bg-white rounded-lg border border-slate-200 p-12 text-center">
+            <p className="text-slate-500 font-medium">No leave requests found</p>
+            <p className="text-slate-400 text-sm mt-1">Click &quot;Request Leave&quot; to create your first request</p>
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {requests.map((request) => (
-              <div key={request.id} className="bg-white rounded-lg border border-gray-200 p-5">
+              <div key={request.id} className="bg-white rounded-lg border border-slate-200 p-5">
                 <div className="flex items-start justify-between mb-4">
                   <div>
-                    <h3 className="font-semibold text-gray-900 capitalize mb-2">{request.type}</h3>
+                    <h3 className="font-semibold text-slate-900 capitalize mb-2">{request.type}</h3>
                     <div>{getStatusBadge(request.status)}</div>
                   </div>
                 </div>
                 <div className="space-y-2 mb-4">
-                  <div className="text-sm text-gray-600">
+                  <div className="text-sm text-slate-600">
                     {format(new Date(request.start_date), 'MMM dd')} - {format(new Date(request.end_date), 'MMM dd, yyyy')}
                   </div>
                   {request.reason && (
-                    <p className="text-sm text-gray-600 line-clamp-2">{request.reason}</p>
+                    <p className="text-sm text-slate-600 line-clamp-2">{request.reason}</p>
                   )}
                   {request.review_comment && (
-                    <div className="mt-3 pt-3 border-t border-gray-200">
-                      <p className="text-xs text-gray-500 font-medium mb-1">Review Comment:</p>
+                    <div className="mt-3 pt-3 border-t border-slate-200">
+                      <p className="text-xs text-slate-500 font-medium mb-1">Review Comment:</p>
                       {/* User-supplied: React text content (escaped). Do not use dangerouslySetInnerHTML. */}
-                      <p className="text-sm text-gray-700">{request.review_comment}</p>
+                      <p className="text-sm text-slate-700">{request.review_comment}</p>
                     </div>
                   )}
                 </div>

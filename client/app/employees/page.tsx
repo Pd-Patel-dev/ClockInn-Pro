@@ -13,7 +13,7 @@ import { useDebounce } from '@/hooks/useDebounce'
 import { TableSkeleton } from '@/components/LoadingSkeleton'
 import { EmployeeRow } from '@/components/EmployeeRow'
 import { useToast } from '@/components/Toast'
-import { LoadingSpinner, ButtonSpinner } from '@/components/LoadingSpinner'
+import { ButtonSpinner } from '@/components/LoadingSpinner'
 import { FormField, Input, Select } from '@/components/FormField'
 import ConfirmationDialog from '@/components/ConfirmationDialog'
 
@@ -243,142 +243,116 @@ export default function AdminEmployeesPage() {
 
   return (
     <Layout>
-      <div className="px-4 py-6 sm:px-0">
-        <div className="flex justify-between items-center mb-6">
-          <h1 className="text-2xl font-bold">Employees</h1>
+      <div className="space-y-6">
+        <div className="flex flex-col gap-4 sm:flex-row sm:justify-between sm:items-start">
+          <div className="mb-6 sm:mb-0">
+            <h1 className="text-2xl font-semibold text-slate-900">Employees</h1>
+            <p className="mt-1 text-sm text-slate-500">Manage team members, roles, and access.</p>
+          </div>
           <button
+            type="button"
             onClick={() => setShowForm(true)}
-            className="px-4 py-2 bg-primary-600 text-white rounded-md hover:bg-primary-700"
+            className="shrink-0 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
           >
-            Add Employee
+            Add employee
           </button>
         </div>
 
-        {/* Search and Filters */}
-        <div className="mb-4 space-y-3">
-          {/* Search Input */}
-          <div>
-            <input
-              type="text"
-              placeholder="Search by name, email, or job role..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full px-4 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm"
-            />
-          </div>
-          
-          {/* Status Filter */}
-          <div className="flex gap-2">
-            <button
-              onClick={() => setStatusFilter('all')}
-              className={`px-4 py-2 rounded-md text-sm font-medium ${
-                statusFilter === 'all'
-                  ? 'bg-primary-600 text-white'
-                  : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-              }`}
-            >
-              All
-            </button>
-            <button
-              onClick={() => setStatusFilter('active')}
-              className={`px-4 py-2 rounded-md text-sm font-medium ${
-                statusFilter === 'active'
-                  ? 'bg-green-600 text-white'
-                  : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-              }`}
-            >
-              Active
-            </button>
-            <button
-              onClick={() => setStatusFilter('inactive')}
-              className={`px-4 py-2 rounded-md text-sm font-medium ${
-                statusFilter === 'inactive'
-                  ? 'bg-red-600 text-white'
-                  : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-              }`}
-            >
-              Inactive
-            </button>
+        <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+          <input
+            type="search"
+            placeholder="Search name or email…"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="bg-white border border-slate-200 rounded-lg px-3 py-2 w-full max-w-xs text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            aria-label="Search employees"
+          />
+          <div className="flex flex-wrap gap-2">
+            {(['all', 'active', 'inactive'] as const).map((f) => (
+              <button
+                key={f}
+                type="button"
+                onClick={() => setStatusFilter(f)}
+                className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                  statusFilter === f
+                    ? 'bg-blue-600 text-white'
+                    : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-50'
+                }`}
+              >
+                {f === 'all' ? 'All' : f === 'active' ? 'Active' : 'Inactive'}
+              </button>
+            ))}
           </div>
         </div>
+
         {loading ? (
-          <div className="text-center py-8">Loading...</div>
+          <TableSkeleton rows={6} columns={10} />
         ) : (
-          <div className="bg-white shadow rounded-lg overflow-hidden">
+          <div className="overflow-hidden border border-slate-200 rounded-xl shadow-sm bg-white">
             <div className="overflow-x-auto">
-              <table className="w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Name
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Email
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Role
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Status
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Clock Status
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Has PIN
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Pay Rate
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Created At
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Last Punch
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Actions
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
-                {filteredEmployees.length === 0 ? (
+              <table className="w-full text-sm">
+                <thead className="bg-slate-50 border-b border-slate-200">
                   <tr>
-                    <td colSpan={11} className="px-6 py-4 text-center text-gray-500">
-                      No employees found
-                    </td>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wide">Name</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wide">Email</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wide">Role</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wide">Status</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wide">Clock</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wide">PIN</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wide">Pay rate</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wide">Created</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wide">Last punch</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wide">Actions</th>
                   </tr>
-                ) : (
-                  filteredEmployees.map((employee) => (
-                    <EmployeeRow
-                      key={employee.id}
-                      employee={employee}
-                      onEdit={openEditForm}
-                      onDelete={deleteEmployee}
-                      deletingEmployee={deletingEmployee}
-                    />
-                  ))
-                )}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {filteredEmployees.length === 0 ? (
+                    <tr>
+                      <td colSpan={10} className="px-4 py-16">
+                        <div className="flex flex-col items-center justify-center text-center">
+                          <div className="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center mb-4">
+                            <svg className="w-6 h-6 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+                            </svg>
+                          </div>
+                          <p className="text-sm font-medium text-slate-700">No employees found</p>
+                          <p className="text-sm text-slate-400 mt-1">Try adjusting search or filters</p>
+                        </div>
+                      </td>
+                    </tr>
+                  ) : (
+                    filteredEmployees.map((employee) => (
+                      <EmployeeRow
+                        key={employee.id}
+                        employee={employee}
+                        onEdit={openEditForm}
+                        onDelete={deleteEmployee}
+                        deletingEmployee={deletingEmployee}
+                      />
+                    ))
+                  )}
+                </tbody>
+              </table>
             </div>
           </div>
         )}
 
         {/* Add Employee Modal */}
         {showForm && (
-          <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center">
-            <div className="relative bg-white rounded-lg shadow-xl p-6 w-full max-w-md m-4">
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm overflow-y-auto">
+            <div className="relative bg-white rounded-2xl border border-slate-200 shadow-xl w-full max-w-md p-6">
               <div className="flex justify-between items-center mb-4">
-                <h2 className="text-xl font-semibold">New Employee</h2>
+                <h2 className="text-lg font-semibold text-slate-900">New employee</h2>
                 <button
+                  type="button"
                   onClick={closeAddForm}
-                  className="text-gray-400 hover:text-gray-600 text-2xl"
+                  className="p-2 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors text-xl leading-none"
+                  aria-label="Close"
                 >
                   ×
                 </button>
               </div>
-              <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+              <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
                 <FormField label="Name" error={errors.name?.message} required>
                   <Input {...register('name')} error={!!errors.name} />
                 </FormField>
@@ -395,8 +369,8 @@ export default function AdminEmployeesPage() {
                   </Select>
                 </FormField>
                 
-                <div className="bg-blue-50 border border-blue-200 rounded-md p-3 text-sm text-blue-800">
-                  <p className="font-medium mb-1">Password Setup</p>
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-sm text-blue-800">
+                  <p className="font-medium mb-1">Password setup</p>
                   <p>The employee will receive an email with a link to set their password.</p>
                 </div>
                 
@@ -408,22 +382,22 @@ export default function AdminEmployeesPage() {
                   <Input {...register('pay_rate')} type="number" step="0.01" min="0" error={!!errors.pay_rate} />
                 </FormField>
                 
-                <div className="flex gap-3 pt-4">
-                  <button
-                    type="submit"
-                    disabled={submitting}
-                    className="flex-1 px-4 py-2 bg-primary-600 text-white rounded-md hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-                  >
-                    {submitting && <ButtonSpinner />}
-                    {submitting ? 'Creating...' : 'Create Employee'}
-                  </button>
+                <div className="flex justify-end gap-3 pt-4 border-t border-slate-100">
                   <button
                     type="button"
                     onClick={closeAddForm}
                     disabled={submitting}
-                    className="flex-1 px-4 py-2 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300 disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="px-4 py-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 text-sm font-medium rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={submitting}
+                    className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                  >
+                    {submitting && <ButtonSpinner />}
+                    {submitting ? 'Creating…' : 'Create employee'}
                   </button>
                 </div>
               </form>
@@ -433,17 +407,17 @@ export default function AdminEmployeesPage() {
 
         {/* Edit Employee Modal */}
         {editingEmployee && (
-          <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center p-4">
-            <div className="relative bg-white rounded-xl shadow-2xl w-full max-w-2xl m-4">
-              {/* Header */}
-              <div className="flex justify-between items-center px-8 py-6 border-b border-gray-200">
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm overflow-y-auto">
+            <div className="relative bg-white rounded-2xl border border-slate-200 shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+              <div className="flex justify-between items-center px-6 py-5 border-b border-slate-200">
                 <div>
-                  <h3 className="text-2xl font-bold text-gray-900">Edit Employee</h3>
-                  <p className="text-sm text-gray-500 mt-1">Update employee information below</p>
+                  <h3 className="text-lg font-semibold text-slate-900">Edit employee</h3>
+                  <p className="text-sm text-slate-500 mt-1">Update information below</p>
                 </div>
                 <button
+                  type="button"
                   onClick={closeEditForm}
-                  className="text-gray-400 hover:text-gray-600 text-3xl leading-none transition-colors"
+                  className="p-2 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 text-2xl leading-none transition-colors"
                   disabled={updating}
                   aria-label="Close"
                 >
@@ -451,12 +425,10 @@ export default function AdminEmployeesPage() {
                 </button>
               </div>
 
-              {/* Form Content */}
-              <form onSubmit={handleSubmitEdit(onEditSubmit)} className="p-8">
-                {/* Basic Information Section */}
+              <form onSubmit={handleSubmitEdit(onEditSubmit)} className="p-6">
                 <div className="mb-8">
-                  <h4 className="text-lg font-semibold text-gray-900 mb-4 pb-2 border-b border-gray-200">
-                    Basic Information
+                  <h4 className="text-lg font-semibold text-slate-900 mb-4 pb-2 border-b border-slate-100">
+                    Basic information
                   </h4>
                   <div className="space-y-5">
                 <FormField label="Name" error={editErrors.name?.message} required>
@@ -468,7 +440,7 @@ export default function AdminEmployeesPage() {
                     type="email"
                     value={editingEmployee.email}
                     disabled
-                    className="bg-gray-100 text-gray-500 cursor-not-allowed"
+                    className="bg-slate-50 text-slate-500 cursor-not-allowed"
                   />
                 </FormField>
                 
@@ -492,8 +464,8 @@ export default function AdminEmployeesPage() {
 
                 {/* Additional Details Section */}
                 <div className="mb-8">
-                  <h4 className="text-lg font-semibold text-gray-900 mb-4 pb-2 border-b border-gray-200">
-                    Additional Details
+                  <h4 className="text-lg font-semibold text-slate-900 mb-4 pb-2 border-b border-slate-100">
+                    Additional details
                   </h4>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <FormField 
@@ -517,22 +489,22 @@ export default function AdminEmployeesPage() {
                 </div>
 
                 {/* Action Buttons */}
-                <div className="flex gap-4 pt-6 mt-8 border-t border-gray-200">
-                  <button
-                    type="submit"
-                    disabled={updating}
-                    className="flex-1 px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-semibold text-sm shadow-md hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:shadow-md flex items-center justify-center gap-2"
-                  >
-                    {updating && <ButtonSpinner />}
-                    {updating ? 'Saving...' : 'Save Changes'}
-                  </button>
+                <div className="flex justify-end gap-3 pt-4 border-t border-slate-100">
                   <button
                     type="button"
                     onClick={closeEditForm}
                     disabled={updating}
-                    className="px-6 py-3 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 font-semibold text-sm transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="px-4 py-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 text-sm font-medium rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={updating}
+                    className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                  >
+                    {updating && <ButtonSpinner />}
+                    {updating ? 'Saving…' : 'Save changes'}
                   </button>
                 </div>
               </form>

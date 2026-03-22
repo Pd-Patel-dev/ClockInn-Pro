@@ -534,10 +534,10 @@ export default function KioskSlugPage() {
   // Error state
   if (error) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+      <div className="min-h-screen flex items-center justify-center bg-slate-50">
         <div className="text-center p-8">
-          <h1 className="text-2xl font-bold text-gray-800 mb-4">Kiosk Not Available</h1>
-          <p className="text-gray-600">{error}</p>
+          <h1 className="text-2xl font-bold text-slate-800 mb-4">Kiosk Not Available</h1>
+          <p className="text-slate-600">{error}</p>
         </div>
       </div>
     )
@@ -546,10 +546,10 @@ export default function KioskSlugPage() {
   // Loading state
   if (loadingCompany) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+      <div className="min-h-screen flex items-center justify-center bg-slate-50">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-teal-700 mx-auto"></div>
-          <p className="mt-4 text-gray-600">Loading...</p>
+          <p className="mt-4 text-slate-600">Loading...</p>
         </div>
       </div>
     )
@@ -566,7 +566,7 @@ export default function KioskSlugPage() {
           {/* Top Section */}
           <div>
             {/* Date */}
-            <p className="text-gray-300 text-sm mb-6">{currentDate}</p>
+            <p className="text-slate-300 text-sm mb-6">{currentDate}</p>
             
             {/* Large Time Display */}
             <h1 className="text-6xl font-bold text-white mb-12">
@@ -608,7 +608,7 @@ export default function KioskSlugPage() {
                       ? 'bg-green-50 border-green-200 text-green-700'
                       : locationError
                         ? 'bg-red-50 border-red-200 text-red-700'
-                        : 'bg-gray-50 border-gray-200 text-gray-600'
+                        : 'bg-slate-50 border-slate-200 text-slate-600'
                 }`}
               >
                 {locationLoading ? (
@@ -628,10 +628,10 @@ export default function KioskSlugPage() {
             {/* Greeting */}
             {employeeInfo ? (
               <>
-                <h2 className="text-2xl font-bold text-gray-800 mb-2">
+                <h2 className="text-2xl font-bold text-slate-800 mb-2">
                   {isClockIn ? `Welcome, ${employeeInfo.name}!` : `Hello, ${employeeInfo.name}!`}
                 </h2>
-                <p className="text-gray-600 text-sm mb-2">
+                <p className="text-slate-600 text-sm mb-2">
                   {isClockIn 
                     ? 'Ready to start your shift? Please enter the starting cash amount.'
                     : `You clocked in at ${employeeInfo.clockInAt || 'earlier'}. Ready to end your shift?`
@@ -640,11 +640,11 @@ export default function KioskSlugPage() {
               </>
             ) : (
               <>
-            <h2 className="text-2xl font-bold text-gray-800 mb-2">
+            <h2 className="text-2xl font-bold text-slate-800 mb-2">
               Enter your PIN
             </h2>
             {/* Instructions */}
-            <p className="text-gray-600 text-sm mb-8">
+            <p className="text-slate-600 text-sm mb-8">
               Please enter your 4-digit PIN code to verify it&apos;s you. You can use your keyboard or the keypad below.
             </p>
               </>
@@ -672,7 +672,7 @@ export default function KioskSlugPage() {
                   className={`w-4 h-4 rounded-full border-2 transition-all ${
                     pinDisplay.length > index
                       ? 'bg-teal-700 border-teal-700'
-                      : 'border-gray-400'
+                      : 'border-slate-400'
                   }`}
                 />
               ))}
@@ -683,7 +683,7 @@ export default function KioskSlugPage() {
             {checkingPin && (
               <div className="flex justify-center items-center mb-8">
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-teal-700"></div>
-                <span className="ml-3 text-gray-600">Verifying PIN...</span>
+                <span className="ml-3 text-slate-600">Verifying PIN...</span>
               </div>
             )}
 
@@ -695,7 +695,7 @@ export default function KioskSlugPage() {
                   type="button"
                   onClick={() => appendPin(num.toString())}
                   disabled={loading}
-                  className="h-14 bg-white hover:bg-gray-50 active:bg-gray-100 border border-gray-300 rounded-lg text-lg font-semibold text-gray-700 disabled:opacity-40 disabled:cursor-not-allowed transition-all duration-150 shadow-sm hover:shadow focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-1"
+                  className="h-14 bg-white hover:bg-slate-50 active:bg-slate-100 border border-slate-300 rounded-lg text-lg font-semibold text-slate-700 disabled:opacity-40 disabled:cursor-not-allowed transition-all duration-150 shadow-sm hover:shadow focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-1"
                 >
                   {num}
                 </button>
@@ -706,7 +706,7 @@ export default function KioskSlugPage() {
                 type="button"
                 onClick={clearPin}
                 disabled={loading || pinDisplay.length === 0}
-                className="col-span-2 h-14 bg-gray-100 hover:bg-gray-200 active:bg-gray-300 border border-gray-300 rounded-lg text-base font-semibold text-gray-700 disabled:opacity-40 disabled:cursor-not-allowed transition-all duration-150 shadow-sm hover:shadow focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-1"
+                className="col-span-2 h-14 bg-slate-100 hover:bg-slate-200 active:bg-slate-300 border border-slate-300 rounded-lg text-base font-semibold text-slate-700 disabled:opacity-40 disabled:cursor-not-allowed transition-all duration-150 shadow-sm hover:shadow focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-1"
               >
                 Clear
               </button>
@@ -714,7 +714,7 @@ export default function KioskSlugPage() {
                 type="button"
                 onClick={() => appendPin('0')}
                 disabled={loading}
-                className="h-14 bg-white hover:bg-gray-50 active:bg-gray-100 border border-gray-300 rounded-lg text-lg font-semibold text-gray-700 disabled:opacity-40 disabled:cursor-not-allowed transition-all duration-150 shadow-sm hover:shadow focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-1"
+                className="h-14 bg-white hover:bg-slate-50 active:bg-slate-100 border border-slate-300 rounded-lg text-lg font-semibold text-slate-700 disabled:opacity-40 disabled:cursor-not-allowed transition-all duration-150 shadow-sm hover:shadow focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-1"
               >
                 0
               </button>
@@ -725,7 +725,7 @@ export default function KioskSlugPage() {
               type="button"
               onClick={() => handlePunch()}
               disabled={loading || pinDisplay.length !== 4}
-              className="w-full h-16 bg-teal-700 hover:bg-teal-800 active:bg-teal-900 text-white rounded-lg text-lg font-bold disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-150 shadow-lg hover:shadow-xl focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 mb-6"
+              className="w-full h-16 bg-teal-700 hover:bg-teal-800 active:bg-teal-900 text-white rounded-lg text-lg font-bold disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-150 shadow-sm hover:shadow-xl focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 mb-6"
             >
               {loading ? (
                 <span className="flex items-center justify-center gap-2">
@@ -753,7 +753,7 @@ export default function KioskSlugPage() {
               <button
                 type="button"
                 onClick={() => router.push('/')}
-                className="text-gray-600 text-sm hover:text-gray-800 hover:underline focus:outline-none flex items-center gap-1 transition-colors"
+                className="text-slate-600 text-sm hover:text-slate-800 hover:underline focus:outline-none flex items-center gap-1 transition-colors"
               >
                 <span>←</span> Cancel
               </button>
@@ -765,9 +765,9 @@ export default function KioskSlugPage() {
       {/* Cash Drawer Dialog */}
       {showCashDialog && (
         <div className="fixed inset-0 bg-black/70 backdrop-blur-sm overflow-y-auto h-full w-full z-[9999] flex items-center justify-center p-4 animate-in fade-in duration-200">
-          <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-2xl m-4 transform transition-all animate-in zoom-in-95 duration-200 max-h-[90vh] overflow-y-auto">
+          <div className="relative bg-white rounded-2xl shadow-xl w-full max-w-2xl m-4 transform transition-all animate-in zoom-in-95 duration-200 max-h-[90vh] overflow-y-auto">
             {/* Header */}
-            <div className="px-8 pt-8 pb-6 bg-gradient-to-r from-teal-50 to-emerald-50 rounded-t-2xl border-b border-gray-100">
+            <div className="px-8 pt-8 pb-6 bg-gradient-to-r from-teal-50 to-emerald-50 rounded-t-2xl border-b border-slate-100">
               <div className="flex items-center justify-center mb-3">
                 <div className="p-3 bg-teal-100 rounded-full">
                   <svg className="w-6 h-6 text-teal-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -775,7 +775,7 @@ export default function KioskSlugPage() {
                   </svg>
                 </div>
               </div>
-              <h3 className="text-2xl font-bold text-gray-900 text-center mb-2">
+              <h3 className="text-2xl font-bold text-slate-900 text-center mb-2">
                 {isClockIn ? 'Start Your Shift' : 'End Your Shift'}
               </h3>
               {employeeInfo && (
@@ -783,7 +783,7 @@ export default function KioskSlugPage() {
                   {isClockIn ? `Welcome, ${employeeInfo.name}!` : `Hello, ${employeeInfo.name}!`}
                 </p>
               )}
-              <p className="text-sm text-gray-600 mt-2 text-center">
+              <p className="text-sm text-slate-600 mt-2 text-center">
                 {isClockIn ? 'Enter the starting cash amount in the drawer' : 'Enter all cash amounts for your shift'}
               </p>
             </div>
@@ -793,12 +793,12 @@ export default function KioskSlugPage() {
               {isClockIn ? (
                 // Clock-in: Only need starting cash
                 <div className="mb-8">
-                  <label className="block text-sm font-semibold text-gray-700 mb-4 text-center">
+                  <label className="block text-sm font-semibold text-slate-700 mb-4 text-center">
                     Starting Cash Amount <span className="text-red-500">*</span>
                   </label>
                   <div className="relative group">
                     <div className="absolute inset-y-0 left-0 pl-5 flex items-center pointer-events-none">
-                      <span className="text-gray-400 text-2xl font-medium">$</span>
+                      <span className="text-slate-400 text-2xl font-medium">$</span>
                     </div>
                     <input
                       type="number"
@@ -818,7 +818,7 @@ export default function KioskSlugPage() {
                       className={`block w-full pl-12 pr-5 py-5 border-2 rounded-xl text-center text-3xl font-bold tracking-wide focus:outline-none focus:ring-4 focus:ring-teal-100 transition-all ${
                         cashError 
                           ? 'border-red-300 bg-red-50 focus:border-red-400 focus:ring-red-100' 
-                          : 'border-gray-200 bg-gray-50 focus:border-teal-500 focus:bg-white'
+                          : 'border-slate-200 bg-slate-50 focus:border-teal-500 focus:bg-white'
                       }`}
                       placeholder={companyInfo?.cash_drawer_starting_amount_cents 
                         ? (companyInfo.cash_drawer_starting_amount_cents / 100).toFixed(2)
@@ -834,7 +834,7 @@ export default function KioskSlugPage() {
                       <span>{cashError}</span>
                     </div>
                   )}
-                  <p className="mt-3 text-xs text-gray-500 text-center">
+                  <p className="mt-3 text-xs text-slate-500 text-center">
                     Enter the starting cash amount in dollars
                   </p>
                 </div>
@@ -842,7 +842,7 @@ export default function KioskSlugPage() {
                 // Clock-out: Need collected cash, beverages cash, and drawer cash
                 <div className="space-y-6 mb-8">
                   <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-3">
+                    <label className="block text-sm font-semibold text-slate-700 mb-3">
                       <div className="flex items-center gap-2">
                         <svg className="w-4 h-4 text-teal-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -853,7 +853,7 @@ export default function KioskSlugPage() {
                     </label>
                     <div className="relative group">
                       <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                        <span className="text-gray-400 text-xl font-medium">$</span>
+                        <span className="text-slate-400 text-xl font-medium">$</span>
                       </div>
                       <input
                         type="number"
@@ -868,17 +868,17 @@ export default function KioskSlugPage() {
                         className={`block w-full pl-10 pr-4 py-4 border-2 rounded-xl text-lg font-semibold focus:outline-none focus:ring-4 focus:ring-teal-100 transition-all ${
                           cashError 
                             ? 'border-red-300 bg-red-50 focus:border-red-400 focus:ring-red-100' 
-                            : 'border-gray-200 bg-gray-50 focus:border-teal-500 focus:bg-white'
+                            : 'border-slate-200 bg-slate-50 focus:border-teal-500 focus:bg-white'
                         }`}
                         placeholder="0.00"
                         disabled={loading}
                       />
                     </div>
-                    <p className="mt-2 text-xs text-gray-500">Total cash collected from customers</p>
+                    <p className="mt-2 text-xs text-slate-500">Total cash collected from customers</p>
                   </div>
                   
                   <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-3">
+                    <label className="block text-sm font-semibold text-slate-700 mb-3">
                       <div className="flex items-center gap-2">
                         <span>Drop Amount</span>
                         <span className="text-red-500">*</span>
@@ -886,7 +886,7 @@ export default function KioskSlugPage() {
                     </label>
                     <div className="relative group">
                       <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                        <span className="text-gray-400 text-xl font-medium">$</span>
+                        <span className="text-slate-400 text-xl font-medium">$</span>
                       </div>
                       <input
                         type="number"
@@ -900,17 +900,17 @@ export default function KioskSlugPage() {
                         className={`block w-full pl-10 pr-4 py-4 border-2 rounded-xl text-lg font-semibold focus:outline-none focus:ring-4 focus:ring-teal-100 transition-all ${
                           cashError 
                             ? 'border-red-300 bg-red-50 focus:border-red-400 focus:ring-red-100' 
-                            : 'border-gray-200 bg-gray-50 focus:border-teal-500 focus:bg-white'
+                            : 'border-slate-200 bg-slate-50 focus:border-teal-500 focus:bg-white'
                         }`}
                         placeholder="0.00"
                         disabled={loading}
                       />
                     </div>
-                    <p className="mt-2 text-xs text-gray-500">Cash removed/dropped from drawer during shift</p>
+                    <p className="mt-2 text-xs text-slate-500">Cash removed/dropped from drawer during shift</p>
                   </div>
                   
                   <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-3">
+                    <label className="block text-sm font-semibold text-slate-700 mb-3">
                       <div className="flex items-center gap-2">
                         <svg className="w-4 h-4 text-teal-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
@@ -921,7 +921,7 @@ export default function KioskSlugPage() {
                     </label>
                     <div className="relative group">
                       <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                        <span className="text-gray-400 text-xl font-medium">$</span>
+                        <span className="text-slate-400 text-xl font-medium">$</span>
                       </div>
                       <input
                         type="number"
@@ -935,17 +935,17 @@ export default function KioskSlugPage() {
                         className={`block w-full pl-10 pr-4 py-4 border-2 rounded-xl text-lg font-semibold focus:outline-none focus:ring-4 focus:ring-teal-100 transition-all ${
                           cashError 
                             ? 'border-red-300 bg-red-50 focus:border-red-400 focus:ring-red-100' 
-                            : 'border-gray-200 bg-gray-50 focus:border-teal-500 focus:bg-white'
+                            : 'border-slate-200 bg-slate-50 focus:border-teal-500 focus:bg-white'
                         }`}
                         placeholder="0.00"
                         disabled={loading}
                       />
                     </div>
-                    <p className="mt-2 text-xs text-gray-500">Total beverage sales during shift (all payment types)</p>
+                    <p className="mt-2 text-xs text-slate-500">Total beverage sales during shift (all payment types)</p>
                   </div>
                   
                   <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-3">
+                    <label className="block text-sm font-semibold text-slate-700 mb-3">
                       <div className="flex items-center gap-2">
                         <svg className="w-4 h-4 text-teal-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
@@ -956,7 +956,7 @@ export default function KioskSlugPage() {
                     </label>
                     <div className="relative group">
                       <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                        <span className="text-gray-400 text-xl font-medium">$</span>
+                        <span className="text-slate-400 text-xl font-medium">$</span>
                       </div>
                       <input
                         type="number"
@@ -975,13 +975,13 @@ export default function KioskSlugPage() {
                         className={`block w-full pl-10 pr-4 py-4 border-2 rounded-xl text-lg font-semibold focus:outline-none focus:ring-4 focus:ring-teal-100 transition-all ${
                           cashError 
                             ? 'border-red-300 bg-red-50 focus:border-red-400 focus:ring-red-100' 
-                            : 'border-gray-200 bg-gray-50 focus:border-teal-500 focus:bg-white'
+                            : 'border-slate-200 bg-slate-50 focus:border-teal-500 focus:bg-white'
                         }`}
                         placeholder="0.00"
                         disabled={loading}
                       />
                     </div>
-                    <p className="mt-2 text-xs text-gray-500">Final cash amount remaining in drawer</p>
+                    <p className="mt-2 text-xs text-slate-500">Final cash amount remaining in drawer</p>
                   </div>
                   
                   {cashError && (
@@ -996,7 +996,7 @@ export default function KioskSlugPage() {
               )}
 
               {/* Action Buttons */}
-              <div className="flex gap-3 pt-4 border-t border-gray-100">
+              <div className="flex gap-3 pt-4 border-t border-slate-100">
                 <button
                   type="button"
                   onClick={handleCashDialogSubmit}
@@ -1006,7 +1006,7 @@ export default function KioskSlugPage() {
                     parseFloat(cashAmount) < 0 ||
                     (!isClockIn && (!collectedCash || parseFloat(collectedCash) < 0 || !dropAmount || parseFloat(dropAmount) < 0 || !beveragesCash || parseFloat(beveragesCash) < 0))
                   }
-                  className="flex-1 px-6 py-4 bg-gradient-to-r from-teal-600 to-emerald-600 text-white rounded-xl hover:from-teal-700 hover:to-emerald-700 font-semibold text-base disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 shadow-lg hover:shadow-xl transition-all transform hover:scale-[1.02] active:scale-[0.98]"
+                  className="flex-1 px-6 py-4 bg-gradient-to-r from-teal-600 to-emerald-600 text-white rounded-xl hover:from-teal-700 hover:to-emerald-700 font-semibold text-base disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 shadow-sm hover:shadow-xl transition-all transform hover:scale-[1.02] active:scale-[0.98]"
                 >
                   {loading ? (
                     <>
@@ -1029,7 +1029,7 @@ export default function KioskSlugPage() {
                   type="button"
                   onClick={handleCashDialogCancel}
                   disabled={loading}
-                  className="px-6 py-4 bg-gray-100 text-gray-700 rounded-xl hover:bg-gray-200 font-semibold text-base disabled:opacity-50 disabled:cursor-not-allowed transition-all transform hover:scale-[1.02] active:scale-[0.98]"
+                  className="px-6 py-4 bg-slate-100 text-slate-700 rounded-xl hover:bg-slate-200 font-semibold text-base disabled:opacity-50 disabled:cursor-not-allowed transition-all transform hover:scale-[1.02] active:scale-[0.98]"
                 >
                   Cancel
                 </button>

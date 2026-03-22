@@ -128,7 +128,7 @@ async def login(
     normalized_email = normalize_email(request.email)
 
     # Rate limiting: check lockout before any password check
-    locked, lockout_until = is_locked_out(normalized_email)
+    locked, lockout_until = await is_locked_out(normalized_email, client_ip=ip)
     if locked and lockout_until:
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
@@ -151,21 +151,21 @@ async def login(
         # This prevents timing attacks that could reveal if email exists
         dummy_hash = "$argon2id$v=19$m=65536,t=3,p=4$dummy$dummy"
         verify_password(request.password, dummy_hash)
-        record_failed_attempt(normalized_email)
+        await record_failed_attempt(normalized_email, client_ip=ip)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid email or password",
         )
     
     if not verify_password(request.password, user.password_hash):
-        record_failed_attempt(normalized_email)
+        await record_failed_attempt(normalized_email, client_ip=ip)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid email or password",
         )
 
     # Success: clear rate-limit state for this email
-    clear_attempts(normalized_email)
+    await clear_attempts(normalized_email, client_ip=ip)
 
     if user.status != UserStatus.ACTIVE:
         raise HTTPException(
