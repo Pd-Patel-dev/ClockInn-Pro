@@ -309,8 +309,8 @@ export default function MyPunchPage() {
   if (loadingStatus) {
     return (
       <Layout>
-        <div className="min-h-screen flex items-center justify-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+        <div className="flex min-h-screen items-center justify-center bg-slate-50">
+          <div className="h-8 w-8 animate-spin rounded-full border-2 border-slate-300 border-t-blue-600" />
         </div>
       </Layout>
     )
@@ -318,102 +318,104 @@ export default function MyPunchPage() {
 
   return (
     <Layout>
-      <div className="px-4 py-8 sm:px-6 lg:px-8">
-        <div className="max-w-2xl mx-auto">
-          {/* Header */}
-          <div className="mb-6 text-center">
-            <h1 className="text-2xl font-semibold text-slate-900 mb-1">Punch In/Out</h1>
-            {user && (
-              <p className="text-sm text-slate-600">{user.name}</p>
-            )}
+      <div className="min-h-screen bg-slate-50">
+        <div className="mx-auto max-w-sm px-4 py-10">
+          <div className="mb-8 text-center">
+            <h1 className="text-2xl font-semibold text-slate-900">Punch In / Out</h1>
+            <p className="mt-1 text-sm text-slate-500">Enter your 4-digit PIN</p>
+            {user && <p className="mt-1 text-xs text-slate-400">{user.name}</p>}
           </div>
 
-          {/* Status Card */}
           {currentStatus && (
-            <div className={`mb-4 rounded-lg p-4 border ${
-              currentStatus === 'in' 
-                ? 'bg-yellow-50 border-yellow-200' 
-                : 'bg-slate-50 border-slate-200'
-            }`}>
-              <p className="text-center font-medium text-slate-900">
-                {currentStatus === 'in' ? 'Currently Clocked In' : 'Currently Clocked Out'}
-              </p>
+            <div className="mb-6 flex items-center justify-between rounded-2xl border border-slate-200 bg-white px-6 py-4 shadow-sm">
+              <div className="flex items-center gap-2.5">
+                <span
+                  className={`h-2.5 w-2.5 rounded-full ${
+                    currentStatus === 'in' ? 'animate-pulse bg-emerald-500' : 'bg-slate-300'
+                  }`}
+                />
+                <span className="text-sm font-medium text-slate-800">
+                  {currentStatus === 'in' ? 'Clocked In' : 'Clocked Out'}
+                </span>
+              </div>
+              <div
+                className={`inline-flex max-w-[55%] shrink-0 items-center gap-1.5 rounded-full border px-3 py-1 text-xs ${
+                  locationLoading
+                    ? 'border-slate-200 bg-slate-50 text-slate-600'
+                    : location
+                      ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                      : 'border-amber-200 bg-amber-50 text-amber-700'
+                }`}
+              >
+                {locationLoading ? (
+                  <>
+                    <svg className="h-3.5 w-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                    </svg>
+                    <span className="truncate">Getting location…</span>
+                  </>
+                ) : location ? (
+                  <>
+                    <svg className="h-3.5 w-3.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                    </svg>
+                    <span className="truncate">Location ready</span>
+                  </>
+                ) : (
+                  <>
+                    <svg className="h-3.5 w-3.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
+                    </svg>
+                    <span className="truncate">Unavailable</span>
+                  </>
+                )}
+              </div>
             </div>
           )}
 
-          {/* Location Status */}
-          <div className={`mb-6 rounded-lg p-3 border flex items-center justify-center gap-2 text-sm ${
-            locationLoading 
-              ? 'bg-blue-50 border-blue-200 text-blue-700'
-              : location 
-                ? 'bg-green-50 border-green-200 text-green-700'
-                : 'bg-slate-50 border-slate-200 text-slate-600'
-          }`}>
-            {locationLoading ? (
-              <>
-                <svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                </svg>
-                <span>Getting location...</span>
-              </>
-            ) : location ? (
-              <>
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
-                </svg>
-                <span>Location captured</span>
-              </>
-            ) : (
-              <>
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
-                </svg>
-                <span>Location unavailable</span>
-              </>
-            )}
-          </div>
-
-          {/* Main Card */}
-          <div className="bg-white rounded-lg border border-slate-200 p-6">
-            {/* Message Display */}
-            {message && (
-              <div
-                className={`rounded-lg p-3 mb-6 ${
-                  message.includes('failed') || message.includes('Invalid') || message.includes('Please enter')
-                    ? 'bg-red-50 text-red-800 border border-red-200'
-                    : 'bg-green-50 text-green-800 border border-green-200'
-                }`}
-              >
-                <p className="text-center text-sm">{message.replace('✓ ', '')}</p>
+          <div className="relative rounded-2xl border border-slate-200 bg-white p-8 shadow-sm">
+            {loading && (
+              <div className="absolute inset-0 z-10 flex items-center justify-center rounded-2xl bg-white/80 backdrop-blur-[1px]">
+                <div className="flex flex-col items-center gap-2">
+                  <div className="h-8 w-8 animate-spin rounded-full border-2 border-slate-200 border-t-blue-600" />
+                  <span className="text-xs text-slate-500">Processing…</span>
+                </div>
               </div>
             )}
 
-            {/* PIN Display */}
-            <div className="mb-6">
-              <label className="block text-sm font-medium text-slate-700 mb-3 text-center">
-                Enter Your PIN
-              </label>
-              <input
-                type="text"
-                value={pinDisplay}
-                readOnly
-                className="block w-full px-4 py-4 border border-slate-300 rounded-lg text-center text-3xl font-mono tracking-widest focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 bg-slate-50"
-                placeholder="----"
-              />
+            {message && (
+              <p
+                className={`mb-4 min-h-[20px] text-center text-sm ${
+                  message.includes('failed') || message.includes('Invalid') || message.includes('Please enter')
+                    ? 'text-red-500'
+                    : 'text-emerald-600'
+                }`}
+              >
+                {message.replace('✓ ', '')}
+              </p>
+            )}
+
+            <div className="mb-8 flex justify-center gap-4">
+              {[0, 1, 2, 3].map((i) => (
+                <div
+                  key={i}
+                  className={`h-3.5 w-3.5 rounded-full transition-all duration-150 ${
+                    pinDisplay.length > i ? 'scale-110 bg-blue-600' : 'bg-slate-200'
+                  }`}
+                />
+              ))}
             </div>
 
-
-            {/* Number Pad */}
-            <div className="grid grid-cols-3 gap-3 mb-6">
+            <div className="grid grid-cols-3 gap-2.5">
               {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((num) => (
                 <button
                   key={num}
                   type="button"
                   onClick={() => appendPin(num.toString())}
                   disabled={loading}
-                  className="py-4 px-4 border border-slate-300 rounded-lg bg-white text-slate-700 hover:bg-slate-50 focus:outline-none focus:ring-1 focus:ring-blue-500 text-xl font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="h-14 rounded-xl border border-slate-200 bg-slate-50 text-lg font-medium text-slate-900 transition-all duration-100 hover:bg-slate-100 active:scale-95 active:bg-slate-200 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   {num}
                 </button>
@@ -422,7 +424,7 @@ export default function MyPunchPage() {
                 type="button"
                 onClick={clearPin}
                 disabled={loading}
-                className="py-4 px-4 border border-slate-300 rounded-lg bg-slate-100 text-slate-700 hover:bg-slate-200 focus:outline-none focus:ring-1 focus:ring-blue-500 font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                className="h-14 rounded-xl border border-slate-200 bg-slate-50 text-sm font-medium text-slate-500 transition-all duration-100 hover:bg-slate-100 active:scale-95 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 Clear
               </button>
@@ -430,7 +432,7 @@ export default function MyPunchPage() {
                 type="button"
                 onClick={() => appendPin('0')}
                 disabled={loading}
-                className="py-4 px-4 border border-slate-300 rounded-lg bg-white text-slate-700 hover:bg-slate-50 focus:outline-none focus:ring-1 focus:ring-blue-500 text-xl font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
+                className="h-14 rounded-xl border border-slate-200 bg-slate-50 text-lg font-medium text-slate-900 transition-all duration-100 hover:bg-slate-100 active:scale-95 active:bg-slate-200 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 0
               </button>
@@ -438,62 +440,37 @@ export default function MyPunchPage() {
                 type="button"
                 onClick={handlePunch}
                 disabled={loading || pinDisplay.length !== 4}
-                className={`py-4 px-4 border rounded-lg text-white font-medium focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed col-span-3 ${
-                  currentStatus === 'in'
-                    ? 'bg-red-600 hover:bg-red-700'
-                    : 'bg-green-600 hover:bg-green-700'
-                }`}
+                className="flex h-14 items-center justify-center rounded-xl bg-blue-600 font-medium text-white transition-all duration-100 hover:bg-blue-700 active:scale-95 disabled:cursor-not-allowed disabled:opacity-50"
               >
-                {loading ? (
-                  <span className="flex items-center justify-center">
-                    <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" fill="none" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                    </svg>
-                    Processing...
-                  </span>
-                ) : (
-                  currentStatus === 'in' ? 'Clock Out' : 'Clock In'
-                )}
+                <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
+                </svg>
               </button>
             </div>
 
-            {/* Instructions */}
-            <div className="text-center text-sm text-slate-500 mt-6">
-              <p>Enter your 4-digit PIN to {currentStatus === 'in' ? 'clock out' : 'clock in'}</p>
-            </div>
+            <p className="mt-6 text-center text-xs text-slate-500">
+              Enter your 4-digit PIN to {currentStatus === 'in' ? 'clock out' : 'clock in'}
+            </p>
           </div>
 
           {/* Cash Drawer Dialog */}
           {showCashDialog && (
-            <div className="fixed inset-0 bg-black/60 backdrop-blur-sm overflow-y-auto h-full w-full z-[9999] flex items-center justify-center p-4 animate-in fade-in duration-200">
-              <div className="relative bg-white rounded-2xl shadow-xl w-full max-w-lg m-4 transform transition-all animate-in zoom-in-95 duration-200">
-                {/* Header */}
-                <div className="px-8 pt-8 pb-6 bg-gradient-to-r from-blue-50 to-blue-50 rounded-t-2xl border-b border-slate-100">
-                  <div className="flex items-center justify-center mb-3">
-                    <div className="p-3 bg-blue-100 rounded-full">
-                      <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
-                      </svg>
-                    </div>
-                  </div>
-                  <h3 className="text-2xl font-bold text-slate-900 text-center mb-2">
-                    {currentStatus === 'in' ? 'Ending Cash Count' : 'Starting Cash Count'}
-                  </h3>
-                  <p className="text-sm text-slate-600 text-center">
-                    {currentStatus === 'in' 
-                      ? 'Enter the final cash amount in the drawer' 
-                      : 'Enter the starting cash amount in the drawer'}
-                  </p>
-                </div>
-
-                {/* Content */}
-                <div className="p-8">
+            <div className="fixed inset-0 z-[9999] flex h-full w-full items-center justify-center overflow-y-auto bg-black/40 p-4 backdrop-blur-sm">
+              <div className="relative m-4 w-full max-w-sm rounded-2xl border border-slate-200 bg-white p-6 shadow-xl">
+                <h3 className="text-center text-lg font-semibold text-slate-900">
+                  {currentStatus === 'in' ? 'Ending cash count' : 'Starting cash count'}
+                </h3>
+                <p className="mb-6 mt-1 text-center text-sm text-slate-500">
+                  {currentStatus === 'in'
+                    ? 'Enter all cash amounts for your shift.'
+                    : 'Enter the starting cash amount in the drawer.'}
+                </p>
+                <div>
                   {currentStatus === 'out' ? (
                     /* Clock-in: only starting cash */
                     <div className="mb-8">
-                      <label className="block text-sm font-semibold text-slate-700 mb-4 text-center">
-                        Cash Amount <span className="text-red-500">*</span>
+                      <label className="mb-4 block text-center text-sm font-medium text-slate-700">
+                        Cash amount <span className="text-red-500">*</span>
                       </label>
                       <div className="relative group">
                         <div className="absolute inset-y-0 left-0 pl-5 flex items-center pointer-events-none">
@@ -514,10 +491,10 @@ export default function MyPunchPage() {
                             }
                           }}
                           autoFocus
-                          className={`block w-full pl-12 pr-5 py-5 border-2 rounded-xl text-center text-3xl font-bold tracking-wide focus:outline-none focus:ring-4 focus:ring-blue-100 transition-all ${
+                          className={`block w-full rounded-xl border-2 py-5 pl-12 pr-5 text-center text-3xl font-semibold tracking-wide text-slate-900 transition-all focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500 ${
                             cashError
-                              ? 'border-red-300 bg-red-50 focus:border-red-400 focus:ring-red-100'
-                              : 'border-slate-200 bg-slate-50 focus:border-blue-500 focus:bg-white'
+                              ? 'border-red-300 bg-red-50'
+                              : 'border-slate-200 bg-white'
                           }`}
                           placeholder="0.00"
                           disabled={loading}
@@ -548,7 +525,7 @@ export default function MyPunchPage() {
                             min="0"
                             value={collectedCash}
                             onChange={(e) => { setCollectedCash(e.target.value); setCashError(null) }}
-                            className={`block w-full pl-8 pr-4 py-3 border rounded-lg ${cashError ? 'border-red-300 bg-red-50' : 'border-slate-300'}`}
+                            className={`block w-full rounded-xl border py-3 pl-8 pr-4 text-sm text-slate-900 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500 ${cashError ? 'border-red-300 bg-red-50' : 'border-slate-200 bg-white'}`}
                             placeholder="0.00"
                             disabled={loading}
                           />
@@ -564,7 +541,7 @@ export default function MyPunchPage() {
                             min="0"
                             value={dropAmount}
                             onChange={(e) => { setDropAmount(e.target.value); setCashError(null) }}
-                            className={`block w-full pl-8 pr-4 py-3 border rounded-lg ${cashError ? 'border-red-300 bg-red-50' : 'border-slate-300'}`}
+                            className={`block w-full rounded-xl border py-3 pl-8 pr-4 text-sm text-slate-900 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500 ${cashError ? 'border-red-300 bg-red-50' : 'border-slate-200 bg-white'}`}
                             placeholder="0.00"
                             disabled={loading}
                           />
@@ -580,7 +557,7 @@ export default function MyPunchPage() {
                             min="0"
                             value={beveragesCash}
                             onChange={(e) => { setBeveragesCash(e.target.value); setCashError(null) }}
-                            className={`block w-full pl-8 pr-4 py-3 border rounded-lg ${cashError ? 'border-red-300 bg-red-50' : 'border-slate-300'}`}
+                            className={`block w-full rounded-xl border py-3 pl-8 pr-4 text-sm text-slate-900 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500 ${cashError ? 'border-red-300 bg-red-50' : 'border-slate-200 bg-white'}`}
                             placeholder="0.00"
                             disabled={loading}
                           />
@@ -600,7 +577,7 @@ export default function MyPunchPage() {
                               setCashError(null)
                             }}
                             onKeyPress={(e) => { if (e.key === 'Enter') handleCashDialogSubmit() }}
-                            className={`block w-full pl-12 pr-5 py-5 border-2 rounded-xl text-center text-2xl font-bold ${cashError ? 'border-red-300 bg-red-50' : 'border-slate-200 bg-slate-50'}`}
+                            className={`block w-full rounded-xl border-2 py-5 pl-12 pr-5 text-center text-2xl font-semibold text-slate-900 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500 ${cashError ? 'border-red-300 bg-red-50' : 'border-slate-200 bg-white'}`}
                             placeholder="0.00"
                             disabled={loading}
                           />
@@ -614,8 +591,7 @@ export default function MyPunchPage() {
                     </div>
                   )}
 
-                  {/* Action Buttons */}
-                  <div className="flex gap-3">
+                  <div className="mt-4 space-y-2 border-t border-slate-100 pt-4">
                     <button
                       type="button"
                       onClick={handleCashDialogSubmit}
@@ -631,19 +607,19 @@ export default function MyPunchPage() {
                             !beveragesCash ||
                             parseFloat(beveragesCash) < 0))
                       }
-                      className="flex-1 px-6 py-4 bg-gradient-to-r from-blue-600 to-blue-600 text-white rounded-xl hover:from-blue-700 hover:to-blue-700 font-semibold text-base disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 shadow-sm hover:shadow-xl transition-all transform hover:scale-[1.02] active:scale-[0.98]"
+                      className="flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 py-3 text-sm font-medium text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
                     >
                       {loading ? (
                         <>
-                          <svg className="animate-spin h-5 w-5 text-white" fill="none" viewBox="0 0 24 24">
+                          <svg className="h-5 w-5 animate-spin text-white" fill="none" viewBox="0 0 24 24">
                             <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                             <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                           </svg>
-                          <span>Processing...</span>
+                          <span>Processing…</span>
                         </>
                       ) : (
                         <>
-                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                           </svg>
                           <span>Continue</span>
@@ -654,7 +630,7 @@ export default function MyPunchPage() {
                       type="button"
                       onClick={handleCashDialogCancel}
                       disabled={loading}
-                      className="px-6 py-4 bg-slate-100 text-slate-700 rounded-xl hover:bg-slate-200 font-semibold text-base disabled:opacity-50 disabled:cursor-not-allowed transition-all transform hover:scale-[1.02] active:scale-[0.98]"
+                      className="w-full py-2.5 text-sm text-slate-500 transition-colors hover:text-slate-700 disabled:opacity-50"
                     >
                       Cancel
                     </button>

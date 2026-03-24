@@ -30,6 +30,17 @@
   :where(a[href], button):focus-visible {
     @apply outline-none ring-2 ring-blue-500 ring-offset-2 ring-offset-slate-50;
   }
+
+  /* Hide browser default steppers on number inputs (cleaner for currency amounts) */
+  input[type='number'] {
+    -moz-appearance: textfield;
+  }
+
+  input[type='number']::-webkit-outer-spin-button,
+  input[type='number']::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
 }
 
 @layer utilities {

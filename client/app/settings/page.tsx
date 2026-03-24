@@ -10,8 +10,6 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import logger from '@/lib/logger'
 import { useToast } from '@/components/Toast'
-import { ButtonSpinner } from '@/components/LoadingSpinner'
-
 const companyNameSchema = z.object({
   name: z.string().min(1, 'Company name is required').max(255, 'Company name is too long'),
 })
@@ -123,7 +121,9 @@ export default function AdminSettingsPage() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [companyInfo, setCompanyInfo] = useState<CompanyInfo | null>(null)
-  const [activeTab, setActiveTab] = useState<'info' | 'payroll' | 'cash' | 'location' | 'kiosk' | 'email'>('info')
+  const [activeTab, setActiveTab] = useState<
+    'info' | 'payroll' | 'cash' | 'location' | 'kiosk' | 'email'
+  >('info')
   const [geofenceGettingLocation, setGeofenceGettingLocation] = useState(false)
   const [gmailHealth, setGmailHealth] = useState<any>(null)
   const [checkingGmail, setCheckingGmail] = useState(false)
@@ -1597,6 +1597,7 @@ export default function AdminSettingsPage() {
             </div>
           </div>
         )}
+
       </div>
     </Layout>
   )

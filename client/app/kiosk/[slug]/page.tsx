@@ -533,11 +533,35 @@ export default function KioskSlugPage() {
 
   // Error state
   if (error) {
+    const isDisabled = error.includes('disabled')
     return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-50">
-        <div className="text-center p-8">
-          <h1 className="text-2xl font-bold text-slate-800 mb-4">Kiosk Not Available</h1>
-          <p className="text-slate-600">{error}</p>
+      <div className="min-h-screen bg-slate-950 flex items-center justify-center p-6">
+        <div
+          className={`w-full max-w-md rounded-2xl border p-8 text-center ${
+            isDisabled
+              ? 'border-amber-500/30 bg-slate-900'
+              : 'border-red-500/20 bg-slate-900'
+          }`}
+        >
+          <div
+            className={`mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full ${
+              isDisabled ? 'bg-amber-500/10 text-amber-400' : 'bg-red-500/10 text-red-400'
+            }`}
+          >
+            {isDisabled ? (
+              <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+              </svg>
+            ) : (
+              <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            )}
+          </div>
+          <h1 className="text-lg font-semibold text-white">
+            {isDisabled ? 'Kiosk unavailable' : 'Kiosk not available'}
+          </h1>
+          <p className="mt-2 text-sm text-slate-400">{error}</p>
         </div>
       </div>
     )
@@ -546,11 +570,9 @@ export default function KioskSlugPage() {
   // Loading state
   if (loadingCompany) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-50">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-teal-700 mx-auto"></div>
-          <p className="mt-4 text-slate-600">Loading...</p>
-        </div>
+      <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center gap-4">
+        <div className="h-8 w-8 rounded-full border-2 border-slate-700 border-t-blue-500 animate-spin" />
+        <p className="text-sm text-slate-400">Loading…</p>
       </div>
     )
   }
@@ -559,242 +581,211 @@ export default function KioskSlugPage() {
   const kioskLocation = 'Main Office' // Could be fetched from company settings
 
   return (
-    <div className="min-h-screen flex">
-      <div className="w-full flex">
-        {/* Left Panel - Dark Teal */}
-        <div className="w-1/3 bg-teal-700 flex flex-col justify-between p-8">
-          {/* Top Section */}
-          <div>
-            {/* Date */}
-            <p className="text-slate-300 text-sm mb-6">{currentDate}</p>
-            
-            {/* Large Time Display */}
-            <h1 className="text-6xl font-bold text-white mb-12">
-              {formatTime(currentTime)}
-            </h1>
-          </div>
-
-          {/* Bottom Section */}
-          <div className="space-y-2">
-            {/* Company Name */}
-            <p className="text-white text-xl font-medium">{companyName}</p>
-            
-            {/* Kiosk Location */}
-            <p className="text-white text-sm opacity-90">Kiosk: {kioskLocation}</p>
-            
-            {/* Logo/App Name */}
-            <div className="mt-8">
-              <p className="text-white text-2xl font-semibold">ClockInn</p>
-            </div>
-          </div>
+    <div className="min-h-screen bg-slate-950 flex">
+      {/* Left Panel — brand & clock */}
+      <div className="relative w-[45%] min-h-screen bg-gradient-to-br from-slate-900 to-slate-800 flex flex-col items-center justify-center px-10 border-r border-slate-700/50">
+        <div className="mb-12 flex items-center gap-3">
+          <span className="block h-3 w-3 rounded-full bg-blue-500" />
+          <span className="text-2xl font-semibold tracking-tight text-white">ClockInn</span>
         </div>
 
-        {/* Right Panel - White */}
-        <div className="flex-1 bg-white flex flex-col justify-center items-center p-12">
-          <div className="w-full max-w-md">
-            {/* Geofence: punch only at office */}
-            {companyInfo?.geofence_enabled && (
-              <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-4">
-                Punch in/out is only allowed when you are at the office.
-              </p>
-            )}
-            {/* Location status when geofence is on (needed for kiosk punching) */}
-            {companyInfo?.geofence_enabled && (
-              <div
-                className={`mb-4 rounded-lg p-3 border text-sm flex items-center justify-center gap-2 ${
-                  locationLoading
-                    ? 'bg-blue-50 border-blue-200 text-blue-700'
-                    : location
-                      ? 'bg-green-50 border-green-200 text-green-700'
-                      : locationError
-                        ? 'bg-red-50 border-red-200 text-red-700'
-                        : 'bg-slate-50 border-slate-200 text-slate-600'
-                }`}
-              >
-                {locationLoading ? (
-                  <>
-                    <span className="animate-spin inline-block w-4 h-4 border-2 border-current border-t-transparent rounded-full" />
-                    Getting location…
-                  </>
-                ) : location ? (
-                  <>Location ready</>
-                ) : locationError ? (
-                  <>Location unavailable – enable location to punch</>
-                ) : (
-                  <>Location required to punch</>
-                )}
-              </div>
-            )}
-            {/* Greeting */}
-            {employeeInfo ? (
-              <>
-                <h2 className="text-2xl font-bold text-slate-800 mb-2">
-                  {isClockIn ? `Welcome, ${employeeInfo.name}!` : `Hello, ${employeeInfo.name}!`}
-                </h2>
-                <p className="text-slate-600 text-sm mb-2">
-                  {isClockIn 
-                    ? 'Ready to start your shift? Please enter the starting cash amount.'
-                    : `You clocked in at ${employeeInfo.clockInAt || 'earlier'}. Ready to end your shift?`
-                  }
-                </p>
-              </>
-            ) : (
-              <>
-            <h2 className="text-2xl font-bold text-slate-800 mb-2">
-              Enter your PIN
-            </h2>
-            {/* Instructions */}
-            <p className="text-slate-600 text-sm mb-8">
-              Please enter your 4-digit PIN code to verify it&apos;s you. You can use your keyboard or the keypad below.
+        <div className="text-center">
+          <p className="text-7xl font-light tabular-nums tracking-tight text-white">
+            {formatTime(currentTime)}
+          </p>
+          <p className="mt-3 text-lg font-light text-slate-400">{currentDate}</p>
+        </div>
+
+        <div className="mt-14 text-center">
+          <p className="mb-2 text-xs font-medium uppercase tracking-widest text-slate-500">Property</p>
+          <p className="text-xl font-medium text-slate-200">{companyName}</p>
+          <p className="mt-2 text-sm text-slate-500">Kiosk: {kioskLocation}</p>
+        </div>
+
+        {companyInfo?.geofence_enabled && (
+          <div className="absolute bottom-8 left-0 flex w-[100%] justify-center px-4">
+            <div
+              className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs ${
+                locationLoading
+                  ? 'border-transparent bg-slate-700/50 text-slate-400'
+                  : location
+                    ? 'border-emerald-500/20 bg-emerald-500/10 text-emerald-400'
+                    : 'border-amber-500/20 bg-amber-500/10 text-amber-400'
+              }`}
+            >
+              {locationLoading ? (
+                <>
+                  <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-slate-500 border-t-blue-500" />
+                  Getting location…
+                </>
+              ) : location ? (
+                <>Location ready</>
+              ) : locationError ? (
+                <>Location unavailable</>
+              ) : (
+                <>Location required</>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Right Panel — PIN */}
+      <div className="flex min-h-screen flex-1 flex-col items-center justify-center bg-slate-950 px-12">
+        <div className="w-full max-w-[320px]">
+          {companyInfo?.geofence_enabled && (
+            <p className="mb-6 rounded-xl border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-center text-xs text-amber-300">
+              Punch in/out is only allowed when you are at the office.
             </p>
-              </>
-            )}
+          )}
 
-            {/* Status Message */}
-            {message && (
-              <div
-                className={`mb-6 rounded-lg p-3 text-center text-sm font-medium ${
-                  success
-                    ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                    : 'bg-red-50 text-red-700 border border-red-200'
-                }`}
-              >
-                {message}
-              </div>
-            )}
+          {employeeInfo ? (
+            <>
+              <h2 className="mb-2 text-center text-2xl font-semibold text-white">
+                {isClockIn ? `Welcome, ${employeeInfo.name}!` : `Hello, ${employeeInfo.name}!`}
+              </h2>
+              <p className="mb-6 text-center text-sm text-slate-400">
+                {isClockIn
+                  ? 'Ready to start your shift? Please enter the starting cash amount.'
+                  : `You clocked in at ${employeeInfo.clockInAt || 'earlier'}. Ready to end your shift?`}
+              </p>
+            </>
+          ) : (
+            <div className="mb-8 text-center">
+              <h2 className="text-2xl font-semibold text-white">Welcome</h2>
+              <p className="mt-1.5 text-sm text-slate-400">Enter your PIN to clock in or out</p>
+              <p className="mt-3 text-xs text-slate-500">
+                Use your keyboard or the keypad below. 4 digits, then submit.
+              </p>
+            </div>
+          )}
 
-            {/* PIN Indicators - only show when not showing employee info */}
-            {!employeeInfo && (
-            <div className="flex justify-center gap-4 mb-12">
+          {message && (
+            <p
+              className={`mb-4 text-center text-sm ${
+                success ? 'text-emerald-400' : 'text-red-400'
+              }`}
+            >
+              {message}
+            </p>
+          )}
+
+          {!employeeInfo && (
+            <div className="mb-8 flex justify-center gap-4">
               {[0, 1, 2, 3].map((index) => (
                 <div
                   key={index}
-                  className={`w-4 h-4 rounded-full border-2 transition-all ${
+                  className={`h-4 w-4 rounded-full transition-all duration-150 ${
                     pinDisplay.length > index
-                      ? 'bg-teal-700 border-teal-700'
-                      : 'border-slate-400'
+                      ? 'scale-110 bg-blue-500'
+                      : 'border border-slate-600 bg-slate-700'
                   }`}
                 />
               ))}
             </div>
-            )}
+          )}
 
-            {/* Loading indicator when checking PIN */}
-            {checkingPin && (
-              <div className="flex justify-center items-center mb-8">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-teal-700"></div>
-                <span className="ml-3 text-slate-600">Verifying PIN...</span>
-              </div>
-            )}
-
-            {/* Numeric Keypad */}
-            <div className="grid grid-cols-3 gap-3 mb-4">
-              {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((num) => (
-                <button
-                  key={num}
-                  type="button"
-                  onClick={() => appendPin(num.toString())}
-                  disabled={loading}
-                  className="h-14 bg-white hover:bg-slate-50 active:bg-slate-100 border border-slate-300 rounded-lg text-lg font-semibold text-slate-700 disabled:opacity-40 disabled:cursor-not-allowed transition-all duration-150 shadow-sm hover:shadow focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-1"
-                >
-                  {num}
-                </button>
-              ))}
-              
-              {/* Bottom Row: Clear and 0 */}
-              <button
-                type="button"
-                onClick={clearPin}
-                disabled={loading || pinDisplay.length === 0}
-                className="col-span-2 h-14 bg-slate-100 hover:bg-slate-200 active:bg-slate-300 border border-slate-300 rounded-lg text-base font-semibold text-slate-700 disabled:opacity-40 disabled:cursor-not-allowed transition-all duration-150 shadow-sm hover:shadow focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-1"
-              >
-                Clear
-              </button>
-              <button
-                type="button"
-                onClick={() => appendPin('0')}
-                disabled={loading}
-                className="h-14 bg-white hover:bg-slate-50 active:bg-slate-100 border border-slate-300 rounded-lg text-lg font-semibold text-slate-700 disabled:opacity-40 disabled:cursor-not-allowed transition-all duration-150 shadow-sm hover:shadow focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-1"
-              >
-                0
-              </button>
+          {checkingPin && (
+            <div className="mt-6 mb-6 flex items-center justify-center gap-2 text-sm text-slate-400">
+              <div className="h-4 w-4 animate-spin rounded-full border-2 border-slate-600 border-t-blue-500" />
+              Verifying…
             </div>
+          )}
 
-            {/* Punch Button */}
+          <div className="relative mx-auto grid w-full max-w-[260px] grid-cols-3 gap-3">
+            {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((num) => (
+              <button
+                key={num}
+                type="button"
+                onClick={() => appendPin(num.toString())}
+                disabled={loading}
+                className="h-16 rounded-2xl border border-slate-700/50 bg-slate-800 text-xl font-medium text-white transition-all duration-100 hover:border-slate-600 hover:bg-slate-700 active:scale-95 active:bg-slate-600 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                {num}
+              </button>
+            ))}
+            <button
+              type="button"
+              onClick={clearPin}
+              disabled={loading || pinDisplay.length === 0}
+              className="h-16 rounded-2xl border border-slate-700/30 bg-slate-800/50 text-sm font-medium text-slate-400 transition-all duration-100 hover:bg-slate-700/50 active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              Clear
+            </button>
+            <button
+              type="button"
+              onClick={() => appendPin('0')}
+              disabled={loading}
+              className="h-16 rounded-2xl border border-slate-700/50 bg-slate-800 text-xl font-medium text-white transition-all duration-100 hover:border-slate-600 hover:bg-slate-700 active:scale-95 active:bg-slate-600 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              0
+            </button>
             <button
               type="button"
               onClick={() => handlePunch()}
               disabled={loading || pinDisplay.length !== 4}
-              className="w-full h-16 bg-teal-700 hover:bg-teal-800 active:bg-teal-900 text-white rounded-lg text-lg font-bold disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-150 shadow-sm hover:shadow-xl focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 mb-6"
+              className="flex h-16 items-center justify-center rounded-2xl bg-blue-600 text-white transition-all duration-100 hover:bg-blue-500 active:scale-95 active:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
             >
               {loading ? (
-                <span className="flex items-center justify-center gap-2">
-                  <svg className="animate-spin h-5 w-5" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                  </svg>
-                  Processing...
-                </span>
+                <svg className="h-5 w-5 animate-spin" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path
+                    className="opacity-75"
+                    fill="currentColor"
+                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                  />
+                </svg>
               ) : (
-                'Punch In/Out'
+                <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
+                </svg>
               )}
             </button>
+          </div>
 
-            {/* Links */}
-            <div className="flex flex-col items-center gap-4">
-              <button
-                type="button"
-                onClick={() => router.push('/login')}
-                className="text-teal-700 text-sm hover:text-teal-800 hover:underline focus:outline-none transition-colors"
-              >
-                Reset my PIN number
-              </button>
-              
-              <button
-                type="button"
-                onClick={() => router.push('/')}
-                className="text-slate-600 text-sm hover:text-slate-800 hover:underline focus:outline-none flex items-center gap-1 transition-colors"
-              >
-                <span>←</span> Cancel
-              </button>
-            </div>
+          <div className="mt-10 flex flex-col items-center gap-4">
+            <button
+              type="button"
+              onClick={() => router.push('/login')}
+              className="text-sm text-slate-400 transition-colors hover:text-white focus:outline-none"
+            >
+              Reset my PIN number
+            </button>
+            <button
+              type="button"
+              onClick={() => router.push('/')}
+              className="flex items-center gap-1 text-sm text-slate-500 transition-colors hover:text-slate-300 focus:outline-none"
+            >
+              <span>←</span> Cancel
+            </button>
           </div>
         </div>
       </div>
 
       {/* Cash Drawer Dialog */}
       {showCashDialog && (
-        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm overflow-y-auto h-full w-full z-[9999] flex items-center justify-center p-4 animate-in fade-in duration-200">
-          <div className="relative bg-white rounded-2xl shadow-xl w-full max-w-2xl m-4 transform transition-all animate-in zoom-in-95 duration-200 max-h-[90vh] overflow-y-auto">
-            {/* Header */}
-            <div className="px-8 pt-8 pb-6 bg-gradient-to-r from-teal-50 to-emerald-50 rounded-t-2xl border-b border-slate-100">
-              <div className="flex items-center justify-center mb-3">
-                <div className="p-3 bg-teal-100 rounded-full">
-                  <svg className="w-6 h-6 text-teal-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
-                  </svg>
-                </div>
-              </div>
-              <h3 className="text-2xl font-bold text-slate-900 text-center mb-2">
+        <div className="fixed inset-0 z-[9999] flex h-full w-full items-center justify-center overflow-y-auto bg-black/70 p-4 backdrop-blur-sm">
+          <div className="relative m-4 max-h-[90vh] w-full max-w-sm transform overflow-y-auto rounded-2xl border border-slate-700 bg-slate-900 shadow-2xl">
+            <div className="p-6">
+              <h3 className="text-center text-lg font-semibold text-white">
                 {isClockIn ? 'Start Your Shift' : 'End Your Shift'}
               </h3>
               {employeeInfo && (
-                <p className="text-lg text-teal-600 mt-2 text-center font-semibold">
+                <p className="mt-1 text-center text-sm font-medium text-slate-300">
                   {isClockIn ? `Welcome, ${employeeInfo.name}!` : `Hello, ${employeeInfo.name}!`}
                 </p>
               )}
-              <p className="text-sm text-slate-600 mt-2 text-center">
+              <p className="mb-6 mt-1 text-center text-sm text-slate-400">
                 {isClockIn ? 'Enter the starting cash amount in the drawer' : 'Enter all cash amounts for your shift'}
               </p>
-            </div>
 
             {/* Content */}
-            <div className="p-8">
+            <div>
               {isClockIn ? (
                 // Clock-in: Only need starting cash
                 <div className="mb-8">
-                  <label className="block text-sm font-semibold text-slate-700 mb-4 text-center">
-                    Starting Cash Amount <span className="text-red-500">*</span>
+                  <label className="mb-4 block text-center text-xs font-medium uppercase tracking-wide text-slate-400">
+                    Starting Cash Amount <span className="text-red-400">*</span>
                   </label>
                   <div className="relative group">
                     <div className="absolute inset-y-0 left-0 pl-5 flex items-center pointer-events-none">
@@ -815,10 +806,10 @@ export default function KioskSlugPage() {
                         }
                       }}
                       autoFocus
-                      className={`block w-full pl-12 pr-5 py-5 border-2 rounded-xl text-center text-3xl font-bold tracking-wide focus:outline-none focus:ring-4 focus:ring-teal-100 transition-all ${
+                      className={`block w-full rounded-xl border-2 py-5 pl-12 pr-5 text-center text-3xl font-semibold tracking-wide text-white transition-all focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-0 focus:ring-offset-slate-900 ${
                         cashError 
-                          ? 'border-red-300 bg-red-50 focus:border-red-400 focus:ring-red-100' 
-                          : 'border-slate-200 bg-slate-50 focus:border-teal-500 focus:bg-white'
+                          ? 'border-red-400/50 bg-red-950/30' 
+                          : 'border-slate-700 bg-slate-800'
                       }`}
                       placeholder={companyInfo?.cash_drawer_starting_amount_cents 
                         ? (companyInfo.cash_drawer_starting_amount_cents / 100).toFixed(2)
@@ -827,14 +818,14 @@ export default function KioskSlugPage() {
                     />
                   </div>
                   {cashError && (
-                    <div className="mt-3 flex items-center justify-center gap-2 text-sm text-red-600">
+                    <div className="mt-3 flex items-center justify-center gap-2 text-xs text-red-400">
                       <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
                         <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
                       </svg>
                       <span>{cashError}</span>
                     </div>
                   )}
-                  <p className="mt-3 text-xs text-slate-500 text-center">
+                  <p className="mt-3 text-center text-xs text-slate-500">
                     Enter the starting cash amount in dollars
                   </p>
                 </div>
@@ -842,13 +833,13 @@ export default function KioskSlugPage() {
                 // Clock-out: Need collected cash, beverages cash, and drawer cash
                 <div className="space-y-6 mb-8">
                   <div>
-                    <label className="block text-sm font-semibold text-slate-700 mb-3">
+                    <label className="mb-3 block text-xs font-medium uppercase tracking-wide text-slate-400">
                       <div className="flex items-center gap-2">
-                        <svg className="w-4 h-4 text-teal-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <svg className="h-4 w-4 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                         </svg>
                         <span>Collected Cash Amount</span>
-                        <span className="text-red-500">*</span>
+                        <span className="text-red-400">*</span>
                       </div>
                     </label>
                     <div className="relative group">
@@ -865,10 +856,10 @@ export default function KioskSlugPage() {
                           setCashError(null)
                         }}
                         autoFocus
-                        className={`block w-full pl-10 pr-4 py-4 border-2 rounded-xl text-lg font-semibold focus:outline-none focus:ring-4 focus:ring-teal-100 transition-all ${
+                        className={`block w-full rounded-xl border-2 py-4 pl-10 pr-4 text-base text-white transition-all focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-0 focus:ring-offset-slate-900 ${
                           cashError 
-                            ? 'border-red-300 bg-red-50 focus:border-red-400 focus:ring-red-100' 
-                            : 'border-slate-200 bg-slate-50 focus:border-teal-500 focus:bg-white'
+                            ? 'border-red-400/50 bg-red-950/30' 
+                            : 'border-slate-700 bg-slate-800'
                         }`}
                         placeholder="0.00"
                         disabled={loading}
@@ -878,10 +869,10 @@ export default function KioskSlugPage() {
                   </div>
                   
                   <div>
-                    <label className="block text-sm font-semibold text-slate-700 mb-3">
+                    <label className="mb-3 block text-xs font-medium uppercase tracking-wide text-slate-400">
                       <div className="flex items-center gap-2">
                         <span>Drop Amount</span>
-                        <span className="text-red-500">*</span>
+                        <span className="text-red-400">*</span>
                       </div>
                     </label>
                     <div className="relative group">
@@ -897,10 +888,10 @@ export default function KioskSlugPage() {
                           setDropAmount(e.target.value)
                           setCashError(null)
                         }}
-                        className={`block w-full pl-10 pr-4 py-4 border-2 rounded-xl text-lg font-semibold focus:outline-none focus:ring-4 focus:ring-teal-100 transition-all ${
+                        className={`block w-full rounded-xl border-2 py-4 pl-10 pr-4 text-base text-white transition-all focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-0 focus:ring-offset-slate-900 ${
                           cashError 
-                            ? 'border-red-300 bg-red-50 focus:border-red-400 focus:ring-red-100' 
-                            : 'border-slate-200 bg-slate-50 focus:border-teal-500 focus:bg-white'
+                            ? 'border-red-400/50 bg-red-950/30' 
+                            : 'border-slate-700 bg-slate-800'
                         }`}
                         placeholder="0.00"
                         disabled={loading}
@@ -910,13 +901,13 @@ export default function KioskSlugPage() {
                   </div>
                   
                   <div>
-                    <label className="block text-sm font-semibold text-slate-700 mb-3">
+                    <label className="mb-3 block text-xs font-medium uppercase tracking-wide text-slate-400">
                       <div className="flex items-center gap-2">
-                        <svg className="w-4 h-4 text-teal-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <svg className="h-4 w-4 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                         </svg>
                         <span>Beverages Sold (Total)</span>
-                        <span className="text-red-500">*</span>
+                        <span className="text-red-400">*</span>
                       </div>
                     </label>
                     <div className="relative group">
@@ -932,10 +923,10 @@ export default function KioskSlugPage() {
                           setBeveragesCash(e.target.value)
                           setCashError(null)
                         }}
-                        className={`block w-full pl-10 pr-4 py-4 border-2 rounded-xl text-lg font-semibold focus:outline-none focus:ring-4 focus:ring-teal-100 transition-all ${
+                        className={`block w-full rounded-xl border-2 py-4 pl-10 pr-4 text-base text-white transition-all focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-0 focus:ring-offset-slate-900 ${
                           cashError 
-                            ? 'border-red-300 bg-red-50 focus:border-red-400 focus:ring-red-100' 
-                            : 'border-slate-200 bg-slate-50 focus:border-teal-500 focus:bg-white'
+                            ? 'border-red-400/50 bg-red-950/30' 
+                            : 'border-slate-700 bg-slate-800'
                         }`}
                         placeholder="0.00"
                         disabled={loading}
@@ -945,13 +936,13 @@ export default function KioskSlugPage() {
                   </div>
                   
                   <div>
-                    <label className="block text-sm font-semibold text-slate-700 mb-3">
+                    <label className="mb-3 block text-xs font-medium uppercase tracking-wide text-slate-400">
                       <div className="flex items-center gap-2">
-                        <svg className="w-4 h-4 text-teal-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <svg className="h-4 w-4 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
                         </svg>
                         <span>Cash in Drawer</span>
-                        <span className="text-red-500">*</span>
+                        <span className="text-red-400">*</span>
                       </div>
                     </label>
                     <div className="relative group">
@@ -972,10 +963,10 @@ export default function KioskSlugPage() {
                             handleCashDialogSubmit()
                           }
                         }}
-                        className={`block w-full pl-10 pr-4 py-4 border-2 rounded-xl text-lg font-semibold focus:outline-none focus:ring-4 focus:ring-teal-100 transition-all ${
+                        className={`block w-full rounded-xl border-2 py-4 pl-10 pr-4 text-base text-white transition-all focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-0 focus:ring-offset-slate-900 ${
                           cashError 
-                            ? 'border-red-300 bg-red-50 focus:border-red-400 focus:ring-red-100' 
-                            : 'border-slate-200 bg-slate-50 focus:border-teal-500 focus:bg-white'
+                            ? 'border-red-400/50 bg-red-950/30' 
+                            : 'border-slate-700 bg-slate-800'
                         }`}
                         placeholder="0.00"
                         disabled={loading}
@@ -985,7 +976,7 @@ export default function KioskSlugPage() {
                   </div>
                   
                   {cashError && (
-                    <div className="flex items-center justify-center gap-2 text-sm text-red-600 bg-red-50 p-3 rounded-lg">
+                    <div className="flex items-center justify-center gap-2 rounded-lg border border-red-500/20 bg-red-950/30 p-3 text-sm text-red-400">
                       <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
                         <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
                       </svg>
@@ -996,7 +987,7 @@ export default function KioskSlugPage() {
               )}
 
               {/* Action Buttons */}
-              <div className="flex gap-3 pt-4 border-t border-slate-100">
+              <div className="mt-2 space-y-2 border-t border-slate-700/50 pt-4">
                 <button
                   type="button"
                   onClick={handleCashDialogSubmit}
@@ -1006,11 +997,11 @@ export default function KioskSlugPage() {
                     parseFloat(cashAmount) < 0 ||
                     (!isClockIn && (!collectedCash || parseFloat(collectedCash) < 0 || !dropAmount || parseFloat(dropAmount) < 0 || !beveragesCash || parseFloat(beveragesCash) < 0))
                   }
-                  className="flex-1 px-6 py-4 bg-gradient-to-r from-teal-600 to-emerald-600 text-white rounded-xl hover:from-teal-700 hover:to-emerald-700 font-semibold text-base disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 shadow-sm hover:shadow-xl transition-all transform hover:scale-[1.02] active:scale-[0.98]"
+                  className="flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 py-3 font-medium text-white transition-colors hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   {loading ? (
                     <>
-                      <svg className="animate-spin h-5 w-5 text-white" fill="none" viewBox="0 0 24 24">
+                      <svg className="h-5 w-5 animate-spin text-white" fill="none" viewBox="0 0 24 24">
                         <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                         <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                       </svg>
@@ -1018,7 +1009,7 @@ export default function KioskSlugPage() {
                     </>
                   ) : (
                     <>
-                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                       </svg>
                       <span>Continue</span>
@@ -1029,11 +1020,12 @@ export default function KioskSlugPage() {
                   type="button"
                   onClick={handleCashDialogCancel}
                   disabled={loading}
-                  className="px-6 py-4 bg-slate-100 text-slate-700 rounded-xl hover:bg-slate-200 font-semibold text-base disabled:opacity-50 disabled:cursor-not-allowed transition-all transform hover:scale-[1.02] active:scale-[0.98]"
+                  className="w-full rounded-xl border border-slate-700 bg-slate-800 py-3 font-medium text-slate-300 transition-colors hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   Cancel
                 </button>
               </div>
+            </div>
             </div>
           </div>
         </div>

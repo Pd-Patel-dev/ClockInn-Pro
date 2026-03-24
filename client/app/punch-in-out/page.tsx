@@ -383,143 +383,172 @@ export default function PunchInOutPage() {
 
   return (
     <Layout>
-      <div className="max-w-7xl mx-auto space-y-6">
-        <div className="mb-6">
-          <h1 className="text-2xl font-semibold text-slate-900">Punch in / out</h1>
-          <p className="mt-1 text-sm text-slate-500">{user.name}</p>
+      <div className="min-h-screen bg-slate-50">
+        <div className="mx-auto max-w-2xl space-y-6 px-4 py-10 sm:px-6">
+        <div className="mb-8">
+          <h1 className="text-2xl font-semibold text-slate-900">Punch In / Out</h1>
+          <p className="mt-1 text-sm text-slate-500">Track your working hours for today</p>
+          <p className="mt-1 text-xs text-slate-400">{user.name}</p>
         </div>
 
         {geofenceRequired && (
-          <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+          <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
             Punch in/out is only allowed when you are at the office.
           </p>
         )}
-        <div
-          className={`rounded-lg p-3 border flex items-center justify-center gap-2 text-sm ${
-            locationLoading
-              ? 'bg-blue-50 border-blue-200 text-blue-700'
-              : location
-                ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
-                : 'bg-slate-50 border-slate-200 text-slate-600'
-          }`}
-        >
-          {locationLoading ? (
-            <>
-              <svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
-                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-              </svg>
-              <span>Getting location...</span>
-            </>
-          ) : location ? (
-            <>
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
-              </svg>
-              <span>Location captured</span>
-            </>
-          ) : (
-            <>
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
-              </svg>
-              <span>Location unavailable</span>
-            </>
-          )}
-        </div>
 
-        <div className="max-w-sm mx-auto">
-          <div
-            className={`bg-white border border-slate-200 rounded-xl p-6 shadow-sm text-center ${
-              currentStatus === 'in' ? 'ring-1 ring-amber-200' : ''
-            }`}
-          >
-            <p className="text-xs font-medium text-slate-500 uppercase tracking-wide mb-2">Current time</p>
-            <p className="text-5xl font-light text-slate-900 tabular-nums tracking-tight">
-              {format(clockNow, 'h:mm:ss a')}
-            </p>
-            <p className="text-sm text-slate-500 mt-4">
-              {currentStatus === 'in' ? 'You are clocked in' : 'You are clocked out'}
-            </p>
+        <div className="rounded-2xl border border-slate-200 bg-white p-8 shadow-sm">
+          <div className="mb-8 flex items-start justify-between gap-4">
+            <div>
+              <p className="mb-1 text-xs font-medium uppercase tracking-wide text-slate-500">Current Status</p>
+              {currentStatus === 'in' ? (
+                <div className="flex items-center gap-2">
+                  <span className="h-2 w-2 animate-pulse rounded-full bg-emerald-500" />
+                  <span className="text-base font-semibold text-slate-900">Clocked In</span>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <span className="h-2 w-2 rounded-full bg-slate-400" />
+                  <span className="text-base font-semibold text-slate-900">Clocked Out</span>
+                </div>
+              )}
+              <p className="mt-3 text-xs tabular-nums text-slate-400">
+                {format(clockNow, 'h:mm:ss a')}
+              </p>
+            </div>
+            <div
+              className={`inline-flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-1 text-xs ${
+                locationLoading
+                  ? 'border-slate-200 bg-slate-50 text-slate-600'
+                  : location
+                    ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                    : 'border-amber-200 bg-amber-50 text-amber-700'
+              }`}
+            >
+              {locationLoading ? (
+                <>
+                  <svg className="h-3.5 w-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                  </svg>
+                  Getting location…
+                </>
+              ) : location ? (
+                <>
+                  <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                  </svg>
+                  Location ready
+                </>
+              ) : (
+                <>
+                  <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
+                  </svg>
+                  Unavailable
+                </>
+              )}
+            </div>
+          </div>
+
+          {currentStatus === 'in' ? (
             <button
               type="button"
               onClick={handlePunch}
               disabled={loading}
-              className={`mt-6 w-full py-3 px-4 rounded-lg text-sm font-medium text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
-                currentStatus === 'in'
-                  ? 'bg-red-500 hover:bg-red-600'
-                  : 'bg-emerald-600 hover:bg-emerald-700'
-              }`}
+              className="flex w-full items-center justify-center gap-2.5 rounded-xl bg-red-500 py-4 text-base font-semibold text-white shadow-sm shadow-red-100 transition-all duration-150 hover:bg-red-600 active:scale-[0.99] active:bg-red-700 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:shadow-none"
             >
               {loading ? (
-                <span className="inline-flex items-center justify-center gap-2">
-                  <svg className="animate-spin h-5 w-5" fill="none" viewBox="0 0 24 24" aria-hidden>
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                  </svg>
-                  Processing…
-                </span>
-              ) : currentStatus === 'in' ? (
-                'Punch out'
+                <svg className="h-5 w-5 animate-spin" fill="none" viewBox="0 0 24 24" aria-hidden>
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                </svg>
               ) : (
-                'Punch in'
+                <svg className="h-5 w-5" fill="currentColor" viewBox="0 0 20 20" aria-hidden>
+                  <path d="M5.25 3A2.25 2.25 0 003 5.25v9.5A2.25 2.25 0 005.25 17h9.5A2.25 2.25 0 0017 14.75v-9.5A2.25 2.25 0 0014.75 3h-9.5z" />
+                </svg>
               )}
+              {loading ? 'Processing…' : 'Clock Out'}
             </button>
-          </div>
+          ) : (
+            <button
+              type="button"
+              onClick={handlePunch}
+              disabled={loading}
+              className="flex w-full items-center justify-center gap-2.5 rounded-xl bg-emerald-600 py-4 text-base font-semibold text-white shadow-sm shadow-emerald-200 transition-all duration-150 hover:bg-emerald-700 active:scale-[0.99] active:bg-emerald-800 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:shadow-none"
+            >
+              {loading ? (
+                <svg className="h-5 w-5 animate-spin" fill="none" viewBox="0 0 24 24" aria-hidden>
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                </svg>
+              ) : (
+                <svg className="h-5 w-5" fill="currentColor" viewBox="0 0 20 20" aria-hidden>
+                  <path d="M6.3 2.841A1.5 1.5 0 004 4.11v11.78a1.5 1.5 0 002.3 1.269l9.344-5.89a1.5 1.5 0 000-2.538L6.3 2.84z" />
+                </svg>
+              )}
+              {loading ? 'Processing…' : 'Clock In'}
+            </button>
+          )}
         </div>
 
         {message && (
-          <div className="p-3 rounded-lg bg-emerald-50 text-emerald-800 border border-emerald-200 text-center text-sm max-w-sm mx-auto">
+          <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-center text-sm text-emerald-700">
             {message}
           </div>
         )}
         {error && (
-          <div className="p-3 rounded-lg bg-red-50 text-red-700 border border-red-200 text-center text-sm max-w-sm mx-auto">
+          <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-center text-sm text-red-600">
             {error}
           </div>
         )}
 
         {/* Shift note — when clocked in */}
         {currentStatus === 'in' && (
-          <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
-            <div className="px-6 py-3 border-b border-slate-200 bg-slate-50 flex items-center justify-between flex-wrap gap-2">
-              <h2 className="text-lg font-semibold text-slate-900">Shift note</h2>
-              <Link href="/my/shift-notepad" className="text-sm font-medium text-blue-600 hover:text-blue-700">
-                Open full notepad →
-              </Link>
+          <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <h3 className="text-sm font-semibold text-slate-900">Shift Note</h3>
+                <p className="mt-0.5 text-xs text-slate-400">Auto-saved as you type</p>
+              </div>
+              <div className="flex items-center gap-3">
+                {shiftNoteSaveStatus === 'saving' && (
+                  <span className="flex items-center gap-1 text-xs text-slate-400">Saving…</span>
+                )}
+                {shiftNoteSaveStatus === 'saved' && shiftNoteSavedAt && (
+                  <span className="flex items-center gap-1 text-xs text-emerald-600">
+                    Saved {format(shiftNoteSavedAt, 'h:mm a')}
+                  </span>
+                )}
+                <Link href="/my/shift-notepad" className="text-xs font-medium text-blue-600 hover:text-blue-700 sm:text-sm">
+                  Full notepad →
+                </Link>
+              </div>
             </div>
             {shiftNoteLoading ? (
-              <div className="p-6 animate-pulse space-y-2">
-                <div className="h-4 bg-slate-200 rounded w-1/3" />
-                <div className="h-20 bg-slate-100 rounded-lg" />
+              <div className="animate-pulse space-y-2">
+                <div className="h-4 w-1/3 rounded bg-slate-200" />
+                <div className="h-24 rounded-xl bg-slate-100" />
               </div>
             ) : shiftNote ? (
-              <>
-                <div className="px-6 py-2 border-b border-slate-100 flex items-center gap-3 flex-wrap">
-                  <span className="text-xs text-slate-500">
-                    {shiftNoteSaveStatus === 'saving' && 'Saving…'}
-                    {shiftNoteSaveStatus === 'saved' && shiftNoteSavedAt && `Saved at ${format(shiftNoteSavedAt, 'h:mm a')}`}
-                  </span>
-                </div>
-                <textarea
-                  value={shiftNoteContent}
-                  onChange={(e) => setShiftNoteContent(e.target.value)}
-                  disabled={!shiftNote.can_edit}
-                  placeholder="Jot down notes for this shift..."
-                  rows={4}
-                  className="w-full p-6 text-slate-900 placeholder:text-slate-400 border-0 focus:ring-0 focus:outline-none resize-y text-sm bg-white disabled:bg-slate-50 disabled:cursor-not-allowed"
-                />
-              </>
+              <textarea
+                value={shiftNoteContent}
+                onChange={(e) => setShiftNoteContent(e.target.value)}
+                disabled={!shiftNote.can_edit}
+                placeholder="Add notes about your shift..."
+                rows={4}
+                className="min-h-[100px] w-full resize-none rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700 placeholder:text-slate-400 transition focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:cursor-not-allowed disabled:bg-slate-100"
+              />
             ) : (
-              <div className="p-6 text-sm text-slate-500">Shift note will appear here. If it doesn’t load, try refreshing.</div>
+              <div className="text-sm text-slate-500">Shift note will appear here. If it doesn’t load, try refreshing.</div>
             )}
           </div>
         )}
 
-        <div className="overflow-hidden border border-slate-200 rounded-xl shadow-sm bg-white">
-          <div className="px-6 py-3 border-b border-slate-200 bg-slate-50">
-            <h2 className="text-lg font-semibold text-slate-900">Past 10 time entries</h2>
+        <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+          <div className="border-b border-slate-100 px-6 py-4">
+            <h3 className="text-sm font-semibold text-slate-900">Recent Entries</h3>
           </div>
           {loadingList ? (
             <div className="p-8 animate-pulse space-y-3">
@@ -528,47 +557,48 @@ export default function PunchInOutPage() {
               <div className="h-4 bg-slate-100 rounded w-5/6" />
             </div>
           ) : entries.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-16 text-center px-4">
-              <div className="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center mb-4">
-                <svg className="w-6 h-6 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-              </div>
-              <p className="text-sm font-medium text-slate-700">No time entries yet</p>
-              <p className="text-sm text-slate-400 mt-1">Your punches will appear here</p>
+            <div className="py-12 text-center">
+              <p className="text-sm text-slate-400">No entries yet</p>
             </div>
           ) : (
-            <ul>
+            <div className="divide-y divide-slate-100">
               {entries.map((entry) => (
-                <li key={entry.id} className="px-6 py-3 flex items-center justify-between text-sm border-b border-slate-100 last:border-0">
+                <div
+                  key={entry.id}
+                  className="flex items-center justify-between px-6 py-3.5 hover:bg-slate-50"
+                >
                   <div>
-                    <span className="font-medium text-slate-900">{formatDate(entry)}</span>
-                    <span className="text-slate-500 ml-2">
-                      {formatTime(entry, 'clock_in_at')} – {formatTime(entry, 'clock_out_at')}
-                    </span>
+                    <p className="text-sm font-medium text-slate-800">{formatDate(entry)}</p>
+                    <p className="mt-0.5 text-xs text-slate-400">
+                      {formatTime(entry, 'clock_in_at')} → {formatTime(entry, 'clock_out_at')}
+                    </p>
                   </div>
-                  {entry.clock_out_at && entry.rounded_hours != null && (
-                    <span className="text-slate-500 tabular-nums">{entry.rounded_hours.toFixed(1)}h</span>
-                  )}
-                  {entry.clock_out_at == null && (
-                    <span className="text-amber-600 text-xs font-medium px-2.5 py-0.5 rounded-full border border-amber-200 bg-amber-50">
-                      Open
-                    </span>
-                  )}
-                </li>
+                  <div className="text-right">
+                    {entry.clock_out_at && entry.rounded_hours != null && (
+                      <span className="text-sm font-medium text-slate-700 tabular-nums">
+                        {entry.rounded_hours.toFixed(1)}h
+                      </span>
+                    )}
+                    {entry.clock_out_at == null && (
+                      <span className="inline-flex rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700">
+                        Active
+                      </span>
+                    )}
+                  </div>
+                </div>
               ))}
-            </ul>
+            </div>
           )}
         </div>
 
         {/* Cash Drawer Dialog – same as PIN-based punch */}
         {showCashDialog && (
-          <div className="fixed inset-0 bg-black/40 backdrop-blur-sm overflow-y-auto h-full w-full z-[9999] flex items-center justify-center p-4">
-            <div className="relative bg-white rounded-2xl border border-slate-200 shadow-xl w-full max-w-lg m-4 p-6">
-              <h3 className="text-lg font-semibold text-slate-900 text-center">
+          <div className="fixed inset-0 z-[9999] flex h-full w-full items-center justify-center overflow-y-auto bg-black/40 p-4 backdrop-blur-sm">
+            <div className="relative m-4 w-full max-w-sm rounded-2xl border border-slate-200 bg-white p-6 shadow-xl">
+              <h3 className="text-center text-lg font-semibold text-slate-900">
                 {currentStatus === 'in' ? 'Ending cash count' : 'Starting cash count'}
               </h3>
-              <p className="text-sm text-slate-500 text-center mt-1 mb-6">
+              <p className="mb-6 mt-1 text-center text-sm text-slate-500">
                 {currentStatus === 'in'
                   ? 'Enter all cash amounts for your shift.'
                   : 'Enter the starting cash amount in the drawer.'}
@@ -577,7 +607,7 @@ export default function PunchInOutPage() {
                 {currentStatus === 'out' ? (
                   <div className="mb-6 space-y-5">
                     <div>
-                      <label className="block text-sm font-medium text-slate-700 mb-1.5 text-center">
+                      <label className="mb-1.5 block text-center text-sm font-medium text-slate-700">
                         Starting cash amount <span className="text-red-500">*</span>
                       </label>
                       <div className="relative">
@@ -595,7 +625,7 @@ export default function PunchInOutPage() {
                           }}
                           onKeyDown={(e) => e.key === 'Enter' && handleCashDialogSubmit()}
                           autoFocus
-                          className={`block w-full pl-10 pr-4 py-3 border rounded-lg text-center text-xl font-semibold text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
+                          className={`block w-full rounded-xl border py-3 pl-10 pr-4 text-center text-xl font-semibold text-slate-900 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500 ${
                             cashError ? 'border-red-300' : 'border-slate-200'
                           }`}
                           placeholder="0.00"
@@ -624,7 +654,7 @@ export default function PunchInOutPage() {
                             setCollectedCash(e.target.value)
                             setCashError(null)
                           }}
-                          className={`block w-full pl-8 pr-3 py-2 border rounded-lg text-sm text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
+                          className={`block w-full rounded-xl border py-2 pl-8 pr-3 text-sm text-slate-900 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500 ${
                             cashError ? 'border-red-300' : 'border-slate-200'
                           }`}
                           placeholder="0.00"
@@ -648,7 +678,7 @@ export default function PunchInOutPage() {
                             setDropAmount(e.target.value)
                             setCashError(null)
                           }}
-                          className={`block w-full pl-8 pr-3 py-2 border rounded-lg text-sm text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
+                          className={`block w-full rounded-xl border py-2 pl-8 pr-3 text-sm text-slate-900 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500 ${
                             cashError ? 'border-red-300' : 'border-slate-200'
                           }`}
                           placeholder="0.00"
@@ -672,7 +702,7 @@ export default function PunchInOutPage() {
                             setBeveragesCash(e.target.value)
                             setCashError(null)
                           }}
-                          className={`block w-full pl-8 pr-3 py-2 border rounded-lg text-sm text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
+                          className={`block w-full rounded-xl border py-2 pl-8 pr-3 text-sm text-slate-900 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500 ${
                             cashError ? 'border-red-300' : 'border-slate-200'
                           }`}
                           placeholder="0.00"
@@ -697,7 +727,7 @@ export default function PunchInOutPage() {
                             setCashError(null)
                           }}
                           onKeyDown={(e) => e.key === 'Enter' && handleCashDialogSubmit()}
-                          className={`block w-full pl-8 pr-3 py-2 border rounded-lg text-sm text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
+                          className={`block w-full rounded-xl border py-2 pl-8 pr-3 text-sm text-slate-900 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500 ${
                             cashError ? 'border-red-300' : 'border-slate-200'
                           }`}
                           placeholder="0.00"
@@ -711,7 +741,7 @@ export default function PunchInOutPage() {
                     )}
                   </div>
                 )}
-                <div className="flex gap-3 border-t border-slate-100 pt-4">
+                <div className="mt-4 space-y-2 border-t border-slate-100 pt-4">
                   <button
                     type="button"
                     onClick={handleCashDialogSubmit}
@@ -727,11 +757,11 @@ export default function PunchInOutPage() {
                           !beveragesCash ||
                           parseFloat(beveragesCash) < 0))
                     }
-                    className="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                    className="flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 py-3 text-sm font-medium text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     {loading ? (
                       <>
-                        <svg className="animate-spin h-5 w-5" fill="none" viewBox="0 0 24 24" aria-hidden>
+                        <svg className="h-5 w-5 animate-spin" fill="none" viewBox="0 0 24 24" aria-hidden>
                           <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                           <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
                         </svg>
@@ -745,7 +775,7 @@ export default function PunchInOutPage() {
                     type="button"
                     onClick={handleCashDialogCancel}
                     disabled={loading}
-                    className="px-4 py-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 text-sm font-medium rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="w-full py-2.5 text-sm text-slate-500 transition-colors hover:text-slate-700 disabled:opacity-50"
                   >
                     Cancel
                   </button>
@@ -754,6 +784,7 @@ export default function PunchInOutPage() {
             </div>
           </div>
         )}
+        </div>
       </div>
     </Layout>
   )

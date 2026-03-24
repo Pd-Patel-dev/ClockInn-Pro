@@ -13,6 +13,31 @@ interface LogEntry {
   timestamp: string
 }
 
+/** Build a plain object safe to pass to console.* (no circular refs from Axios, etc.). */
+function toSafeLogPayload(error?: Error, context?: Record<string, any>): Record<string, unknown> {
+  const out: Record<string, unknown> = { ...(context && typeof context === 'object' ? { ...context } : {}) }
+  if (!error) return out
+  out.errorMessage = error.message
+  out.errorName = error.name
+  const anyErr = error as Error & {
+    isAxiosError?: boolean
+    response?: { status?: number; data?: unknown }
+  }
+  if (anyErr.isAxiosError || anyErr.response) {
+    out.httpStatus = anyErr.response?.status
+    const data = anyErr.response?.data
+    if (data !== undefined) {
+      try {
+        out.responseDetail =
+          typeof data === 'string' ? data : JSON.parse(JSON.stringify(data))
+      } catch {
+        out.responseDetail = String(data)
+      }
+    }
+  }
+  return out
+}
+
 class Logger {
   private isDevelopment = process.env.NODE_ENV === 'development'
   private isProduction = process.env.NODE_ENV === 'production'
@@ -58,8 +83,12 @@ class Logger {
       
       const formattedMessage = `%c[${level.toUpperCase()}] ${message}`
       const style = styles[level]
-      const additionalData = context || error || ''
-      
+      // Never pass raw Axios errors to console — DevTools / wrappers can throw on circular structures.
+      const additionalData =
+        level === 'error' && (error || context)
+          ? toSafeLogPayload(error, context)
+          : context || ''
+
       if (level === 'error') {
         console.error(formattedMessage, style, additionalData)
       } else if (level === 'warn') {
@@ -68,8 +97,12 @@ class Logger {
         console.log(formattedMessage, style, additionalData)
       }
       
-      if (error) {
-        console.error('Error details:', error)
+      if (error?.stack) {
+        try {
+          console.error('%cStack', 'color: #888; font-size: 11px', error.stack)
+        } catch {
+          /* ignore */
+        }
       }
     }
 

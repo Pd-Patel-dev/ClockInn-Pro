@@ -65,6 +65,12 @@ server/gmail_token.json
 supabase/.temp/
 server/supabase/.temp/
 
+# API-exported backup JSON (may contain PII)
+server/backups/
+
+# TypeScript incremental cache
+*.tsbuildinfo
+
 # Markdown files (except README.md and deployment docs)
 APP_REVIEW_SUGGESTIONS.md
 # Keep deployment guides - they're useful

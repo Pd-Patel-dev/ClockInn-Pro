@@ -8,6 +8,7 @@ import logging
 
 from app.core.config import settings
 from app.core.environment import is_production_environment
+from app.core.security_headers import PERMISSIONS_POLICY, content_security_policy_for_path
 from app.core.database import engine, Base
 from app.api.v1.router import api_router
 from app.core.logging_config import setup_logging
@@ -150,7 +151,8 @@ async def add_security_headers(request: Request, call_next):
     response.headers["X-Frame-Options"] = "DENY"
     response.headers["X-XSS-Protection"] = "1; mode=block"
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
-    response.headers["Permissions-Policy"] = "geolocation=(), microphone=(), camera=()"
+    response.headers["Permissions-Policy"] = PERMISSIONS_POLICY
+    response.headers["Content-Security-Policy"] = content_security_policy_for_path(request.url.path)
 
     # HSTS when request was forwarded over HTTPS
     if is_production and forwarded_proto == "https":

@@ -242,6 +242,11 @@ api.interceptors.request.use(
       }
     }
     
+    // FormData must set multipart boundary automatically (do not force application/json)
+    if (config.data instanceof FormData && config.headers) {
+      delete (config.headers as Record<string, unknown>)['Content-Type']
+    }
+
     const token = getAccessToken()
     if (token) {
       config.headers.Authorization = `Bearer ${token}`

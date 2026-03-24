@@ -71,9 +71,10 @@ This document summarizes security-related findings from a full-app review. Addre
 - **Recommendation:** Ensure production `CORS_ORIGINS` only lists trusted front-end origins.
 - **Fix:** `config.py` rejects `*` on startup. When `ENVIRONMENT` is `production` or `prod`, each `CORS_ORIGINS` entry must be `https://` unless it is `localhost` or `127.0.0.1` (so production cannot accidentally use `http://` public origins). `.env.example` documents comma-separated / multi-origin HTTPS lists.
 
-### 12. **Security headers**
+### 12. **Security headers** *(addressed)*
 - **Status:** Middleware sets `X-Content-Type-Options`, `X-Frame-Options`, `X-XSS-Protection`, `Referrer-Policy`, `Permissions-Policy`; HSTS in production when forwarded over HTTPS. Good.
 - **Recommendation:** Consider adding Content-Security-Policy (CSP) and tightening Permissions-Policy as needed.
+- **Fix:** `Content-Security-Policy` is set per-path in `app/core/security_headers.py`: strict `default-src 'none'` (plus `frame-ancestors 'none'`, etc.) for API responses; a documented relaxed policy for `/docs` and `/redoc` (jsDelivr + inline/`unsafe-eval` for Swagger/ReDoc). **Permissions-Policy** expanded to disable common powerful features (USB, payment, sensors, etc.) while keeping prior camera/mic/geo off. The Next.js app should still set its own CSP for the SPA.
 
 ### 13. **Password and PIN hashing**
 - **Status:** Argon2 for passwords and PINs. Strong.
