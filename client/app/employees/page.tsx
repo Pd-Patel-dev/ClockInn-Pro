@@ -20,7 +20,9 @@ import ConfirmationDialog from '@/components/ConfirmationDialog'
 const employeeSchema = z.object({
   name: z.string().min(1, 'Name is required'),
   email: z.string().email('Invalid email address'),
-  role: z.enum(['MAINTENANCE', 'FRONTDESK', 'HOUSEKEEPING']).default('FRONTDESK'),
+  role: z
+    .enum(['MAINTENANCE', 'FRONTDESK', 'HOUSEKEEPING', 'RESTAURANT', 'SECURITY', 'MANAGER', 'ADMIN'])
+    .default('FRONTDESK'),
   pin: z.string().length(4, 'PIN must be 4 digits').optional(),
   pay_rate: z.string().optional().transform((val) => {
     if (!val || val === '') return undefined
@@ -32,7 +34,9 @@ const employeeSchema = z.object({
 const editEmployeeSchema = z.object({
   name: z.string().min(1, 'Name is required'),
   status: z.enum(['active', 'inactive']),
-  role: z.enum(['MAINTENANCE', 'FRONTDESK', 'HOUSEKEEPING', 'ADMIN']).optional(),
+  role: z
+    .enum(['MAINTENANCE', 'FRONTDESK', 'HOUSEKEEPING', 'RESTAURANT', 'SECURITY', 'MANAGER', 'ADMIN'])
+    .optional(),
   pin: z.string().length(4, 'PIN must be 4 digits').optional().or(z.literal('')),
   pay_rate: z.string().optional(),
 })
@@ -96,7 +100,7 @@ export default function AdminEmployeesPage() {
     const checkAdminAndFetch = async () => {
       try {
         const user = await getCurrentUser()
-        if (user.role !== 'ADMIN') {
+        if (!(user.permissions || []).includes('user_management')) {
           router.push('/dashboard')
           return
         }
@@ -175,7 +179,15 @@ export default function AdminEmployeesPage() {
     resetEdit({
       name: employee.name,
       status: employee.status,
-      role: employee.role as 'MAINTENANCE' | 'FRONTDESK' | 'HOUSEKEEPING' | 'ADMIN',
+      role:
+        employee.role as
+          | 'MAINTENANCE'
+          | 'FRONTDESK'
+          | 'HOUSEKEEPING'
+          | 'RESTAURANT'
+          | 'SECURITY'
+          | 'MANAGER'
+          | 'ADMIN',
       pin: '', // Don't pre-fill PIN for security
       pay_rate: employee.pay_rate?.toString() || '',
     })
@@ -366,6 +378,10 @@ export default function AdminEmployeesPage() {
                     <option value="FRONTDESK">Front Desk</option>
                     <option value="MAINTENANCE">Maintenance</option>
                     <option value="HOUSEKEEPING">Housekeeping</option>
+                    <option value="RESTAURANT">Restaurant</option>
+                    <option value="SECURITY">Security</option>
+                    <option value="MANAGER">Manager</option>
+                    <option value="ADMIN">Administrator</option>
                   </Select>
                 </FormField>
                 
@@ -456,7 +472,10 @@ export default function AdminEmployeesPage() {
                     <option value="FRONTDESK">Front Desk</option>
                     <option value="MAINTENANCE">Maintenance</option>
                     <option value="HOUSEKEEPING">Housekeeping</option>
-                    <option value="ADMIN">Admin</option>
+                    <option value="RESTAURANT">Restaurant</option>
+                    <option value="SECURITY">Security</option>
+                    <option value="MANAGER">Manager</option>
+                    <option value="ADMIN">Administrator</option>
                   </Select>
                 </FormField>
                   </div>

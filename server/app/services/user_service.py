@@ -411,7 +411,16 @@ async def update_user_developer(
                         User.company_id == company_id,
                         User.pin_hash == new_pin_hash,
                         User.id != user_id,
-                        User.role.in_([UserRole.MAINTENANCE, UserRole.FRONTDESK, UserRole.HOUSEKEEPING]),
+                        User.role.in_(
+                            [
+                                UserRole.MAINTENANCE,
+                                UserRole.FRONTDESK,
+                                UserRole.HOUSEKEEPING,
+                                UserRole.RESTAURANT,
+                                UserRole.SECURITY,
+                                UserRole.MANAGER,
+                            ]
+                        ),
                     )
                 )
             )

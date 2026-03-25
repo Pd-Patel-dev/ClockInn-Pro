@@ -22,13 +22,26 @@ class TokenResponse(BaseModel):
 
 
 class RefreshTokenRequest(BaseModel):
-    """Optional body for refresh; when using cookies, refresh token is read from cookie only."""
-    refresh_token: Optional[str] = None
+    """
+    Deprecated: send an empty body and rely on the HttpOnly refresh cookie.
+    Body `refresh_token` remains for backwards compatibility and will be removed in a future release.
+    """
+
+    refresh_token: Optional[str] = Field(
+        default=None,
+        description="Deprecated. Use the refresh_token HttpOnly cookie only (empty JSON body).",
+        json_schema_extra={"deprecated": True},
+    )
 
 
 class LogoutRequest(BaseModel):
-    """Optional body for logout; when using cookies, refresh token is read from cookie only."""
-    refresh_token: Optional[str] = None
+    """Optional body for legacy clients; prefer HttpOnly refresh cookie."""
+
+    refresh_token: Optional[str] = Field(
+        default=None,
+        description="Deprecated. Use the refresh_token HttpOnly cookie only (empty JSON body).",
+        json_schema_extra={"deprecated": True},
+    )
 
 
 class SendVerificationPinRequest(BaseModel):

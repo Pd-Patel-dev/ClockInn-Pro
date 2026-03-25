@@ -19,10 +19,12 @@ from app.core.security import (
     normalize_email,
     validate_password_strength,
     get_pin_hash,
+    DUMMY_PASSWORD_HASH_FOR_TIMING,
 )
 from app.core.login_attempts import is_locked_out, record_failed_attempt, clear_attempts
 from app.core.slug import generate_unique_slug
 from app.core.config import settings
+from app.core.permissions import ROLE_PERMISSIONS
 from app.schemas.auth import RegisterCompanyRequest, LoginRequest
 import uuid
 
@@ -113,7 +115,12 @@ async def register_company(
         logger.error(f"Failed to send verification PIN after registration: {e}")
         # Don't fail registration if email sending fails
     
-    access_token = create_access_token({"sub": str(user.id), "company_id": str(company.id), "role": user.role.value})
+    access_token = create_access_token({
+        "sub": str(user.id),
+        "company_id": str(company.id),
+        "role": user.role.value,
+        "permissions": sorted(list(ROLE_PERMISSIONS.get(user.role, set()))),
+    })
     
     return user, access_token, refresh_token
 
@@ -149,8 +156,7 @@ async def login(
     if not user:
         # Verify against a dummy hash to maintain constant-time operation
         # This prevents timing attacks that could reveal if email exists
-        dummy_hash = "$argon2id$v=19$m=65536,t=3,p=4$dummy$dummy"
-        verify_password(request.password, dummy_hash)
+        verify_password(request.password, DUMMY_PASSWORD_HASH_FOR_TIMING)
         await record_failed_attempt(normalized_email, client_ip=ip)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -210,7 +216,12 @@ async def login(
     await db.commit()
     await db.refresh(user)
     
-    access_token = create_access_token({"sub": str(user.id), "company_id": str(user.company_id), "role": user.role.value})
+    access_token = create_access_token({
+        "sub": str(user.id),
+        "company_id": str(user.company_id),
+        "role": user.role.value,
+        "permissions": sorted(list(ROLE_PERMISSIONS.get(user.role, set()))),
+    })
     
     return user, access_token, refresh_token
 
@@ -344,7 +355,12 @@ async def refresh_access_token(
     
     await db.commit()
     
-    access_token = create_access_token({"sub": str(user.id), "company_id": str(user.company_id), "role": user.role.value})
+    access_token = create_access_token({
+        "sub": str(user.id),
+        "company_id": str(user.company_id),
+        "role": user.role.value,
+        "permissions": sorted(list(ROLE_PERMISSIONS.get(user.role, set()))),
+    })
     
     return access_token, new_refresh_token
 

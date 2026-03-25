@@ -23,6 +23,63 @@ Stuff that works:
 
 I used Docker Compose to make it easier to run everything locally.
 
+## Repository layout
+
+### `server/`
+
+FastAPI app: **`app/main.py`**, **`app/api/v1/router.py`** wires routers; **`app/models/`** (SQLAlchemy: User, Company, TimeEntry, Session, payroll, shifts, cash drawer, shift notes, etc.); **`app/services/`** business logic; **`app/schemas/`** Pydantic; **`app/core/`** (config, security, DB, rate limit, permissions); **`app/middleware/`**; **`app/pdf_templates/`**; **`alembic/`** migrations; **`tests/`**; **`scripts/`** (seed, migrate).
+
+**One-off scripts at `server/` root** (not imported by the running API): **`create_developer_supabase.py`** and **`create_developer_account.py`**. They bootstrap a developer user against `DATABASE_URL`; use env `DEVELOPER_INITIAL_PASSWORD` or a generated password—see each file’s docstring. Do not treat them as part of `app/`.
+
+**Largest modules under `server/app/`** (approximate line counts; run `wc -l` or your IDE to refresh):
+
+| Lines | File |
+|------:|------|
+| 1073 | `services/email_service.py` |
+| 814 | `api/v1/endpoints/time.py` |
+| 726 | `services/payroll_service.py` |
+| 650 | `api/v1/endpoints/payroll.py` |
+| 644 | `services/export_service.py` |
+| 618 | `services/shift_service.py` |
+| 591 | `api/v1/endpoints/developer.py` |
+| 585 | `services/cash_drawer_service.py` |
+| 572 | `services/user_service.py` |
+| 524 | `services/shift_note_service.py` |
+
+### `client/`
+
+Next.js App Router: **`app/`** pages; **`components/`** shared UI; **`lib/`** (`api.ts`, `auth.ts`, `tokenManager.ts`); **`hooks/`**; **`config/navigation.ts`**; **`middleware.ts`**.
+
+**Largest TS/TSX files** (approximate):
+
+| Lines | File |
+|------:|------|
+| 1604 | `app/settings/page.tsx` |
+| 1085 | `app/kiosk/[slug]/page.tsx` |
+| 968 | `app/employees/[id]/page.tsx` |
+| 939 | `app/schedules/page.tsx` |
+| 832 | `app/punch-in-out/page.tsx` |
+| 826 | `app/developer/page.tsx` |
+| 728 | `app/admin/shift-log/page.tsx` |
+| 675 | `app/punch/page.tsx` |
+| 611 | `app/schedules/week/page.tsx` |
+| 569 | `app/time-entries/page.tsx` |
+
+**Windows:** Git or tools may show paths as `client\app\...` or `client/app/...`—they are the same files. Avoid editing the same file twice because of duplicate spellings in search results.
+
+More detail: **[docs/CLOCKINN_PRO_FULL_EXAMINATION_REPORT.md](docs/CLOCKINN_PRO_FULL_EXAMINATION_REPORT.md)**.
+
+### User model (quick reference)
+
+Defined in **`server/app/models/user.py`**.
+
+- **Roles:** `UserRole` enum (ADMIN, MANAGER, DEVELOPER, MAINTENANCE, FRONTDESK, HOUSEKEEPING, RESTAURANT, SECURITY)—not just “admin vs employee”.
+- **PIN:** stored as **`pin_hash`** (Argon2); kiosk/punch verifies against the hash.
+- **Pay:** **`pay_rate_cents`** is the primary field for payroll; **`pay_rate`** is legacy. **`PayRateType`** is currently HOURLY. No separate employee contract table.
+- **Tenant isolation:** each user has **`company_id`**; email is unique per company (`uq_user_company_email`).
+
+Full field list and relationships: see the `User` class in that file.
+
 ## Getting it running
 
 ### Docker (easiest way)
@@ -69,6 +126,23 @@ You'll need a `.env` file. Copy `.env.example` to `.env` and fill in:
 - `NEXT_PUBLIC_API_URL` - Backend API URL
 
 To use **Supabase** as the database instead of local Postgres, see **[docs/MIGRATE_TO_SUPABASE.md](docs/MIGRATE_TO_SUPABASE.md)**.
+
+## Backend tests (Docker)
+
+Pytest uses database name **`clockinn_test`** with the **same user and password** as your app `DATABASE_URL` (not a separate `clockinn_test` user).
+
+- **New compose volumes:** `docker/postgres/docker-entrypoint-initdb.d/02-clockinn-test.sql` creates `clockinn_test` on first Postgres init.
+- **Existing `postgres_data` volume:** create the DB once:
+  ```bash
+  docker compose exec db psql -U clockinn -d postgres -c "CREATE DATABASE clockinn_test;"
+  ```
+  (Use your `POSTGRES_USER` if it is not `clockinn`.)
+
+From the repo root:
+
+```bash
+docker compose exec api python -m pytest -q
+```
 
 ## Sample data
 

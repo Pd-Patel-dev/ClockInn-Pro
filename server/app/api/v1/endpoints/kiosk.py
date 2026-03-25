@@ -179,12 +179,21 @@ async def check_kiosk_pin(
     
     await _check_kiosk_network(request, company, db)
     
-    # Find active employees with PINs in this company (any role except ADMIN/DEVELOPER)
+    # Find active employees with PINs in this company (all operational roles).
     result = await db.execute(
         select(User).where(
             and_(
                 User.company_id == company.id,
-                User.role.in_([UserRole.MAINTENANCE, UserRole.FRONTDESK, UserRole.HOUSEKEEPING]),
+                User.role.in_(
+                    [
+                        UserRole.MAINTENANCE,
+                        UserRole.FRONTDESK,
+                        UserRole.HOUSEKEEPING,
+                        UserRole.RESTAURANT,
+                        UserRole.SECURITY,
+                        UserRole.MANAGER,
+                    ]
+                ),
                 User.status == UserStatus.ACTIVE,
                 User.pin_hash.isnot(None),
             )
@@ -295,12 +304,21 @@ async def kiosk_clock(
             detail="Kiosk is disabled for this company",
         )
     
-    # Find active employees with PINs in this company (any role except ADMIN/DEVELOPER)
+    # Find active employees with PINs in this company (all operational roles).
     result = await db.execute(
         select(User).where(
             and_(
                 User.company_id == company.id,
-                User.role.in_([UserRole.MAINTENANCE, UserRole.FRONTDESK, UserRole.HOUSEKEEPING]),
+                User.role.in_(
+                    [
+                        UserRole.MAINTENANCE,
+                        UserRole.FRONTDESK,
+                        UserRole.HOUSEKEEPING,
+                        UserRole.RESTAURANT,
+                        UserRole.SECURITY,
+                        UserRole.MANAGER,
+                    ]
+                ),
                 User.status == UserStatus.ACTIVE,
                 User.pin_hash.isnot(None),
             )

@@ -388,7 +388,16 @@ async def generate_payroll_run(
     query = select(User).where(
         and_(
             User.company_id == company_id,
-            User.role.in_([UserRole.MAINTENANCE, UserRole.FRONTDESK, UserRole.HOUSEKEEPING]),
+            User.role.in_(
+                [
+                    UserRole.MAINTENANCE,
+                    UserRole.FRONTDESK,
+                    UserRole.HOUSEKEEPING,
+                    UserRole.RESTAURANT,
+                    UserRole.SECURITY,
+                    UserRole.MANAGER,
+                ]
+            ),
         )
     )
     

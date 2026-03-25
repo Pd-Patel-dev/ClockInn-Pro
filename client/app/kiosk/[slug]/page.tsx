@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useRouter, useParams } from 'next/navigation'
 import api from '@/lib/api'
+import ConfirmationDialog from '@/components/ConfirmationDialog'
 
 interface CompanyInfo {
   name: string
@@ -31,6 +32,8 @@ export default function KioskSlugPage() {
   const [loadingCompany, setLoadingCompany] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [showCashDialog, setShowCashDialog] = useState(false)
+  const [showPunchConfirm, setShowPunchConfirm] = useState(false)
+  const [punchConfirmNext, setPunchConfirmNext] = useState<'execute' | 'execute_after_cash' | null>(null)
   const [cashAmount, setCashAmount] = useState('')
   const [collectedCash, setCollectedCash] = useState('')
   const [dropAmount, setDropAmount] = useState('')
@@ -342,10 +345,9 @@ export default function KioskSlugPage() {
           setDropAmount('')
           setBeveragesCash('')
           setCashError(null)
-          // Keep PIN visible but don't clear it yet
         } else {
-          // No cash drawer, proceed directly with clock-out
-          await executePunch(pin)
+          setPunchConfirmNext('execute')
+          setShowPunchConfirm(true)
         }
       } else {
         // Employee is not clocked in - show start shift form with greeting
@@ -358,10 +360,9 @@ export default function KioskSlugPage() {
           setDropAmount('')
           setBeveragesCash('')
           setCashError(null)
-          // Keep PIN visible but don't clear it yet
         } else {
-          // No cash drawer, proceed directly with clock-in
-          await executePunch(pin)
+          setPunchConfirmNext('execute')
+          setShowPunchConfirm(true)
         }
       }
     } catch (err: any) {
@@ -377,7 +378,7 @@ export default function KioskSlugPage() {
     } finally {
       setCheckingPin(false)
     }
-  }, [slug, executePunch])
+  }, [slug])
 
   const handlePunch = useCallback(async (pin?: string) => {
     const pinToUse = pin || pinDisplay
@@ -388,13 +389,13 @@ export default function KioskSlugPage() {
     }
 
     // Don't show dialog if already pending or dialog is open
-    if (pendingPunch || showCashDialog || checkingPin) {
+    if (pendingPunch || showCashDialog || checkingPin || showPunchConfirm) {
       return
     }
 
     // First check PIN and get employee status
     await checkPin(pinToUse)
-  }, [pinDisplay, checkPin, pendingPunch, showCashDialog, checkingPin])
+  }, [pinDisplay, checkPin, pendingPunch, showCashDialog, checkingPin, showPunchConfirm])
 
   const handleCashDialogSubmit = useCallback(async () => {
     // Validate cash amount
@@ -404,53 +405,33 @@ export default function KioskSlugPage() {
       return
     }
     
-    let collectedCents: number | undefined = undefined
-    let beveragesCents: number | undefined = undefined
-    
-    // For clock-out, validate and collect additional cash fields
+    // For clock-out, validate additional cash fields
     if (!isClockIn) {
       const collectedValue = parseFloat(collectedCash)
       const dropValue = parseFloat(dropAmount)
       const beveragesValue = parseFloat(beveragesCash)
-      
+
       if (isNaN(collectedValue) || collectedValue < 0) {
         setCashError('Please enter a valid collected cash amount')
         return
       }
-      
+
       if (isNaN(dropValue) || dropValue < 0) {
         setCashError('Please enter a valid drop amount')
         return
       }
-      
+
       if (isNaN(beveragesValue) || beveragesValue < 0) {
         setCashError('Please enter a valid beverages sold amount')
         return
       }
-      
-      collectedCents = Math.round(collectedValue * 100)
-      const dropCents = Math.round(dropValue * 100)
-      beveragesCents = Math.round(beveragesValue * 100)
     }
-    
+
     setCashError(null)
-    
-    // Close dialog immediately to prevent it from showing again
     setShowCashDialog(false)
-    
-    const cashCents = Math.round(cashValue * 100)
-    const pinToUse = pinDisplay
-    
-    // Try with start cash first (assuming clock-in)
-    // If backend says we need end cash, it will return an error and we'll adjust
-    if (isClockIn) {
-      await executePunch(pinToUse, cashCents, undefined, undefined, undefined, undefined)
-    } else {
-      // For clock-out, we need end cash, collected cash, drop amount, and beverages cash
-      const dropCents = Math.round(parseFloat(dropAmount || '0') * 100)
-      await executePunch(pinToUse, undefined, cashCents, collectedCents, dropCents, beveragesCents)
-    }
-  }, [cashAmount, collectedCash, dropAmount, beveragesCash, pinDisplay, isClockIn, executePunch])
+    setPunchConfirmNext('execute_after_cash')
+    setShowPunchConfirm(true)
+  }, [cashAmount, collectedCash, dropAmount, beveragesCash, isClockIn])
 
   const handleCashDialogCancel = useCallback(() => {
     setShowCashDialog(false)
@@ -460,12 +441,58 @@ export default function KioskSlugPage() {
     setPinDisplay('')
   }, [])
 
+  const performKioskPunchWithEnteredCash = useCallback(async () => {
+    const cashValue = parseFloat(cashAmount)
+    const cashCents = Math.round(cashValue * 100)
+    const pinToUse = pinDisplay
+    if (isClockIn) {
+      await executePunch(pinToUse, cashCents, undefined, undefined, undefined, undefined)
+    } else {
+      const collectedCents = Math.round(parseFloat(collectedCash) * 100)
+      const dropCents = Math.round(parseFloat(dropAmount || '0') * 100)
+      const beveragesCents = Math.round(parseFloat(beveragesCash) * 100)
+      await executePunch(pinToUse, undefined, cashCents, collectedCents, dropCents, beveragesCents)
+    }
+  }, [cashAmount, collectedCash, dropAmount, beveragesCash, pinDisplay, isClockIn, executePunch])
+
+  const handleKioskPunchConfirm = useCallback(() => {
+    const next = punchConfirmNext
+    setShowPunchConfirm(false)
+    setPunchConfirmNext(null)
+    if (next === 'execute') {
+      void executePunch(pinDisplay)
+    } else if (next === 'execute_after_cash') {
+      void performKioskPunchWithEnteredCash()
+    }
+  }, [punchConfirmNext, pinDisplay, executePunch, performKioskPunchWithEnteredCash])
+
+  const handleKioskPunchCancel = useCallback(() => {
+    const next = punchConfirmNext
+    setShowPunchConfirm(false)
+    setPunchConfirmNext(null)
+    if (next === 'execute_after_cash') {
+      setShowCashDialog(true)
+      setPendingPunch(true)
+    } else {
+      setPendingPunch(false)
+      setPinDisplay('')
+      setEmployeeInfo(null)
+    }
+  }, [punchConfirmNext])
+
   // Auto-check PIN when it reaches 4 digits (but not when cash dialog is open or checking)
   useEffect(() => {
-    if (pinDisplay.length === 4 && !loading && !showCashDialog && !pendingPunch && !checkingPin) {
+    if (
+      pinDisplay.length === 4 &&
+      !loading &&
+      !showCashDialog &&
+      !pendingPunch &&
+      !checkingPin &&
+      !showPunchConfirm
+    ) {
       handlePunch(pinDisplay)
     }
-  }, [pinDisplay, loading, showCashDialog, pendingPunch, checkingPin, handlePunch])
+  }, [pinDisplay, loading, showCashDialog, pendingPunch, checkingPin, showPunchConfirm, handlePunch])
 
   const appendPin = useCallback((digit: string) => {
     if (!loading) {
@@ -496,8 +523,8 @@ export default function KioskSlugPage() {
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       // Don't interfere if cash dialog is open
-      if (showCashDialog) return
-      
+      if (showCashDialog || showPunchConfirm) return
+
       if (loading) return
 
       if (event.key >= '0' && event.key <= '9') {
@@ -521,7 +548,7 @@ export default function KioskSlugPage() {
     return () => {
       window.removeEventListener('keydown', handleKeyDown)
     }
-  }, [loading, appendPin, deletePin, handlePunch, clearPin, pinDisplay, showCashDialog])
+  }, [loading, appendPin, deletePin, handlePunch, clearPin, pinDisplay, showCashDialog, showPunchConfirm])
 
   const formatTime = (date: Date) => {
     return date.toLocaleTimeString('en-US', { 
@@ -761,6 +788,28 @@ export default function KioskSlugPage() {
           </div>
         </div>
       </div>
+
+      <ConfirmationDialog
+        isOpen={showPunchConfirm}
+        title={isClockIn ? 'Clock in?' : 'Clock out?'}
+        message={
+          punchConfirmNext === 'execute_after_cash'
+            ? employeeInfo
+              ? `Submit punch for ${employeeInfo.name} with the cash amounts you entered?`
+              : 'Submit punch with the cash amounts you entered?'
+            : employeeInfo
+              ? isClockIn
+                ? `Confirm clock in for ${employeeInfo.name}.`
+                : `Confirm clock out for ${employeeInfo.name}.`
+              : isClockIn
+                ? 'Confirm you want to clock in.'
+                : 'Confirm you want to clock out.'
+        }
+        confirmText={isClockIn ? 'Clock in' : 'Clock out'}
+        cancelText="Cancel"
+        onConfirm={handleKioskPunchConfirm}
+        onCancel={handleKioskPunchCancel}
+      />
 
       {/* Cash Drawer Dialog */}
       {showCashDialog && (

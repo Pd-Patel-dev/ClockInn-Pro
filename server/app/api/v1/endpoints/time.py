@@ -129,7 +129,16 @@ async def punch_endpoint(
         select(User).where(
             and_(
                 User.email == normalized_email,
-                User.role.in_([UserRole.MAINTENANCE, UserRole.FRONTDESK, UserRole.HOUSEKEEPING]),
+                User.role.in_(
+                    [
+                        UserRole.MAINTENANCE,
+                        UserRole.FRONTDESK,
+                        UserRole.HOUSEKEEPING,
+                        UserRole.RESTAURANT,
+                        UserRole.SECURITY,
+                        UserRole.MANAGER,
+                    ]
+                ),
                 User.status == UserStatus.ACTIVE,
             )
         )
@@ -197,7 +206,16 @@ async def punch_by_pin_endpoint(
     result = await db.execute(
         select(User).where(
             and_(
-                User.role.in_([UserRole.MAINTENANCE, UserRole.FRONTDESK, UserRole.HOUSEKEEPING]),
+                User.role.in_(
+                    [
+                        UserRole.MAINTENANCE,
+                        UserRole.FRONTDESK,
+                        UserRole.HOUSEKEEPING,
+                        UserRole.RESTAURANT,
+                        UserRole.SECURITY,
+                        UserRole.MANAGER,
+                    ]
+                ),
                 User.status == UserStatus.ACTIVE,
                 User.pin_hash.isnot(None),
             )
@@ -292,7 +310,14 @@ async def punch_me_endpoint(
     user_agent = request.headers.get("User-Agent")
     
     # Check if user is an employee (any role except ADMIN/DEVELOPER)
-    if current_user.role not in [UserRole.MAINTENANCE, UserRole.FRONTDESK, UserRole.HOUSEKEEPING]:
+    if current_user.role not in [
+        UserRole.MAINTENANCE,
+        UserRole.FRONTDESK,
+        UserRole.HOUSEKEEPING,
+        UserRole.RESTAURANT,
+        UserRole.SECURITY,
+        UserRole.MANAGER,
+    ]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Only employees can punch in/out",
@@ -372,7 +397,14 @@ async def punch_me_simple_endpoint(
         client_ip = client_ip.split(",")[0].strip()
     user_agent = request.headers.get("User-Agent")
 
-    if current_user.role not in [UserRole.MAINTENANCE, UserRole.FRONTDESK, UserRole.HOUSEKEEPING]:
+    if current_user.role not in [
+        UserRole.MAINTENANCE,
+        UserRole.FRONTDESK,
+        UserRole.HOUSEKEEPING,
+        UserRole.RESTAURANT,
+        UserRole.SECURITY,
+        UserRole.MANAGER,
+    ]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Only employees can punch in/out",
@@ -604,7 +636,16 @@ async def create_manual_time_entry_endpoint(
             and_(
                 User.id == data.employee_id,
                 User.company_id == current_user.company_id,
-                User.role.in_([UserRole.MAINTENANCE, UserRole.FRONTDESK, UserRole.HOUSEKEEPING]),
+                User.role.in_(
+                    [
+                        UserRole.MAINTENANCE,
+                        UserRole.FRONTDESK,
+                        UserRole.HOUSEKEEPING,
+                        UserRole.RESTAURANT,
+                        UserRole.SECURITY,
+                        UserRole.MANAGER,
+                    ]
+                ),
             )
         )
     )

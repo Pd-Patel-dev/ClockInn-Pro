@@ -71,7 +71,8 @@ async def seed_data():
                 "email": "john@demo.com",
                 "password": "Employee123!",
                 "pin": "1234",
-                "job_role": "Manager",
+                "job_role": "Front Desk",
+                "role": UserRole.FRONTDESK,
                 "pay_rate": 25.50,
             },
             {
@@ -79,7 +80,8 @@ async def seed_data():
                 "email": "jane@demo.com",
                 "password": "Employee123!",
                 "pin": "5678",
-                "job_role": "Developer",
+                "job_role": "Housekeeping",
+                "role": UserRole.HOUSEKEEPING,
                 "pay_rate": 30.00,
             },
             {
@@ -87,7 +89,8 @@ async def seed_data():
                 "email": "bob@demo.com",
                 "password": "Employee123!",
                 "pin": "9012",
-                "job_role": "Sales Associate",
+                "job_role": "Maintenance",
+                "role": UserRole.MAINTENANCE,
                 "pay_rate": 18.75,
             },
         ]
@@ -99,7 +102,7 @@ async def seed_data():
             employee = User(
                 id=uuid.uuid4(),
                 company_id=company.id,
-                role=UserRole.FRONTDESK,
+                role=emp_data.get("role", UserRole.FRONTDESK),
                 name=emp_data["name"],
                 email=emp_data["email"],
                 password_hash=get_password_hash(emp_data["password"]),

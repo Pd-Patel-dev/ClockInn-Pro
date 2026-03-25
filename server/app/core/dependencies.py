@@ -10,6 +10,7 @@ from app.core.database import get_db
 from app.core.security import decode_token
 from app.models.user import User, UserRole, UserStatus
 from app.core.config import settings
+from app.core.permissions import has_permission
 
 security = HTTPBearer()
 
@@ -146,18 +147,29 @@ async def get_current_developer(
 
 
 def require_permission(permission_name: str):
-    """Dependency factory for permission-based access control."""
+    """
+    Dependency factory for permission-based access control.
+    Supports:
+    - legacy permission keys (contains ':') via DB permission service
+    - feature keys (e.g. 'payroll') via ROLE_PERMISSIONS
+    """
     async def permission_checker(
         current_user: User = Depends(get_current_verified_user),
         db: AsyncSession = Depends(get_db),
     ) -> User:
-        from app.services.permission_service import user_has_permission
-        
-        has_perm = await user_has_permission(db, current_user, permission_name)
-        if not has_perm:
+        if ":" in permission_name:
+            from app.services.permission_service import user_has_permission
+
+            has_perm = await user_has_permission(db, current_user, permission_name)
+            if not has_perm:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail=f"Permission required: {permission_name}",
+                )
+        elif not has_permission(current_user.role, permission_name):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail=f"Permission required: {permission_name}",
+                detail=f"Your role does not have access to: {permission_name}",
             )
         return current_user
     return permission_checker

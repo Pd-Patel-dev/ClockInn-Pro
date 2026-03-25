@@ -105,9 +105,12 @@ async def refresh_token_endpoint(
     refresh_data: RefreshTokenRequest | None = Body(None),
     db: AsyncSession = Depends(get_db),
 ):
-    """Refresh access token and rotate refresh token. Reads refresh token from HttpOnly cookie (or body for backwards compatibility)."""
+    """Refresh access token and rotate refresh token. Prefer HttpOnly cookie; optional body is deprecated."""
     refresh_token = request.cookies.get(settings.REFRESH_TOKEN_COOKIE_NAME)
     if not refresh_token and refresh_data and refresh_data.refresh_token:
+        logger.warning(
+            "auth/refresh: refresh_token sent in request body (deprecated). Use HttpOnly cookie only."
+        )
         refresh_token = refresh_data.refresh_token
     if not refresh_token:
         raise HTTPException(
@@ -135,9 +138,12 @@ async def logout_endpoint(
     body: LogoutRequest | None = Body(None),
     db: AsyncSession = Depends(get_db),
 ):
-    """Logout and revoke refresh token. Reads from HttpOnly cookie (or body for backwards compatibility)."""
+    """Logout and revoke refresh token. Prefer HttpOnly cookie; optional body is deprecated."""
     refresh_token = request.cookies.get(settings.REFRESH_TOKEN_COOKIE_NAME)
     if not refresh_token and body and body.refresh_token:
+        logger.warning(
+            "auth/logout: refresh_token sent in request body (deprecated). Use HttpOnly cookie only."
+        )
         refresh_token = body.refresh_token
     if refresh_token:
         await logout(db, refresh_token)

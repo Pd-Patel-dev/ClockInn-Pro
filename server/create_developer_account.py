@@ -6,6 +6,8 @@ Usage:
     python create_developer_account.py
 """
 import asyncio
+import os
+import secrets
 import sys
 from pathlib import Path
 
@@ -92,10 +94,9 @@ async def create_developer_account():
                 print("  You can register a company through the registration endpoint.")
                 return
             
-            # Generate a secure password (user will need to reset it)
-            # For development, use a default password that should be changed
-            default_password = "Dev@2024ChangeMe!"
-            password_hash = get_password_hash(default_password)
+            # Use DEVELOPER_INITIAL_PASSWORD if set; otherwise a one-time random password (never commit a fixed default).
+            initial_password = os.getenv("DEVELOPER_INITIAL_PASSWORD") or secrets.token_urlsafe(16)
+            password_hash = get_password_hash(initial_password)
             
             # Create developer user
             developer_user = User(
@@ -115,14 +116,13 @@ async def create_developer_account():
             await db.commit()
             await db.refresh(developer_user)
             
-            print(f"✓ Developer account created successfully!")
+            print("✓ Developer account created successfully!")
             print(f"  Email: {developer_email}")
-            print(f"  Password: {default_password}")
+            print(f"  Password: {initial_password}")
             print(f"  User ID: {developer_user.id}")
             print(f"  Company ID: {company.id}")
             print(f"  Role: {developer_user.role.value}")
-            print(f"\n⚠️  IMPORTANT: Please change the password after first login!")
-            print(f"   The default password is: {default_password}")
+            print("\n⚠️  IMPORTANT: Save the password above; change it after first login.")
             
         except Exception as e:
             print(f"✗ Error creating developer account: {e}")

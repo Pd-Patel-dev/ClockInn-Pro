@@ -8,7 +8,7 @@ Generates a clean, professional payroll report PDF with:
 - Notes section
 - Footer with confidentiality notice
 """
-from typing import List
+from typing import List, TypedDict
 from datetime import datetime, date
 from io import BytesIO
 from reportlab.lib import colors
@@ -23,6 +23,29 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.pdfgen import canvas
 from reportlab.lib.utils import ImageReader
 import re
+
+
+class PayrollReportTotals(TypedDict):
+    """Aggregated values shown on the payroll PDF summary and footer row."""
+
+    employee_count: int
+    total_regular_hours: float
+    total_ot_hours: float
+    total_gross_pay: float
+    total_regular_pay: float
+    total_ot_pay: float
+
+
+def compute_payroll_report_totals(rows: List[dict]) -> PayrollReportTotals:
+    """Sum row fields the same way as the PDF generator (unit-test this; PDF streams may be compressed)."""
+    return {
+        "employee_count": len(rows),
+        "total_regular_hours": sum(float(row.get("regular_hours", 0)) for row in rows),
+        "total_ot_hours": sum(float(row.get("ot_hours", 0)) for row in rows),
+        "total_gross_pay": sum(float(row.get("total_pay", 0)) for row in rows),
+        "total_regular_pay": sum(float(row.get("regular_pay", 0)) for row in rows),
+        "total_ot_pay": sum(float(row.get("ot_pay", 0)) for row in rows),
+    }
 
 
 def sanitize_html(text: str) -> str:
@@ -243,10 +266,11 @@ def generate_payroll_report_pdf(
     story.append(Paragraph("Payroll Report", report_title_style))
     
     # ========== SUMMARY CARDS ==========
-    total_employees = len(rows)
-    total_regular_hours = sum(float(row.get('regular_hours', 0)) for row in rows)
-    total_ot_hours = sum(float(row.get('ot_hours', 0)) for row in rows)
-    total_gross_pay = sum(float(row.get('total_pay', 0)) for row in rows)
+    totals = compute_payroll_report_totals(rows)
+    total_employees = totals["employee_count"]
+    total_regular_hours = totals["total_regular_hours"]
+    total_ot_hours = totals["total_ot_hours"]
+    total_gross_pay = totals["total_gross_pay"]
     
     card_number_style = ParagraphStyle(
         'CardNumber',
@@ -384,8 +408,8 @@ def generate_payroll_report_pdf(
         alignment=TA_RIGHT,
     )
     
-    total_regular_pay = sum(float(row.get('regular_pay', 0)) for row in rows)
-    total_ot_pay = sum(float(row.get('ot_pay', 0)) for row in rows)
+    total_regular_pay = totals["total_regular_pay"]
+    total_ot_pay = totals["total_ot_pay"]
     
     table_data.append([
         Paragraph("TOTALS", totals_style),

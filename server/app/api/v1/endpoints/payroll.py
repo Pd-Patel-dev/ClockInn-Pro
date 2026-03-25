@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from sqlalchemy import select, and_
 
-from app.core.dependencies import get_db, get_current_admin
+from app.core.dependencies import get_db, require_permission
 from app.core.error_handling import handle_endpoint_errors, parse_uuid
 from app.models.user import User
 from app.models.payroll import PayrollRun, PayrollLineItem, PayrollStatus, PayrollType
@@ -42,7 +42,7 @@ router = APIRouter()
 @handle_endpoint_errors(operation_name="generate_payroll")
 async def generate_payroll_endpoint(
     request: PayrollGenerateRequest,
-    current_user: User = Depends(get_current_admin),
+    current_user: User = Depends(require_permission("payroll")),
     db: AsyncSession = Depends(get_db),
 ):
     """Generate a new payroll run (admin only)."""
@@ -117,7 +117,7 @@ async def list_payroll_runs_endpoint(
     payroll_type: Optional[PayrollType] = Query(None),
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=1000),
-    current_user: User = Depends(get_current_admin),
+    current_user: User = Depends(require_permission("payroll")),
     db: AsyncSession = Depends(get_db),
 ):
     """List payroll runs (admin only)."""
@@ -165,7 +165,7 @@ async def list_payroll_runs_endpoint(
 @handle_endpoint_errors(operation_name="get_payroll_run")
 async def get_payroll_run_endpoint(
     payroll_run_id: str,
-    current_user: User = Depends(get_current_admin),
+    current_user: User = Depends(require_permission("payroll")),
     db: AsyncSession = Depends(get_db),
 ):
     """Get a payroll run with line items (admin only)."""
@@ -232,7 +232,7 @@ async def get_payroll_run_endpoint(
 @handle_endpoint_errors(operation_name="get_payroll_report_pdf")
 async def get_payroll_report_pdf_endpoint(
     payroll_run_id: str,
-    current_user: User = Depends(get_current_admin),
+    current_user: User = Depends(require_permission("payroll")),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -326,7 +326,7 @@ async def get_payroll_report_pdf_endpoint(
 async def finalize_payroll_run_endpoint(
     payroll_run_id: str,
     request: PayrollFinalizeRequest,
-    current_user: User = Depends(get_current_admin),
+    current_user: User = Depends(require_permission("payroll")),
     db: AsyncSession = Depends(get_db),
 ):
     """Finalize a payroll run (admin only)."""
@@ -395,7 +395,7 @@ async def finalize_payroll_run_endpoint(
 async def void_payroll_run_endpoint(
     payroll_run_id: str,
     request: PayrollVoidRequest,
-    current_user: User = Depends(get_current_admin),
+    current_user: User = Depends(require_permission("payroll")),
     db: AsyncSession = Depends(get_db),
 ):
     """Void a payroll run (admin only)."""
@@ -463,7 +463,7 @@ async def void_payroll_run_endpoint(
 @handle_endpoint_errors(operation_name="delete_payroll_run")
 async def delete_payroll_run_endpoint(
     payroll_run_id: str,
-    current_user: User = Depends(get_current_admin),
+    current_user: User = Depends(require_permission("payroll")),
     db: AsyncSession = Depends(get_db),
 ):
     """Delete a payroll run (only DRAFT status allowed, admin only)."""
@@ -482,7 +482,7 @@ async def delete_payroll_run_endpoint(
 async def export_payroll_endpoint(
     payroll_run_id: str,
     format: str = Query(..., regex="^(pdf|xlsx)$"),
-    current_user: User = Depends(get_current_admin),
+    current_user: User = Depends(require_permission("payroll")),
     db: AsyncSession = Depends(get_db),
 ):
     """Export payroll run to PDF or Excel (admin only)."""
@@ -589,7 +589,7 @@ async def export_payroll_endpoint(
 async def get_my_payroll_endpoint(
     from_date: Optional[date] = Query(None),
     to_date: Optional[date] = Query(None),
-    current_user: User = Depends(get_current_admin),  # Using get_current_admin for now, can be changed to get_current_user
+    current_user: User = Depends(require_permission("payroll")),
     db: AsyncSession = Depends(get_db),
 ):
     """Get employee's own payroll (finalized only)."""

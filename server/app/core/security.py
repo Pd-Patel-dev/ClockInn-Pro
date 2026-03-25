@@ -7,6 +7,11 @@ from app.core.config import settings
 pwd_context = CryptContext(schemes=["argon2"], deprecated="auto")
 pin_context = CryptContext(schemes=["argon2"], deprecated="auto")
 
+# Valid Argon2 hash for login timing when the user does not exist (invalid dummy strings break passlib/base64).
+DUMMY_PASSWORD_HASH_FOR_TIMING = (
+    "$argon2id$v=19$m=65536,t=3,p=4$sjamtDZG6J1zLuX8P0fImQ$BwzCHcL8XQyiKlddQmxZ0x1+QWGaiclUw7kp8Z351Ek"
+)
+
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     """Verify a password against its hash."""

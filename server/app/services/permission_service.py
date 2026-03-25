@@ -9,6 +9,7 @@ from sqlalchemy.orm import selectinload
 
 from app.models.permission import Permission, RolePermission, PermissionCategory, DEFAULT_COMPANY_ID
 from app.models.user import UserRole
+from app.core.permissions import has_permission as role_has_feature
 
 
 async def get_all_permissions(
@@ -94,8 +95,13 @@ async def user_has_permission(
     # Check role permissions
     role_permissions = await get_role_permissions(db, user.role, user.company_id)
     permission_names = {perm.name for perm in role_permissions}
-    
-    return permission_name in permission_names
+
+    if permission_name in permission_names:
+        return True
+    # Metadata-only / empty permission tables (e.g. pytest create_all) — mirror ROLE_PERMISSIONS + migration 027
+    if permission_name in ("shift_note:view:self", "shift_note:edit:self"):
+        return role_has_feature(user.role, "shift_notes")
+    return False
 
 
 async def set_role_permissions(

@@ -4,7 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List
 
 from app.core.database import get_db
-from app.core.dependencies import get_current_admin
+from app.core.dependencies import require_permission
 from app.core.error_handling import handle_endpoint_errors
 from app.models.user import User
 from app.schemas.report import ReportExportRequest
@@ -17,7 +17,7 @@ router = APIRouter()
 @handle_endpoint_errors(operation_name="export_report")
 async def export_report(
     request: ReportExportRequest,
-    current_user: User = Depends(get_current_admin),
+    current_user: User = Depends(require_permission("reports")),
     db: AsyncSession = Depends(get_db),
 ):
     """Export time entries report as PDF or Excel."""
@@ -28,7 +28,16 @@ async def export_report(
         result = await db.execute(
             select(User).where(
                 User.company_id == current_user.company_id,
-                User.role.in_([UserRole.MAINTENANCE, UserRole.FRONTDESK, UserRole.HOUSEKEEPING]),
+                User.role.in_(
+                    [
+                        UserRole.MAINTENANCE,
+                        UserRole.FRONTDESK,
+                        UserRole.HOUSEKEEPING,
+                        UserRole.RESTAURANT,
+                        UserRole.SECURITY,
+                        UserRole.MANAGER,
+                    ]
+                ),
             )
         )
         employees = result.scalars().all()

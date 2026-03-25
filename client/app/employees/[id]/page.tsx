@@ -60,7 +60,9 @@ const editEntrySchema = z.object({
 const editEmployeeSchema = z.object({
   name: z.string().min(1, 'Name is required'),
   status: z.enum(['active', 'inactive']),
-  role: z.enum(['MAINTENANCE', 'FRONTDESK', 'HOUSEKEEPING', 'ADMIN']).optional(),
+  role: z
+    .enum(['MAINTENANCE', 'FRONTDESK', 'HOUSEKEEPING', 'RESTAURANT', 'SECURITY', 'MANAGER', 'ADMIN'])
+    .optional(),
   pin: z.string().length(4, 'PIN must be 4 digits').optional().or(z.literal('')),
   pay_rate: z.string().optional(),
 })
@@ -146,7 +148,15 @@ export default function EmployeeDetailPage() {
         editEmployeeForm.reset({
           name: response.data.name,
           status: response.data.status as 'active' | 'inactive',
-          role: response.data.role as 'MAINTENANCE' | 'FRONTDESK' | 'HOUSEKEEPING' | 'ADMIN',
+          role:
+            response.data.role as
+              | 'MAINTENANCE'
+              | 'FRONTDESK'
+              | 'HOUSEKEEPING'
+              | 'RESTAURANT'
+              | 'SECURITY'
+              | 'MANAGER'
+              | 'ADMIN',
           pin: '',
           pay_rate: response.data.pay_rate?.toString() || '',
         })
@@ -495,7 +505,10 @@ export default function EmployeeDetailPage() {
                         <option value="FRONTDESK">Front Desk</option>
                         <option value="MAINTENANCE">Maintenance</option>
                         <option value="HOUSEKEEPING">Housekeeping</option>
-                        <option value="ADMIN">Admin</option>
+                        <option value="RESTAURANT">Restaurant</option>
+                        <option value="SECURITY">Security</option>
+                        <option value="MANAGER">Manager</option>
+                        <option value="ADMIN">Administrator</option>
                       </Select>
                     </FormField>
                   </div>

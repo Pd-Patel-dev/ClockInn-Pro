@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import Layout from '@/components/Layout'
+import ConfirmationDialog from '@/components/ConfirmationDialog'
 import api from '@/lib/api'
 import { getCurrentUser, User } from '@/lib/auth'
 import { format } from 'date-fns'
@@ -36,6 +37,8 @@ export default function PunchInOutPage() {
   const [beveragesCash, setBeveragesCash] = useState('')
   const [cashError, setCashError] = useState<string | null>(null)
   const [showCashDialog, setShowCashDialog] = useState(false)
+  const [showPunchConfirm, setShowPunchConfirm] = useState(false)
+  const [punchConfirmAfterCash, setPunchConfirmAfterCash] = useState(false)
   const [pendingPunch, setPendingPunch] = useState(false)
   const [location, setLocation] = useState<{ latitude: string; longitude: string } | null>(null)
   const [locationError, setLocationError] = useState<string | null>(null)
@@ -297,6 +300,7 @@ export default function PunchInOutPage() {
   }, [location, geofenceRequired, cashDrawerRequired, currentStatus, cashAmount, collectedCash, dropAmount, beveragesCash, fetchStatusAndEntries])
 
   const handlePunch = () => {
+    if (loading || showPunchConfirm || showCashDialog) return
     setError(null)
     setMessage(null)
     if (cashDrawerRequired) {
@@ -309,7 +313,23 @@ export default function PunchInOutPage() {
       setCashError(null)
       return
     }
-    executePunch()
+    setPunchConfirmAfterCash(false)
+    setShowPunchConfirm(true)
+  }
+
+  const confirmPunchIntent = () => {
+    setShowPunchConfirm(false)
+    setPunchConfirmAfterCash(false)
+    void executePunch()
+  }
+
+  const cancelPunchConfirm = () => {
+    setShowPunchConfirm(false)
+    if (punchConfirmAfterCash) {
+      setPunchConfirmAfterCash(false)
+      setPendingPunch(true)
+      setShowCashDialog(true)
+    }
   }
 
   const handleCashDialogSubmit = () => {
@@ -336,12 +356,15 @@ export default function PunchInOutPage() {
       }
     }
     setCashError(null)
-    executePunch()
+    setShowCashDialog(false)
+    setPunchConfirmAfterCash(true)
+    setShowPunchConfirm(true)
   }
 
   const handleCashDialogCancel = () => {
     setShowCashDialog(false)
     setPendingPunch(false)
+    setPunchConfirmAfterCash(false)
     setCashAmount('')
     setCollectedCash('')
     setDropAmount('')
@@ -456,7 +479,7 @@ export default function PunchInOutPage() {
             <button
               type="button"
               onClick={handlePunch}
-              disabled={loading}
+              disabled={loading || showPunchConfirm || showCashDialog}
               className="flex w-full items-center justify-center gap-2.5 rounded-xl bg-red-500 py-4 text-base font-semibold text-white shadow-sm shadow-red-100 transition-all duration-150 hover:bg-red-600 active:scale-[0.99] active:bg-red-700 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:shadow-none"
             >
               {loading ? (
@@ -475,7 +498,7 @@ export default function PunchInOutPage() {
             <button
               type="button"
               onClick={handlePunch}
-              disabled={loading}
+              disabled={loading || showPunchConfirm || showCashDialog}
               className="flex w-full items-center justify-center gap-2.5 rounded-xl bg-emerald-600 py-4 text-base font-semibold text-white shadow-sm shadow-emerald-200 transition-all duration-150 hover:bg-emerald-700 active:scale-[0.99] active:bg-emerald-800 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:shadow-none"
             >
               {loading ? (
@@ -590,6 +613,24 @@ export default function PunchInOutPage() {
             </div>
           )}
         </div>
+
+        <ConfirmationDialog
+          isOpen={showPunchConfirm}
+          title={currentStatus === 'in' ? 'Clock out?' : 'Clock in?'}
+          message={
+            punchConfirmAfterCash
+              ? currentStatus === 'in'
+                ? 'Submit clock out with the cash amounts you entered?'
+                : 'Submit clock in with the starting cash you entered?'
+              : currentStatus === 'in'
+                ? 'Confirm you want to clock out now.'
+                : 'Confirm you want to clock in now.'
+          }
+          confirmText={currentStatus === 'in' ? 'Clock out' : 'Clock in'}
+          cancelText="Cancel"
+          onConfirm={confirmPunchIntent}
+          onCancel={cancelPunchConfirm}
+        />
 
         {/* Cash Drawer Dialog – same as PIN-based punch */}
         {showCashDialog && (

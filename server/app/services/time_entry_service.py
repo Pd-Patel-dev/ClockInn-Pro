@@ -48,7 +48,16 @@ async def punch(
                 and_(
                     User.id == employee_id,
                     User.company_id == company_id,
-                    User.role.in_([UserRole.MAINTENANCE, UserRole.FRONTDESK, UserRole.HOUSEKEEPING]),
+                    User.role.in_(
+                        [
+                            UserRole.MAINTENANCE,
+                            UserRole.FRONTDESK,
+                            UserRole.HOUSEKEEPING,
+                            UserRole.RESTAURANT,
+                            UserRole.SECURITY,
+                            UserRole.MANAGER,
+                        ]
+                    ),
                     User.status == UserStatus.ACTIVE,
                 )
             )
@@ -60,7 +69,16 @@ async def punch(
                 and_(
                     User.email == normalized_email,
                     User.company_id == company_id,
-                    User.role.in_([UserRole.MAINTENANCE, UserRole.FRONTDESK, UserRole.HOUSEKEEPING]),
+                    User.role.in_(
+                        [
+                            UserRole.MAINTENANCE,
+                            UserRole.FRONTDESK,
+                            UserRole.HOUSEKEEPING,
+                            UserRole.RESTAURANT,
+                            UserRole.SECURITY,
+                            UserRole.MANAGER,
+                        ]
+                    ),
                     User.status == UserStatus.ACTIVE,
                 )
             )

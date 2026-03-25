@@ -18,8 +18,8 @@ async def company(db: AsyncSession) -> Company:
     c = Company(
         id=uuid.uuid4(),
         name="Test Company",
-        slug="test-company-shift-notes",
-        settings_json={},
+        slug=f"sn-{uuid.uuid4().hex[:12]}",
+        settings_json={"email_verification_required": False},
         kiosk_enabled=True,
     )
     db.add(c)
@@ -29,12 +29,13 @@ async def company(db: AsyncSession) -> Company:
 
 @pytest.fixture
 async def admin_user(db: AsyncSession, company: Company) -> User:
+    tag = str(company.id).replace("-", "")[:12]
     u = User(
         id=uuid.uuid4(),
         company_id=company.id,
         role=UserRole.ADMIN,
         name="Admin",
-        email="admin-sn@test.com",
+        email=f"adm-sn-{tag}@test.com",
         password_hash=get_password_hash("Admin123!@#"),
         status=UserStatus.ACTIVE,
         email_verified=True,
@@ -47,12 +48,13 @@ async def admin_user(db: AsyncSession, company: Company) -> User:
 
 @pytest.fixture
 async def employee_user(db: AsyncSession, company: Company) -> User:
+    tag = str(company.id).replace("-", "")[:12]
     u = User(
         id=uuid.uuid4(),
         company_id=company.id,
         role=UserRole.FRONTDESK,
         name="Employee One",
-        email="emp1-sn@test.com",
+        email=f"e1-sn-{tag}@test.com",
         password_hash=get_password_hash("Emp123!@#"),
         pin_hash=get_pin_hash("1234"),
         status=UserStatus.ACTIVE,
@@ -66,12 +68,13 @@ async def employee_user(db: AsyncSession, company: Company) -> User:
 
 @pytest.fixture
 async def employee_user2(db: AsyncSession, company: Company) -> User:
+    tag = str(company.id).replace("-", "")[:12]
     u = User(
         id=uuid.uuid4(),
         company_id=company.id,
         role=UserRole.FRONTDESK,
         name="Employee Two",
-        email="emp2-sn@test.com",
+        email=f"e2-sn-{tag}@test.com",
         password_hash=get_password_hash("Emp123!@#"),
         pin_hash=get_pin_hash("5678"),
         status=UserStatus.ACTIVE,
@@ -102,7 +105,7 @@ async def test_employee_get_create_current_shift_note(
 ):
     """Employee can get/create current shift note only for their open shift."""
     await db.commit()
-    token = await get_token(client, "emp1-sn@test.com", "Emp123!@#")
+    token = await get_token(client, employee_user.email, "Emp123!@#")
     # No open shift -> 404
     r = await client.get(
         "/api/v1/shift-notes/current",
@@ -156,7 +159,7 @@ async def test_employee_cannot_access_another_employee_note(
     )
     db.add(entry)
     await db.commit()
-    token2 = await get_token(client, "emp2-sn@test.com", "Emp123!@#")
+    token2 = await get_token(client, employee_user2.email, "Emp123!@#")
     # Emp2 GET current -> 404 (no open shift for emp2)
     r = await client.get(
         "/api/v1/shift-notes/current",
@@ -173,7 +176,10 @@ async def test_required_note_blocks_clock_out(
     employee_user: User,
 ):
     """When shift_notes_required_on_clock_out is True and note is empty, punch out returns 400."""
-    company.settings_json = {"shift_notes_required_on_clock_out": True}
+    company.settings_json = {
+        "email_verification_required": False,
+        "shift_notes_required_on_clock_out": True,
+    }
     db.add(company)
     await db.flush()
     entry = TimeEntry(
@@ -191,7 +197,7 @@ async def test_required_note_blocks_clock_out(
     r = await client.post(
         "/api/v1/time/punch",
         json={
-            "employee_email": "emp1-sn@test.com",
+            "employee_email": employee_user.email,
             "pin": "1234",
             "source": "kiosk",
         },
@@ -210,7 +216,7 @@ async def test_admin_list_search_notes(
 ):
     """Admin can list and search shift notes within company."""
     await db.commit()
-    token = await get_token(client, "admin-sn@test.com", "Admin123!@#")
+    token = await get_token(client, admin_user.email, "Admin123!@#")
     entry = TimeEntry(
         id=uuid.uuid4(),
         company_id=company.id,
@@ -257,7 +263,7 @@ async def test_review_action_sets_status_and_audit(
 ):
     """Mark as reviewed changes status and writes audit log."""
     await db.commit()
-    admin_token = await get_token(client, "admin-sn@test.com", "Admin123!@#")
+    admin_token = await get_token(client, admin_user.email, "Admin123!@#")
     entry = TimeEntry(
         id=uuid.uuid4(),
         company_id=company.id,

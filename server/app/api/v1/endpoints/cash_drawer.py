@@ -13,7 +13,7 @@ from fastapi.responses import StreamingResponse
 from io import BytesIO
 
 from app.core.database import get_db
-from app.core.dependencies import get_current_admin
+from app.core.dependencies import require_permission
 from app.core.error_handling import handle_endpoint_errors, parse_uuid, client_error_detail
 from app.models.user import User
 from app.models.cash_drawer import CashDrawerSession, CashDrawerStatus
@@ -54,7 +54,7 @@ async def list_cash_drawer_sessions(
     status_filter: Optional[str] = Query(None),
     limit: int = Query(100, ge=1, le=1000),
     offset: int = Query(0, ge=0),
-    current_user: User = Depends(get_current_admin),
+    current_user: User = Depends(require_permission("cash_drawer")),
     db: AsyncSession = Depends(get_db),
 ):
     """List cash drawer sessions with filters."""
@@ -134,7 +134,7 @@ async def get_cash_drawer_summary_endpoint(
     from_date: Optional[date] = Query(None),
     to_date: Optional[date] = Query(None),
     employee_id: Optional[UUID] = Query(None),
-    current_user: User = Depends(get_current_admin),
+    current_user: User = Depends(require_permission("cash_drawer")),
     db: AsyncSession = Depends(get_db),
 ):
     """Get cash drawer summary statistics."""
@@ -157,7 +157,7 @@ async def export_cash_drawer(
     to_date: str = Query(..., description="End date in YYYY-MM-DD format"),
     employee_id: Optional[UUID] = Query(None),
     status_filter: Optional[str] = Query(None, pattern="^(OPEN|CLOSED|REVIEW_NEEDED)$"),
-    current_user: User = Depends(get_current_admin),
+    current_user: User = Depends(require_permission("cash_drawer")),
     db: AsyncSession = Depends(get_db),
 ):
     """Export cash drawer sessions to PDF or Excel."""
@@ -266,7 +266,7 @@ async def export_cash_drawer(
 @handle_endpoint_errors(operation_name="get_cash_drawer_session")
 async def get_cash_drawer_session_endpoint(
     session_id: str,
-    current_user: User = Depends(get_current_admin),
+    current_user: User = Depends(require_permission("cash_drawer")),
     db: AsyncSession = Depends(get_db),
 ):
     """Get cash drawer session details with audit history."""
@@ -343,7 +343,7 @@ async def get_cash_drawer_session_endpoint(
 async def edit_cash_drawer_session_endpoint(
     session_id: str,
     data: CashDrawerSessionUpdate,
-    current_user: User = Depends(get_current_admin),
+    current_user: User = Depends(require_permission("cash_drawer")),
     db: AsyncSession = Depends(get_db),
 ):
     """Edit cash drawer session (admin only)."""
@@ -414,7 +414,7 @@ async def edit_cash_drawer_session_endpoint(
 async def review_cash_drawer_session_endpoint(
     session_id: str,
     data: CashDrawerSessionReview,
-    current_user: User = Depends(get_current_admin),
+    current_user: User = Depends(require_permission("cash_drawer")),
     db: AsyncSession = Depends(get_db),
 ):
     """Review and update cash drawer session status."""
@@ -478,7 +478,7 @@ async def review_cash_drawer_session_endpoint(
 @handle_endpoint_errors(operation_name="delete_cash_drawer_session")
 async def delete_cash_drawer_session_endpoint(
     session_id: str,
-    current_user: User = Depends(get_current_admin),
+    current_user: User = Depends(require_permission("cash_drawer")),
     db: AsyncSession = Depends(get_db),
 ):
     """Delete a cash drawer session."""

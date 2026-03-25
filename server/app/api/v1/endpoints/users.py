@@ -4,7 +4,11 @@ from sqlalchemy import select, and_
 from typing import List
 
 from app.core.database import get_db
-from app.core.dependencies import get_current_user, get_current_admin, get_current_verified_user
+from app.core.dependencies import (
+    get_current_user,
+    get_current_verified_user,
+    require_permission,
+)
 from app.core.error_handling import handle_endpoint_errors, parse_uuid
 from app.models.user import User, UserRole
 from app.schemas.user import (
@@ -12,6 +16,7 @@ from app.schemas.user import (
     UserUpdate,
     UserResponse,
     UserMeResponse,
+    UserRoleUpdate,
 )
 from app.services.user_service import (
     get_user_me,
@@ -23,6 +28,7 @@ from app.services.user_service import (
     delete_employee,
 )
 from app.models.audit_log import AuditLog
+from app.core.permissions import ROLE_PERMISSIONS
 import uuid
 
 router = APIRouter()
@@ -67,6 +73,7 @@ async def get_me(
         company_name=company_name,
         email_verified=email_verified,
         verification_required=verification_required,
+        permissions=sorted(list(ROLE_PERMISSIONS.get(user.role, set()))),
     )
 
 
@@ -74,10 +81,15 @@ async def get_me(
 @handle_endpoint_errors(operation_name="create_employee")
 async def create_employee_endpoint(
     data: UserCreate,
-    current_user: User = Depends(get_current_admin),
+    current_user: User = Depends(require_permission("user_management")),
     db: AsyncSession = Depends(get_db),
 ):
     """Create a new employee (admin only)."""
+    if data.role == UserRole.ADMIN and current_user.role != UserRole.ADMIN:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only admins can assign the admin role",
+        )
     employee = await create_employee(db, current_user.company_id, data)
     
     # Create audit log
@@ -112,7 +124,7 @@ async def create_employee_endpoint(
 async def list_employees_endpoint(
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=1000),
-    current_user: User = Depends(get_current_admin),
+    current_user: User = Depends(require_permission("user_management")),
     db: AsyncSession = Depends(get_db),
 ):
     """List all employees (admin only)."""
@@ -183,7 +195,7 @@ async def list_employees_endpoint(
 @handle_endpoint_errors(operation_name="get_employee")
 async def get_employee_endpoint(
     employee_id: str,
-    current_user: User = Depends(get_current_admin),
+    current_user: User = Depends(require_permission("user_management")),
     db: AsyncSession = Depends(get_db),
 ):
     """Get a single employee by ID (admin only)."""
@@ -199,7 +211,7 @@ async def get_employee_endpoint(
             detail="Employee not found",
         )
     
-    # Allow all non-admin, non-developer roles (MAINTENANCE, FRONTDESK, HOUSEKEEPING)
+    # Allow all non-admin, non-developer roles through this endpoint.
     if employee.role in [UserRole.ADMIN, UserRole.DEVELOPER]:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -264,12 +276,17 @@ async def get_employee_endpoint(
 async def update_employee_endpoint(
     employee_id: str,
     data: UserUpdate,
-    current_user: User = Depends(get_current_admin),
+    current_user: User = Depends(require_permission("user_management")),
     db: AsyncSession = Depends(get_db),
 ):
     """Update employee (admin only)."""
     emp_id = parse_uuid(employee_id, "Employee ID")
     
+    if data.role == UserRole.ADMIN and current_user.role != UserRole.ADMIN:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only admins can assign the admin role",
+        )
     employee = await update_employee(db, emp_id, current_user.company_id, data, actor_user_id=current_user.id)
     
     # Create general audit log for other changes (name, pay_rate)
@@ -308,7 +325,7 @@ async def update_employee_endpoint(
 async def reset_password_endpoint(
     employee_id: str,
     new_password: str,
-    current_user: User = Depends(get_current_admin),
+    current_user: User = Depends(require_permission("user_management")),
     db: AsyncSession = Depends(get_db),
 ):
     """Reset employee password (admin only)."""
@@ -323,7 +340,7 @@ async def reset_password_endpoint(
 @handle_endpoint_errors(operation_name="delete_employee")
 async def delete_employee_endpoint(
     employee_id: str,
-    current_user: User = Depends(get_current_admin),
+    current_user: User = Depends(require_permission("user_management")),
     db: AsyncSession = Depends(get_db),
 ):
     """Delete employee (admin only)."""
@@ -358,4 +375,52 @@ async def delete_employee_endpoint(
     await db.commit()
     
     return None
+
+
+@router.patch("/admin/employees/{employee_id}/role")
+@handle_endpoint_errors(operation_name="update_employee_role")
+async def update_employee_role_endpoint(
+    employee_id: str,
+    body: UserRoleUpdate,
+    current_user: User = Depends(require_permission("user_management")),
+    db: AsyncSession = Depends(get_db),
+):
+    """Update a user's role (admin/manager with user_management permission)."""
+    emp_id = parse_uuid(employee_id, "Employee ID")
+    employee = await get_user_by_id(db, emp_id, current_user.company_id)
+    if not employee:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found",
+        )
+
+    if body.role == UserRole.ADMIN and current_user.role != UserRole.ADMIN:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only admins can assign the admin role",
+        )
+
+    # Prevent users from accidentally removing the last admin from admin role.
+    if employee.role == UserRole.ADMIN and body.role != UserRole.ADMIN:
+        result = await db.execute(
+            select(User).where(
+                and_(
+                    User.company_id == current_user.company_id,
+                    User.role == UserRole.ADMIN,
+                    User.status == employee.status,
+                )
+            )
+        )
+        admins = result.scalars().all()
+        if len(admins) <= 1:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Cannot change role of the last admin",
+            )
+
+    employee.role = body.role
+    db.add(employee)
+    await db.commit()
+    await db.refresh(employee)
+    return {"message": "Role updated", "role": employee.role}
 

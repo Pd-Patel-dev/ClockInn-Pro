@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, JSON, DateTime, Boolean, Index
+from sqlalchemy import Column, String, JSON, DateTime, Boolean
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.sql import func
 import uuid
@@ -14,8 +14,4 @@ class Company(Base):
     settings_json = Column(JSON, default={})
     kiosk_enabled = Column(Boolean, nullable=False, default=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
-    
-    __table_args__ = (
-        Index('ix_companies_slug', 'slug', unique=True),
-    )
 

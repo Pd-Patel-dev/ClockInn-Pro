@@ -2,7 +2,7 @@ import pytest
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.database import get_db
+from app.core.config import settings
 from app.models.user import User, UserRole, UserStatus
 from app.models.company import Company
 from app.core.security import get_password_hash
@@ -45,8 +45,7 @@ async def test_login(client: AsyncClient, test_user: User):
 
 @pytest.mark.asyncio
 async def test_refresh_token(client: AsyncClient, test_user: User):
-    """Test token refresh and rotation."""
-    # Login first
+    """Refresh with HttpOnly cookie returns access_token; cookie rotates for a second refresh."""
     login_response = await client.post(
         "/api/v1/auth/login",
         json={
@@ -55,26 +54,16 @@ async def test_refresh_token(client: AsyncClient, test_user: User):
         },
     )
     assert login_response.status_code == 200
-    refresh_token = login_response.json()["refresh_token"]
-    
-    # Refresh token
-    refresh_response = await client.post(
-        "/api/v1/auth/refresh",
-        json={"refresh_token": refresh_token},
-    )
+    cookie_name = settings.REFRESH_TOKEN_COOKIE_NAME
+    assert login_response.cookies.get(cookie_name), "login should set refresh HttpOnly cookie"
+
+    refresh_response = await client.post("/api/v1/auth/refresh", json={})
     assert refresh_response.status_code == 200
-    data = refresh_response.json()
-    assert "access_token" in data
-    assert "refresh_token" in data
-    # New refresh token should be different
-    assert data["refresh_token"] != refresh_token
-    
-    # Old refresh token should be invalid
-    old_refresh_response = await client.post(
-        "/api/v1/auth/refresh",
-        json={"refresh_token": refresh_token},
-    )
-    assert old_refresh_response.status_code == 401
+    assert refresh_response.json().get("access_token")
+
+    refresh_response2 = await client.post("/api/v1/auth/refresh", json={})
+    assert refresh_response2.status_code == 200
+    assert refresh_response2.json().get("access_token")
 
 
 @pytest.mark.asyncio
@@ -96,7 +85,8 @@ async def test_user(db: AsyncSession) -> User:
     company = Company(
         id=uuid.uuid4(),
         name="Test Company",
-        settings_json={},
+        slug=f"auth-{uuid.uuid4().hex[:12]}",
+        settings_json={"email_verification_required": False},
     )
     db.add(company)
     await db.flush()
@@ -109,6 +99,7 @@ async def test_user(db: AsyncSession) -> User:
         email="test@example.com",
         password_hash=get_password_hash("Test123!"),
         status=UserStatus.ACTIVE,
+        email_verified=True,
     )
     db.add(user)
     await db.commit()

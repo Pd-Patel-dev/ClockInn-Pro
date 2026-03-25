@@ -17,11 +17,20 @@ export interface User {
   company_id: string
   name: string
   email: string
-  role: 'ADMIN' | 'DEVELOPER' | 'MAINTENANCE' | 'FRONTDESK' | 'HOUSEKEEPING'
+  role:
+    | 'ADMIN'
+    | 'MANAGER'
+    | 'DEVELOPER'
+    | 'MAINTENANCE'
+    | 'FRONTDESK'
+    | 'HOUSEKEEPING'
+    | 'RESTAURANT'
+    | 'SECURITY'
   status: 'active' | 'inactive'
   company_name: string
   email_verified: boolean
   verification_required: boolean
+  permissions: string[]
 }
 
 export const login = async (credentials: LoginCredentials) => {

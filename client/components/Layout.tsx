@@ -5,6 +5,8 @@ import { useRouter, usePathname } from 'next/navigation'
 import { getCurrentUser, logout, User } from '@/lib/auth'
 import api, { initializeAuth, startTokenRefreshInterval, stopTokenRefreshInterval } from '@/lib/api'
 import Link from 'next/link'
+import { usePermissions } from '@/hooks/usePermissions'
+import { ROUTE_PERMISSIONS } from '@/config/navigation'
 
 export default function Layout({ children }: { children: React.ReactNode }) {
   const router = useRouter()
@@ -16,6 +18,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   const dropdownRefs = useRef<{ [key: string]: HTMLDivElement | null }>({})
   /** From GET /company/info — hide shift notepad / shift log when company disables feature */
   const [shiftNotesEnabled, setShiftNotesEnabled] = useState(true)
+  const { can } = usePermissions(user)
 
   // Lock body scroll when side menu is open (below 950px)
   useEffect(() => {
@@ -164,64 +167,88 @@ export default function Layout({ children }: { children: React.ReactNode }) {
 
   const employeeLinks = useMemo(() => {
     const all = [
-      { href: '/dashboard', label: 'Dashboard' },
-      { href: '/punch-in-out', label: 'Punch In/Out' },
-      { href: '/my/shift-notepad', label: 'Shift Notepad' },
-      { href: '/my-schedule', label: 'My Schedule' },
-      { href: '/logs', label: 'My Logs' },
-      { href: '/leave', label: 'Leave' },
+      { href: '/dashboard', label: 'Dashboard', permission: 'clock' },
+      { href: '/punch-in-out', label: 'Punch In/Out', permission: 'clock' },
+      { href: '/my/shift-notepad', label: 'Shift Notepad', permission: 'shift_notes' },
+      { href: '/my-schedule', label: 'My Schedule', permission: 'schedule' },
+      { href: '/logs', label: 'My Logs', permission: 'clock' },
+      { href: '/leave', label: 'Leave', permission: 'leave' },
     ]
+    const filtered = all.filter((l) => can(l.permission))
     if (!shiftNotesEnabled) {
-      return all.filter((l) => l.href !== '/my/shift-notepad')
+      return filtered.filter((l) => l.href !== '/my/shift-notepad')
     }
-    return all
-  }, [shiftNotesEnabled])
+    return filtered
+  }, [shiftNotesEnabled, can])
 
-  const adminNavGroups = useMemo(
-    () => [
+  const adminNavGroups = useMemo(() => {
+    const groups = [
       {
         type: 'single' as const,
         items: [
-          { href: '/dashboard', label: 'Dashboard' },
-          { href: '/punch-in-out', label: 'Punch In/Out' },
+          { href: '/dashboard', label: 'Dashboard', permission: 'clock' },
+          { href: '/punch-in-out', label: 'Punch In/Out', permission: 'clock' },
         ],
       },
       {
         type: 'dropdown' as const,
         label: 'Team',
         items: [
-          { href: '/employees', label: 'Employees' },
-          { href: '/leave-requests', label: 'Leave Requests' },
-          { href: '/roles', label: 'Roles & Permissions' },
+          { href: '/employees', label: 'Employees', permission: 'user_management' },
+          { href: '/leave-requests', label: 'Leave Requests', permission: 'user_management' },
+          { href: '/roles', label: 'Roles & Permissions', permission: 'user_management' },
         ],
       },
       {
         type: 'dropdown' as const,
         label: 'Scheduling',
         items: [
-          { href: '/schedules', label: 'Schedules' },
-          { href: '/time-entries', label: 'Time Entries' },
-          ...(shiftNotesEnabled ? [{ href: '/admin/shift-log', label: 'Shift Log' }] : []),
+          { href: '/schedules', label: 'Schedules', permission: 'schedule' },
+          { href: '/time-entries', label: 'Time Entries', permission: 'schedule' },
+          ...(shiftNotesEnabled
+            ? [{ href: '/admin/shift-log', label: 'Shift Log', permission: 'common_log' }]
+            : []),
         ],
       },
       {
         type: 'single' as const,
         items: [
-          { href: '/payroll', label: 'Payroll' },
-          { href: '/reports', label: 'Reports' },
-          { href: '/settings', label: 'Settings' },
+          { href: '/payroll', label: 'Payroll', permission: 'payroll' },
+          { href: '/reports', label: 'Reports', permission: 'reports' },
+          { href: '/settings', label: 'Settings', permission: 'settings' },
         ],
       },
-    ],
-    [shiftNotesEnabled]
+    ]
+
+    const filtered = groups
+      .map((group) => ({
+        ...group,
+        items: group.items.filter((item) => can(item.permission)),
+      }))
+      .filter((group) => group.items.length > 0)
+
+    return filtered
+  }, [shiftNotesEnabled, can])
+
+  const requiredPermission = useMemo(
+    () =>
+      Object.entries(ROUTE_PERMISSIONS).find(([route]) => pathname === route || pathname.startsWith(`${route}/`))?.[1],
+    [pathname]
   )
+
+  // Must run before any early return — same hook order every render (Rules of Hooks).
+  useEffect(() => {
+    if (loading || !user || !requiredPermission) return
+    if (!can(requiredPermission)) {
+      router.replace('/unauthorized')
+    }
+  }, [loading, user, requiredPermission, can, router])
 
   const handleLogout = async () => {
     stopTokenRefreshInterval() // Stop proactive refresh
     await logout()
     router.push('/login')
   }
-
 
   if (loading) {
     return (
@@ -238,8 +265,8 @@ export default function Layout({ children }: { children: React.ReactNode }) {
     return null
   }
 
-  const isAdmin = user.role === 'ADMIN'
-  const isEmployee = ['MAINTENANCE', 'FRONTDESK', 'HOUSEKEEPING'].includes(user.role)
+  const isAdmin = user.role === 'ADMIN' || user.role === 'MANAGER'
+  const isEmployee = ['MAINTENANCE', 'FRONTDESK', 'HOUSEKEEPING', 'RESTAURANT', 'SECURITY'].includes(user.role)
   const isDeveloper = user.role === 'DEVELOPER'
 
   const developerLinks = [

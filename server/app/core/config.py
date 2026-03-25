@@ -88,6 +88,14 @@ class Settings(BaseSettings):
                 f"non-localhost origin. Only list trusted front-end URLs (e.g. https://app.example.com). Offending entry: {origin!r}"
             )
         return self
+
+    @model_validator(mode="after")
+    def enforce_cookie_secure_in_production(self) -> "Settings":
+        """Refresh-token cookies must be Secure when ENVIRONMENT is production (HTTPS-only sites)."""
+        env = (self.ENVIRONMENT or "").strip().lower()
+        if env in ("prod", "production"):
+            self.COOKIE_SECURE = True
+        return self
     
     # Rate Limiting (global middleware by IP; see app.middleware.rate_limit)
     RATE_LIMIT_ENABLED: bool = True
@@ -102,10 +110,10 @@ class Settings(BaseSettings):
     LOGIN_ATTEMPTS_LIMIT: int = 5
     PIN_ATTEMPTS_LIMIT: int = 5
     LOCKOUT_DURATION_MINUTES: int = 10
-    # Shared login lockout (see app.core.login_attempts). When set, failed attempts are stored in Redis.
+    # Shared Redis: login lockout (login_attempts) + optional API rate limit buckets (rate_limit middleware).
     REDIS_URL: Optional[str] = Field(
         default=None,
-        description="e.g. redis://localhost:6379/0 — enables Redis-backed login lockout across API instances.",
+        description="e.g. redis://localhost:6379/0 — Redis-backed login lockout and per-IP rate limits across API replicas.",
     )
     LOGIN_LOCKOUT_USE_IP: bool = Field(
         default=False,

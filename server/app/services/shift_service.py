@@ -176,7 +176,14 @@ async def create_shift(
     # Verify employee exists and belongs to company (role must be in shift-eligible list from config)
     allowed_roles = _shift_eligible_roles()
     if not allowed_roles:
-        allowed_roles = [UserRole.MAINTENANCE, UserRole.FRONTDESK, UserRole.HOUSEKEEPING]
+        allowed_roles = [
+            UserRole.MAINTENANCE,
+            UserRole.FRONTDESK,
+            UserRole.HOUSEKEEPING,
+            UserRole.RESTAURANT,
+            UserRole.SECURITY,
+            UserRole.MANAGER,
+        ]
     result = await db.execute(
         select(User).where(
             and_(

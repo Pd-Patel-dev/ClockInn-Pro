@@ -11,10 +11,10 @@ This document summarizes security-related findings from a full-app review. Addre
 - **Risk:** If the app is served over HTTPS but `COOKIE_SECURE` is left `False`, the refresh token cookie can be sent over HTTP (e.g. mixed content or redirect), enabling interception.
 - **Recommendation:** Set `COOKIE_SECURE=true` in production (and ensure `ENVIRONMENT=production` or equivalent so the app knows it’s production). Optionally set it to `True` when `FRONTEND_URL` (or a similar env) starts with `https://`.
 
-### 2. **Default developer password in code**
-- **Where:** `server/create_developer_supabase.py` — `default_password = "Dev@2024ChangeMe!"`.
-- **Risk:** Anyone with repo access can log in as a developer if the script was run and the password was never changed.
-- **Recommendation:** Generate a random password at runtime (e.g. `secrets.token_urlsafe(16)`) and print it once; or require a CLI argument/env var for the initial password. Do not commit a fixed default.
+### 2. **Default developer password in code** *(addressed)*
+- **Where:** `server/create_developer_supabase.py`, `server/create_developer_account.py`.
+- **Risk (historical):** A fixed default password in repo allowed predictable developer logins if the script was run unchanged.
+- **Fix:** Both scripts use **`DEVELOPER_INITIAL_PASSWORD`** if set, otherwise **`secrets.token_urlsafe(16)`**, and print the password once at account creation. No fixed `Dev@2024ChangeMe!` (or other default) remains in the repository.
 
 ### 3. **Kiosk / punch PIN brute force**
 - **Where:** Kiosk `POST /kiosk/check-pin` and `POST /kiosk/clock`; `/time/punch` (email + PIN). No rate limiting on PIN attempts.
@@ -38,7 +38,7 @@ This document summarizes security-related findings from a full-app review. Addre
 ### 6. **No global API rate limiting** *(addressed)*
 - **Where:** `app/middleware/rate_limit.py` + `main.py` — sliding-window limits per client IP (`get_client_ip`: `X-Forwarded-For`, `X-Real-IP`, then `request.client.host`).
 - **Behavior:** `RATE_LIMIT_PER_MINUTE` (default 60) for most `/api/v1/*` routes; stricter `RATE_LIMIT_AUTH_KIOSK_PER_MINUTE` (default 30) for `/api/v1/auth/*` and `/api/v1/kiosk/*` (each request counts toward both caps). Exempt: `/api/v1/health` (except `/health/test-error`), `/docs`, `/openapi.json`, `/redoc`, and **HTTP OPTIONS** (CORS preflight). Toggle with `RATE_LIMIT_ENABLED`.
-- **Limits:** In-memory only — not shared across workers/instances (same class of issue as login lockout #7); use Redis-backed limits in production if you scale horizontally.
+- **Multi-instance:** When **`REDIS_URL`** is set, the same sliding-window logic runs in **Redis** (Lua script, keys `clockinn:ratelimit:global:*` and `clockinn:ratelimit:strict:*`) so limits are **shared across API replicas**. If `REDIS_URL` is unset, counters stay **in-memory** per process (same as before).
 - **Recommendation (remaining):** Add PIN / kiosk-specific attempt limits (#3) in addition to this IP cap.
 
 ### 7. **Login lockout is in-memory** *(optional Redis)*
@@ -47,10 +47,10 @@ This document summarizes security-related findings from a full-app review. Addre
 - **Risk without Redis:** Multiple instances or restarts still lose lockout coherence (each worker has its own memory store).
 - **Recommendation:** Set `REDIS_URL` in production when running more than one API replica. Optionally enable `LOGIN_LOCKOUT_USE_IP` to scope lockout per IP (trade-off documented in `login_attempts.py`).
 
-### 8. **Refresh token in request body**
-- **Where:** `auth.py` — refresh endpoint accepts refresh token from cookie or from request body (`refresh_data.refresh_token`).
-- **Risk:** If clients send refresh token in body, it may be logged (e.g. in proxies or app logs) and is more exposed than cookie.
-- **Recommendation:** Prefer cookie-only for refresh; deprecate body parameter and remove once all clients use cookies.
+### 8. **Refresh token in request body** *(deprecated)*
+- **Where:** `auth.py` — refresh and logout still accept an optional body `refresh_token` for backwards compatibility; **primary path is HttpOnly cookie**.
+- **Risk:** Body tokens can appear in logs or client memory more easily than HttpOnly cookies.
+- **Fix:** `RefreshTokenRequest` / `LogoutRequest` fields are **Pydantic-deprecated**; OpenAPI marks them deprecated. Server **logs a warning** when body is used. Next.js client (`client/lib/api.ts`) already refreshes with **cookie only** (empty body). Remove body support after confirming no other clients depend on it.
 
 ### 9. **`delete_cookie` may not clear cookie on all browsers** *(addressed)*
 - **Where:** `auth.py` — `_clear_refresh_cookie` shared scope with `_set_refresh_cookie` via `_refresh_cookie_scope_kwargs()` (`path`, `secure`, `httponly`, `samesite`, optional `COOKIE_DOMAIN`).
@@ -116,7 +116,7 @@ This document summarizes security-related findings from a full-app review. Addre
 | Priority   | Item                                      | Action |
 |-----------|-------------------------------------------|--------|
 | Critical  | `COOKIE_SECURE` in production             | Set `COOKIE_SECURE=true` when on HTTPS |
-| Critical  | Default developer password in code        | Use random password or env/CLI; never commit default |
+| Critical  | Default developer password in code        | Done — env `DEVELOPER_INITIAL_PASSWORD` or random; both `create_developer_*.py` |
 | High      | Kiosk/PIN brute force                     | Add rate limiting for PIN attempts (per IP/company) |
 | High      | Email enumeration on `/time/punch`       | Done — generic “Invalid email or PIN” |
 | Medium    | Access token in localStorage             | Done — documented in api.ts; short expiry, HttpOnly refresh |

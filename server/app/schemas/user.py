@@ -66,6 +66,7 @@ class UserMeResponse(BaseModel):
     company_name: str
     email_verified: bool
     verification_required: bool
+    permissions: list[str]
 
     class Config:
         from_attributes = True
@@ -110,5 +111,9 @@ class DeveloperUserUpdate(BaseModel):
         if not v.isdigit() or len(v) != 4:
             raise ValueError("PIN must be exactly 4 numeric digits")
         return v
+
+
+class UserRoleUpdate(BaseModel):
+    role: UserRole
 
 

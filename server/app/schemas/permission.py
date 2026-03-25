@@ -1,12 +1,25 @@
 """
 Schemas for permissions and role-permission management.
 """
-from pydantic import BaseModel, Field
-from typing import List, Optional
+import re
+
+from pydantic import BaseModel, Field, field_validator
+from typing import List, Optional, Any
 from uuid import UUID
 from datetime import datetime
 
-from app.models.user import UserRole
+
+def _fix_postgres_tz_offset_string(s: str) -> str:
+    """
+    AsyncPG / PostgreSQL sometimes expose timestamptz as strings ending in +00 or +05
+    instead of +00:00. Pydantic's datetime parser rejects the short form.
+    """
+    s = s.strip()
+    if re.search(r"[+-]\d{2}:\d{2}$", s):
+        return s
+    if re.search(r"[+-]\d{2}$", s):
+        return re.sub(r"([+-]\d{2})$", r"\1:00", s)
+    return s
 
 
 class PermissionResponse(BaseModel):
@@ -17,6 +30,13 @@ class PermissionResponse(BaseModel):
     description: Optional[str] = None
     category: str
     created_at: datetime
+
+    @field_validator("created_at", mode="before")
+    @classmethod
+    def coerce_created_at(cls, v: Any) -> Any:
+        if isinstance(v, str):
+            return _fix_postgres_tz_offset_string(v)
+        return v
 
     class Config:
         from_attributes = True

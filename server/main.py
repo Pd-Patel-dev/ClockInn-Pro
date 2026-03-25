@@ -68,8 +68,10 @@ async def lifespan(app: FastAPI):
 
         if _settings.REDIS_URL:
             logger.info("Login lockout: Redis backend (REDIS_URL is set).")
+            logger.info("API rate limits: Redis sliding window (shared across API replicas).")
         else:
             logger.info("Login lockout: in-memory — set REDIS_URL for shared lockout across API replicas.")
+            logger.info("API rate limits: in-memory per process — set REDIS_URL to share limits across replicas.")
     except Exception:
         pass
 
@@ -79,10 +81,12 @@ async def lifespan(app: FastAPI):
     logger.info("Shutting down ClockInn API server...")
     try:
         from app.core.login_attempts import close_login_attempts_redis
+        from app.middleware.rate_limit import close_rate_limit_redis
 
+        await close_rate_limit_redis()
         await close_login_attempts_redis()
     except Exception as e:
-        logger.warning("login_attempts Redis shutdown: %s", e)
+        logger.warning("Redis shutdown (rate_limit / login_attempts): %s", e)
 
 
 app = FastAPI(

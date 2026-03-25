@@ -270,8 +270,8 @@ async def create_bulk_week_shifts(
             status_code=status.HTTP_409_CONFLICT,
             detail={
                 "message": "Conflicts detected. Cannot create shifts.",
-                "conflicts": [c.model_dump() for c in conflicts]
-            }
+                "conflicts": [c.model_dump(mode="json") for c in conflicts],
+            },
         )
     
     # Process each preview shift

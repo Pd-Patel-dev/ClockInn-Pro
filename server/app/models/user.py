@@ -9,11 +9,14 @@ from app.core.database import Base
 
 class UserRole(str, enum.Enum):
     ADMIN = "ADMIN"
+    MANAGER = "MANAGER"
     DEVELOPER = "DEVELOPER"
     # Hotel-specific roles
     MAINTENANCE = "MAINTENANCE"
     FRONTDESK = "FRONTDESK"
     HOUSEKEEPING = "HOUSEKEEPING"
+    RESTAURANT = "RESTAURANT"
+    SECURITY = "SECURITY"
 
 
 class UserStatus(str, enum.Enum):

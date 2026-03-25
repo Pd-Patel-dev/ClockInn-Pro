@@ -3,7 +3,11 @@ Tests for payroll report PDF generation.
 """
 import pytest
 from datetime import datetime, date
-from app.pdf_templates.payroll_report import generate_payroll_report_pdf, sanitize_html
+from app.pdf_templates.payroll_report import (
+    compute_payroll_report_totals,
+    generate_payroll_report_pdf,
+    sanitize_html,
+)
 
 
 def test_sanitize_html():
@@ -61,7 +65,7 @@ def test_generate_payroll_report_pdf_returns_bytes():
 
 
 def test_generate_payroll_report_pdf_totals_correct():
-    """Test that totals are computed correctly in the PDF."""
+    """Totals match PDF logic; raw PDF bytes are often compressed so we do not assert on plain-text substrings."""
     rows = [
         {
             'employee_name': 'Employee 1',
@@ -84,7 +88,15 @@ def test_generate_payroll_report_pdf_totals_correct():
             'exceptions': '-',
         },
     ]
-    
+
+    t = compute_payroll_report_totals(rows)
+    assert t["employee_count"] == 2
+    assert t["total_regular_hours"] == 80.0
+    assert t["total_ot_hours"] == 5.0
+    assert t["total_gross_pay"] == 1950.0
+    assert t["total_regular_pay"] == 1800.0
+    assert t["total_ot_pay"] == 150.0
+
     pdf_bytes = generate_payroll_report_pdf(
         company_name="Test Company",
         payroll_type="BIWEEKLY",
@@ -95,18 +107,10 @@ def test_generate_payroll_report_pdf_totals_correct():
         status="Draft",
         rows=rows,
     )
-    
+
     assert isinstance(pdf_bytes, bytes)
     assert len(pdf_bytes) > 0
-    
-    # Verify PDF contains expected totals (as text in the PDF)
-    pdf_text = pdf_bytes.decode('latin-1', errors='ignore')
-    # Should contain total employee count (2)
-    assert '2' in pdf_text or 'Total Employees' in pdf_text
-    # Should contain total regular hours (80)
-    assert '80.00' in pdf_text or '80,00' in pdf_text
-    # Should contain total gross pay (1950)
-    assert '1950.00' in pdf_text or '1,950.00' in pdf_text or '1950,00' in pdf_text
+    assert pdf_bytes[:4] == b'%PDF'
 
 
 def test_generate_payroll_report_pdf_empty_rows():

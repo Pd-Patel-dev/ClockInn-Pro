@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Layout from '@/components/Layout'
+import ConfirmationDialog from '@/components/ConfirmationDialog'
 import api from '@/lib/api'
 import { getCurrentUser, User } from '@/lib/auth'
 
@@ -21,6 +22,8 @@ export default function MyPunchPage() {
   const [beveragesCash, setBeveragesCash] = useState('')
   const [cashError, setCashError] = useState<string | null>(null)
   const [showCashDialog, setShowCashDialog] = useState(false)
+  const [showPunchConfirm, setShowPunchConfirm] = useState(false)
+  const [punchConfirmAfterCash, setPunchConfirmAfterCash] = useState(false)
   const [pendingPunch, setPendingPunch] = useState(false)
   const [location, setLocation] = useState<{ latitude: string; longitude: string } | null>(null)
   const [locationError, setLocationError] = useState<string | null>(null)
@@ -117,19 +120,13 @@ export default function MyPunchPage() {
     setPinDisplay('')
   }
 
-  const handlePunch = async () => {
+  const handlePunch = () => {
     if (pinDisplay.length !== 4) {
       setMessage('Please enter a 4-digit PIN')
       return
     }
-
-    console.log('handlePunch called:', { cashDrawerRequired, currentStatus })
-
-    // If cash drawer is required, show dialog first
-    // For clock-in: we need start cash
-    // For clock-out: we need end cash (if there's a cash session)
+    if (loading || showPunchConfirm || showCashDialog) return
     if (cashDrawerRequired) {
-      console.log('Showing cash dialog')
       setPendingPunch(true)
       setShowCashDialog(true)
       setCashAmount('')
@@ -139,12 +136,23 @@ export default function MyPunchPage() {
       setCashError(null)
       return
     }
+    setPunchConfirmAfterCash(false)
+    setShowPunchConfirm(true)
+  }
 
-    // Otherwise, proceed directly with punch
-    // If backend requires cash but we didn't provide it, it will return an error
-    // and we can handle that
-    console.log('Proceeding with punch without cash')
+  const confirmPunchIntent = async () => {
+    setShowPunchConfirm(false)
+    setPunchConfirmAfterCash(false)
     await executePunch()
+  }
+
+  const cancelPunchConfirm = () => {
+    setShowPunchConfirm(false)
+    if (punchConfirmAfterCash) {
+      setPunchConfirmAfterCash(false)
+      setPendingPunch(true)
+      setShowCashDialog(true)
+    }
   }
 
   // Helper to get current location as a promise
@@ -292,12 +300,15 @@ export default function MyPunchPage() {
       }
     }
     setCashError(null)
-    executePunch()
+    setShowCashDialog(false)
+    setPunchConfirmAfterCash(true)
+    setShowPunchConfirm(true)
   }
 
   const handleCashDialogCancel = () => {
     setShowCashDialog(false)
     setPendingPunch(false)
+    setPunchConfirmAfterCash(false)
     setCashAmount('')
     setCollectedCash('')
     setDropAmount('')
@@ -439,7 +450,7 @@ export default function MyPunchPage() {
               <button
                 type="button"
                 onClick={handlePunch}
-                disabled={loading || pinDisplay.length !== 4}
+                disabled={loading || showPunchConfirm || showCashDialog || pinDisplay.length !== 4}
                 className="flex h-14 items-center justify-center rounded-xl bg-blue-600 font-medium text-white transition-all duration-100 hover:bg-blue-700 active:scale-95 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
@@ -452,6 +463,24 @@ export default function MyPunchPage() {
               Enter your 4-digit PIN to {currentStatus === 'in' ? 'clock out' : 'clock in'}
             </p>
           </div>
+
+          <ConfirmationDialog
+            isOpen={showPunchConfirm}
+            title={currentStatus === 'in' ? 'Clock out?' : 'Clock in?'}
+            message={
+              punchConfirmAfterCash
+                ? currentStatus === 'in'
+                  ? 'Submit clock out with the cash amounts you entered?'
+                  : 'Submit clock in with the starting cash you entered?'
+                : currentStatus === 'in'
+                  ? 'Confirm you want to clock out with your PIN.'
+                  : 'Confirm you want to clock in with your PIN.'
+            }
+            confirmText={currentStatus === 'in' ? 'Clock out' : 'Clock in'}
+            cancelText="Cancel"
+            onConfirm={() => void confirmPunchIntent()}
+            onCancel={cancelPunchConfirm}
+          />
 
           {/* Cash Drawer Dialog */}
           {showCashDialog && (

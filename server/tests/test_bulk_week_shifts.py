@@ -4,18 +4,13 @@ Tests for bulk week shift creation feature.
 import pytest
 from uuid import uuid4
 from datetime import date, time, timedelta
-from fastapi.testclient import TestClient
+from httpx import AsyncClient
+from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.main import app
 from app.models.user import User, UserRole, UserStatus
 from app.models.company import Company
 from app.models.shift import Shift, ShiftStatus
-
-
-@pytest.fixture
-def client():
-    return TestClient(app)
 
 
 @pytest.fixture
@@ -24,7 +19,11 @@ async def test_company(db: AsyncSession):
     company = Company(
         id=uuid4(),
         name="Test Company",
-        settings_json={"timezone": "America/Chicago"},
+        slug=f"bulk-{uuid4().hex[:12]}",
+        settings_json={
+            "timezone": "America/Chicago",
+            "email_verification_required": False,
+        },
     )
     db.add(company)
     await db.commit()
@@ -37,13 +36,14 @@ async def admin_user(db: AsyncSession, test_company: Company):
     """Create an admin user."""
     from passlib.context import CryptContext
     pwd_context = CryptContext(schemes=["argon2"], deprecated="auto")
-    
+    tag = test_company.id.hex[:12]
+
     admin = User(
         id=uuid4(),
         company_id=test_company.id,
         role=UserRole.ADMIN,
         name="Admin User",
-        email="admin@test.com",
+        email=f"bulk-adm-{tag}@test.com",
         password_hash=pwd_context.hash("password123"),
         status=UserStatus.ACTIVE,
     )
@@ -59,6 +59,7 @@ async def employees(db: AsyncSession, test_company: Company):
     from passlib.context import CryptContext
     pwd_context = CryptContext(schemes=["argon2"], deprecated="auto")
     
+    tag = test_company.id.hex[:12]
     emps = []
     for i in range(2):
         emp = User(
@@ -66,7 +67,7 @@ async def employees(db: AsyncSession, test_company: Company):
             company_id=test_company.id,
             role=UserRole.FRONTDESK,
             name=f"Employee {i+1}",
-            email=f"emp{i+1}@test.com",
+            email=f"bulk-e{i+1}-{tag}@test.com",
             password_hash=pwd_context.hash("password123"),
             status=UserStatus.ACTIVE,
         )
@@ -82,17 +83,20 @@ async def employees(db: AsyncSession, test_company: Company):
 @pytest.mark.asyncio
 async def test_bulk_week_shift_basic_creation(
     db: AsyncSession,
-    client: TestClient,
+    client: AsyncClient,
     test_company: Company,
     admin_user: User,
     employees: list[User],
 ):
     """Test basic bulk week shift creation for 2 employees Mon-Fri."""
     # Login as admin
-    login_response = client.post("/api/v1/auth/login", json={
-        "email": admin_user.email,
-        "password": "password123",
-    })
+    login_response = await client.post(
+        "/api/v1/auth/login",
+        json={
+            "email": admin_user.email,
+            "password": "password123",
+        },
+    )
     assert login_response.status_code == 200
     token = login_response.json()["access_token"]
     headers = {"Authorization": f"Bearer {token}"}
@@ -102,76 +106,77 @@ async def test_bulk_week_shift_basic_creation(
     days_since_monday = today.weekday()
     monday = today - timedelta(days=days_since_monday)
     
-    # Create shifts for Mon-Fri
-    payload = {
-        "week_start_date": monday.isoformat(),
-        "timezone": "America/Chicago",
-        "employee_ids": [str(emp.id) for emp in employees],
-        "mode": "same_each_day",
-        "template": {
-            "start_time": "09:00",
-            "end_time": "17:00",
-            "break_minutes": 30,
-            "status": "DRAFT",
-        },
-        "days": {
-            "mon": {"enabled": True},
-            "tue": {"enabled": True},
-            "wed": {"enabled": True},
-            "thu": {"enabled": True},
-            "fri": {"enabled": True},
-            "sat": {"enabled": False},
-            "sun": {"enabled": False},
-        },
-        "conflict_policy": "skip",
+    template = {
+        "start_time": "09:00",
+        "end_time": "17:00",
+        "break_minutes": 30,
+        "status": "DRAFT",
     }
-    
-    # Preview first
-    preview_response = client.post(
-        "/api/v1/shifts/bulk/week/preview",
-        json=payload,
-        headers=headers,
-    )
-    assert preview_response.status_code == 200
-    preview_data = preview_response.json()
-    assert preview_data["total_shifts"] == 10  # 2 employees * 5 days
-    assert preview_data["total_conflicts"] == 0
-    
-    # Create shifts
-    create_response = client.post(
-        "/api/v1/shifts/bulk/week",
-        json=payload,
-        headers=headers,
-    )
-    assert create_response.status_code == 201
-    create_data = create_response.json()
-    assert create_data["created_count"] == 10
-    assert create_data["skipped_count"] == 0
-    assert create_data["series_id"] is not None
+    days = {
+        "mon": {"enabled": True},
+        "tue": {"enabled": True},
+        "wed": {"enabled": True},
+        "thu": {"enabled": True},
+        "fri": {"enabled": True},
+        "sat": {"enabled": False},
+        "sun": {"enabled": False},
+    }
+    for emp in employees:
+        payload = {
+            "week_start_date": monday.isoformat(),
+            "timezone": "America/Chicago",
+            "employee_id": str(emp.id),
+            "mode": "same_each_day",
+            "template": template,
+            "days": days,
+            "conflict_policy": "skip",
+        }
+        preview_response = await client.post(
+            "/api/v1/shifts/bulk/week/preview",
+            json=payload,
+            headers=headers,
+        )
+        assert preview_response.status_code == 200
+        preview_data = preview_response.json()
+        assert preview_data["total_shifts"] == 5
+        assert preview_data["total_conflicts"] == 0
+
+        create_response = await client.post(
+            "/api/v1/shifts/bulk/week",
+            json=payload,
+            headers=headers,
+        )
+        assert create_response.status_code == 201
+        create_data = create_response.json()
+        assert create_data["created_count"] == 5
+        assert create_data["skipped_count"] == 0
+        assert create_data["series_id"] is not None
     
     # Verify shifts were created
     result = await db.execute(
-        "SELECT COUNT(*) FROM shifts WHERE company_id = :company_id",
-        {"company_id": test_company.id}
+        select(func.count()).select_from(Shift).where(Shift.company_id == test_company.id)
     )
-    count = result.scalar()
+    count = result.scalar_one()
     assert count == 10
 
 
 @pytest.mark.asyncio
 async def test_bulk_week_shift_overnight(
     db: AsyncSession,
-    client: TestClient,
+    client: AsyncClient,
     test_company: Company,
     admin_user: User,
     employees: list[User],
 ):
     """Test overnight shift creation (PM to AM next day)."""
     # Login as admin
-    login_response = client.post("/api/v1/auth/login", json={
-        "email": admin_user.email,
-        "password": "password123",
-    })
+    login_response = await client.post(
+        "/api/v1/auth/login",
+        json={
+            "email": admin_user.email,
+            "password": "password123",
+        },
+    )
     token = login_response.json()["access_token"]
     headers = {"Authorization": f"Bearer {token}"}
     
@@ -184,7 +189,7 @@ async def test_bulk_week_shift_overnight(
     payload = {
         "week_start_date": monday.isoformat(),
         "timezone": "America/Chicago",
-        "employee_ids": [str(employees[0].id)],
+        "employee_id": str(employees[0].id),
         "mode": "same_each_day",
         "template": {
             "start_time": "22:00",
@@ -204,7 +209,7 @@ async def test_bulk_week_shift_overnight(
         "conflict_policy": "skip",
     }
     
-    response = client.post(
+    response = await client.post(
         "/api/v1/shifts/bulk/week",
         json=payload,
         headers=headers,
@@ -214,7 +219,6 @@ async def test_bulk_week_shift_overnight(
     assert data["created_count"] == 1
     
     # Verify shift was created with overnight times
-    from sqlalchemy import select
     result = await db.execute(
         select(Shift).where(Shift.company_id == test_company.id)
     )
@@ -226,17 +230,20 @@ async def test_bulk_week_shift_overnight(
 @pytest.mark.asyncio
 async def test_bulk_week_shift_conflict_detection_skip(
     db: AsyncSession,
-    client: TestClient,
+    client: AsyncClient,
     test_company: Company,
     admin_user: User,
     employees: list[User],
 ):
     """Test conflict detection with skip policy."""
     # Login as admin
-    login_response = client.post("/api/v1/auth/login", json={
-        "email": admin_user.email,
-        "password": "password123",
-    })
+    login_response = await client.post(
+        "/api/v1/auth/login",
+        json={
+            "email": admin_user.email,
+            "password": "password123",
+        },
+    )
     token = login_response.json()["access_token"]
     headers = {"Authorization": f"Bearer {token}"}
     
@@ -263,7 +270,7 @@ async def test_bulk_week_shift_conflict_detection_skip(
     payload = {
         "week_start_date": monday.isoformat(),
         "timezone": "America/Chicago",
-        "employee_ids": [str(employees[0].id)],
+        "employee_id": str(employees[0].id),
         "mode": "same_each_day",
         "template": {
             "start_time": "09:00",
@@ -283,7 +290,7 @@ async def test_bulk_week_shift_conflict_detection_skip(
         "conflict_policy": "skip",
     }
     
-    response = client.post(
+    response = await client.post(
         "/api/v1/shifts/bulk/week",
         json=payload,
         headers=headers,
@@ -294,7 +301,6 @@ async def test_bulk_week_shift_conflict_detection_skip(
     assert data["skipped_count"] == 1
     
     # Verify only original shift exists
-    from sqlalchemy import select, func
     result = await db.execute(
         select(func.count()).select_from(Shift).where(Shift.company_id == test_company.id)
     )
@@ -305,17 +311,20 @@ async def test_bulk_week_shift_conflict_detection_skip(
 @pytest.mark.asyncio
 async def test_bulk_week_shift_conflict_detection_error(
     db: AsyncSession,
-    client: TestClient,
+    client: AsyncClient,
     test_company: Company,
     admin_user: User,
     employees: list[User],
 ):
     """Test conflict detection with error policy returns 409."""
     # Login as admin
-    login_response = client.post("/api/v1/auth/login", json={
-        "email": admin_user.email,
-        "password": "password123",
-    })
+    login_response = await client.post(
+        "/api/v1/auth/login",
+        json={
+            "email": admin_user.email,
+            "password": "password123",
+        },
+    )
     token = login_response.json()["access_token"]
     headers = {"Authorization": f"Bearer {token}"}
     
@@ -342,7 +351,7 @@ async def test_bulk_week_shift_conflict_detection_error(
     payload = {
         "week_start_date": monday.isoformat(),
         "timezone": "America/Chicago",
-        "employee_ids": [str(employees[0].id)],
+        "employee_id": str(employees[0].id),
         "mode": "same_each_day",
         "template": {
             "start_time": "09:00",
@@ -362,7 +371,7 @@ async def test_bulk_week_shift_conflict_detection_error(
         "conflict_policy": "error",
     }
     
-    response = client.post(
+    response = await client.post(
         "/api/v1/shifts/bulk/week",
         json=payload,
         headers=headers,
