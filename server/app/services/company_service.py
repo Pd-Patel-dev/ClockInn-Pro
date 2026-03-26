@@ -22,7 +22,8 @@ DEFAULT_BREAKS_PAID = False  # By default, breaks are NOT paid
 
 # Cash drawer defaults
 DEFAULT_CASH_DRAWER_ENABLED = False
-DEFAULT_CASH_DRAWER_REQUIRED_FOR_ALL = True
+# Backward-compatible default: if key is missing, don't force all roles.
+DEFAULT_CASH_DRAWER_REQUIRED_FOR_ALL = False
 DEFAULT_CASH_DRAWER_REQUIRED_ROLES = ["FRONTDESK"]
 DEFAULT_CASH_DRAWER_CURRENCY = "USD"
 DEFAULT_CASH_DRAWER_STARTING_AMOUNT_CENTS = 0  # $0.00

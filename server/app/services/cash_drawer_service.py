@@ -30,7 +30,8 @@ def requires_cash_drawer(company_settings: Dict, employee_role: str) -> bool:
     if not company_settings.get("cash_drawer_enabled", False):
         return False
     
-    if company_settings.get("cash_drawer_required_for_all", True):
+    # If setting is absent on older company rows, don't require for everyone.
+    if company_settings.get("cash_drawer_required_for_all", False):
         return True
     
     required_roles = company_settings.get("cash_drawer_required_roles", ["FRONTDESK"])

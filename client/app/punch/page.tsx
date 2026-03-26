@@ -85,7 +85,7 @@ export default function MyPunchPage() {
             const companyResponse = await api.get('/company/info')
             const settings = companyResponse.data?.settings || {}
             const cashEnabled = settings.cash_drawer_enabled || false
-            const requiredForAll = settings.cash_drawer_required_for_all !== false
+            const requiredForAll = settings.cash_drawer_required_for_all === true
             const requiredRoles = settings.cash_drawer_required_roles || ['FRONTDESK']
             
             if (cashEnabled && (requiredForAll || requiredRoles.includes(currentUser.role))) {
