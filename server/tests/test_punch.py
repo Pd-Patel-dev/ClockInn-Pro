@@ -1,3 +1,6 @@
+import secrets
+import uuid
+
 import pytest
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -5,7 +8,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.user import User, UserRole, UserStatus
 from app.models.company import Company
 from app.core.security import get_password_hash, get_pin_hash
-import uuid
+
+# Kiosk punch uses PIN only; password is never used in these tests (random per fixture).
+_TEST_PIN_OK = "1234"
+_TEST_PIN_BAD = "9999"
 
 
 @pytest.mark.asyncio
@@ -15,7 +21,7 @@ async def test_punch_in(client: AsyncClient, test_employee: User):
         "/api/v1/time/punch",
         json={
             "employee_email": test_employee.email,
-            "pin": "1234",
+            "pin": _TEST_PIN_OK,
             "source": "kiosk",
         },
     )
@@ -33,7 +39,7 @@ async def test_punch_out(client: AsyncClient, test_employee: User):
         "/api/v1/time/punch",
         json={
             "employee_email": test_employee.email,
-            "pin": "1234",
+            "pin": _TEST_PIN_OK,
             "source": "kiosk",
         },
     )
@@ -42,7 +48,7 @@ async def test_punch_out(client: AsyncClient, test_employee: User):
         "/api/v1/time/punch",
         json={
             "employee_email": test_employee.email,
-            "pin": "1234",
+            "pin": _TEST_PIN_OK,
             "source": "kiosk",
         },
     )
@@ -59,7 +65,7 @@ async def test_punch_invalid_pin(client: AsyncClient, test_employee: User):
         "/api/v1/time/punch",
         json={
             "employee_email": test_employee.email,
-            "pin": "9999",
+            "pin": _TEST_PIN_BAD,
             "source": "kiosk",
         },
     )
@@ -84,8 +90,8 @@ async def test_employee(db: AsyncSession) -> User:
         role=UserRole.FRONTDESK,
         name="Test Employee",
         email=f"punch-{uuid.uuid4().hex[:12]}@test.com",
-        password_hash=get_password_hash("Employee123!"),
-        pin_hash=get_pin_hash("1234"),
+        password_hash=get_password_hash(secrets.token_urlsafe(32)),
+        pin_hash=get_pin_hash(_TEST_PIN_OK),
         status=UserStatus.ACTIVE,
     )
     db.add(employee)

@@ -92,6 +92,8 @@ supabase db push --workdir server
 
 **Note:** The app also uses **Alembic** (Python migrations in `server/alembic/versions/`). For this project, `server/supabase/migrations/` is kept in sync with the schema (shift_notes, permissions, RLS). Use either **Alembic** (Option A/B) or **Supabase CLI** (Option C), not both, for the same database to avoid duplicate or conflicting migrations.
 
+**Latest Supabase-only catch-up:** `server/supabase/migrations/20260325000000_032_userrole_and_backup_settings_sync.sql` matches Alembic `031_drop_backup_settings` and `032_add_new_employee_roles` (drops `companies.backup_settings` if present; adds `MANAGER`, `RESTAURANT`, `SECURITY` to `userrole`). Apply it with `supabase db push` on any project that was created before this file existed.
+
 ---
 
 ## 4. Seed data or migrate existing data
