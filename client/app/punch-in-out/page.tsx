@@ -62,14 +62,11 @@ export default function PunchInOutPage() {
 
   const fetchStatusAndEntries = useCallback(async () => {
     try {
-      const [meRes, entriesRes] = await Promise.all([
-        api.get('/time/my?limit=1'),
-        api.get('/time/my?limit=10'),
-      ])
-      const meEntries = meRes.data?.entries ?? []
-      const hasOpen = meEntries.length > 0 && !meEntries[0].clock_out_at
+      const res = await api.get('/time/my?limit=10')
+      const list = res.data?.entries ?? []
+      const hasOpen = list.length > 0 && !list[0].clock_out_at
       setCurrentStatus(hasOpen ? 'in' : 'out')
-      setEntries(entriesRes.data?.entries ?? [])
+      setEntries(list)
     } catch (err) {
       if ((err as { response?: { status: number } })?.response?.status === 403) {
         const detail = (err as { response?: { data?: { detail?: { error?: string } } } })?.response?.data?.detail

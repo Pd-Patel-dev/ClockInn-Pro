@@ -59,6 +59,18 @@ class Settings(BaseSettings):
         return v
 
     @model_validator(mode="after")
+    def merge_frontend_url_into_cors_origins(self) -> "Settings":
+        """Always allow FRONTEND_URL so production can set one env var for app URL + CORS."""
+        fe = (self.FRONTEND_URL or "").strip()
+        if not fe:
+            return self
+        origins = [o.strip() for o in self.CORS_ORIGINS if o and str(o).strip()]
+        if fe not in origins:
+            origins = [*origins, fe]
+            self.CORS_ORIGINS = origins
+        return self
+
+    @model_validator(mode="after")
     def cors_origins_trusted_in_production(self) -> "Settings":
         """
         In production, only allow https:// origins except localhost / 127.0.0.1 (dev-style URLs).

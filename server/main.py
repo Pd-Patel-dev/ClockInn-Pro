@@ -164,7 +164,13 @@ async def add_security_headers(request: Request, call_next):
 
     return response
 
-# CORS: explicit origins only (* rejected in config). In production, https:// required except localhost/127.0.0.1.
+# Global rate limit by IP (must be *inside* CORS). If rate limit returns 429 without calling next,
+# an outer CORS layer would still add Access-Control-Allow-Origin; inner CORS would not run.
+# Stricter limits apply to /api/v1/auth/* and /api/v1/kiosk/* (see settings).
+app.add_middleware(RateLimitMiddleware)
+
+# CORS: explicit origins only (* rejected in config). Added last so it wraps rate limiting and
+# applies CORS headers to every response (including 429 from rate limit).
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.CORS_ORIGINS,
@@ -172,10 +178,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-# Global rate limit by IP (outermost after CORS = runs first on incoming request).
-# Stricter limits apply to /api/v1/auth/* and /api/v1/kiosk/* (see settings).
-app.add_middleware(RateLimitMiddleware)
 
 # Custom exception handler for validation errors
 @app.exception_handler(RequestValidationError)

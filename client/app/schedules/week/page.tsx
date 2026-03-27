@@ -108,7 +108,7 @@ function BulkWeekShiftContent() {
   useEffect(() => {
     const fetchEmployees = async () => {
       try {
-        const response = await api.get('/users/admin/employees')
+        const response = await api.get('/schedules/employees')
         setEmployees(response.data || [])
       } catch (error: any) {
         logger.error('Failed to fetch employees', error as Error)

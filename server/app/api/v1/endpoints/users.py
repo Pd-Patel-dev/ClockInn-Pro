@@ -21,7 +21,7 @@ from app.schemas.user import (
 from app.services.user_service import (
     get_user_me,
     get_user_by_id,
-    list_employees,
+    list_employee_user_responses,
     create_employee,
     update_employee,
     reset_password,
@@ -128,67 +128,7 @@ async def list_employees_endpoint(
     db: AsyncSession = Depends(get_db),
 ):
     """List all employees (admin only)."""
-    from app.models.time_entry import TimeEntry
-    from sqlalchemy import select, func, case
-    
-    employees, total = await list_employees(db, current_user.company_id, skip, limit)
-    
-    # Get last punch time and clock status for each employee efficiently
-    employee_ids = [emp.id for emp in employees]
-    last_punches = {}
-    clock_status = {emp_id: False for emp_id in employee_ids}  # Initialize all as clocked out
-    
-    if employee_ids:
-        # First, check for open entries (clocked in) - these are the most important
-        open_entries_result = await db.execute(
-            select(TimeEntry)
-            .where(
-                TimeEntry.employee_id.in_(employee_ids),
-                TimeEntry.company_id == current_user.company_id,
-                TimeEntry.clock_out_at.is_(None)
-            )
-        )
-        open_entries = open_entries_result.scalars().all()
-        for entry in open_entries:
-            clock_status[entry.employee_id] = True  # Employee is clocked in
-        
-        # Get all time entries for these employees, ordered by clock_in_at desc
-        # We'll process them to get the latest punch per employee
-        result = await db.execute(
-            select(TimeEntry)
-            .where(
-                TimeEntry.employee_id.in_(employee_ids),
-                TimeEntry.company_id == current_user.company_id
-            )
-            .order_by(TimeEntry.employee_id, TimeEntry.clock_in_at.desc())
-        )
-        entries = result.scalars().all()
-        
-        # Process entries to get the latest punch per employee
-        seen_employees = set()
-        for entry in entries:
-            if entry.employee_id not in seen_employees:
-                # Use clock_out_at if it exists, otherwise clock_in_at
-                last_punches[entry.employee_id] = entry.clock_out_at if entry.clock_out_at else entry.clock_in_at
-                seen_employees.add(entry.employee_id)
-    
-    return [
-        UserResponse(
-            id=emp.id,
-            company_id=emp.company_id,
-            name=emp.name,
-            email=emp.email,
-            role=emp.role,
-            status=emp.status,
-            has_pin=emp.pin_hash is not None,
-            pay_rate=float(emp.pay_rate) if emp.pay_rate is not None else None,
-            created_at=emp.created_at,
-            last_login_at=emp.last_login_at,
-            last_punch_at=last_punches.get(emp.id),
-            is_clocked_in=clock_status.get(emp.id, False),
-        )
-        for emp in employees
-    ]
+    return await list_employee_user_responses(db, current_user.company_id, skip, limit)
 
 
 @router.get("/admin/employees/{employee_id}", response_model=UserResponse)

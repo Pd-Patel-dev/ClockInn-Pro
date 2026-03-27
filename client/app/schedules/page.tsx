@@ -7,7 +7,6 @@ import api from '@/lib/api'
 import { useToast } from '@/components/Toast'
 import logger from '@/lib/logger'
 import { format, startOfWeek, endOfWeek, addDays, addWeeks, subWeeks, parseISO } from 'date-fns'
-import { getEmployeeColor } from '@/lib/employeeColors'
 import { parseTime24, toApiTime24, toTime12h } from '@/lib/time'
 import { ShiftTimeline } from '@/components/ShiftTimeline'
 import TimeInput12h from '@/components/TimeInput12h'
@@ -162,46 +161,18 @@ export default function SchedulesPage() {
     }
   }
 
+  // Single batch: employees + shifts in range + timeline hours (GET /schedules/view-context)
   useEffect(() => {
-    // Don't fetch if auth error occurred - let interceptor handle redirect
     if (authErrorOccurred) {
       setLoading(false)
       return
     }
-    
-    let abortController = new AbortController()
+
+    const abortController = new AbortController()
     let isMounted = true
 
-    const fetchEmployees = async () => {
+    const load = async () => {
       if (!isMounted || authErrorOccurred) return
-      
-      try {
-        const response = await api.get('/users/admin/employees', {
-          signal: abortController.signal,
-        })
-        if (isMounted && !authErrorOccurred) {
-          setEmployees(response.data || [])
-        }
-      } catch (error: any) {
-        if (abortController.signal.aborted) return // Request was cancelled
-        if (!isMounted) return
-        
-        if (error.response?.status === 401 || error.response?.status === 403) {
-          setAuthErrorOccurred(true)
-          setLoading(false)
-          // Don't log or show error - let the interceptor handle redirect
-          return
-        }
-        // Only log/show error if it's not an auth error
-        if (isMounted && !authErrorOccurred) {
-          logger.error('Failed to fetch employees', error as Error)
-        }
-      }
-    }
-
-    const fetchShifts = async () => {
-      if (!isMounted || authErrorOccurred) return
-      
       setLoading(true)
       try {
         const params = new URLSearchParams()
@@ -211,29 +182,33 @@ export default function SchedulesPage() {
         if (selectedEmployee) {
           params.append('employee_id', selectedEmployee)
         }
-        const response = await api.get(`/shifts?${params.toString()}`, {
+        const response = await api.get(`/schedules/view-context?${params.toString()}`, {
           signal: abortController.signal,
         })
+        const data = response.data as {
+          employees: Employee[]
+          shifts: Shift[]
+          schedule_day_start_hour?: number
+          schedule_day_end_hour?: number
+        }
         if (isMounted && !authErrorOccurred) {
-          setShifts(response.data || [])
+          setEmployees(data.employees || [])
+          setShifts(data.shifts || [])
+          setScheduleDayStartHour(data.schedule_day_start_hour ?? 7)
+          setScheduleDayEndHour(data.schedule_day_end_hour ?? 7)
         }
-      } catch (error: any) {
-        if (abortController.signal.aborted) {
-          // Request was cancelled, don't update loading state
-          return
-        }
+      } catch (error: unknown) {
+        if (abortController.signal.aborted) return
         if (!isMounted) return
-        
-        if (error.response?.status === 401 || error.response?.status === 403) {
+        const err = error as { response?: { status?: number } }
+        if (err.response?.status === 401 || err.response?.status === 403) {
           setAuthErrorOccurred(true)
           setLoading(false)
-          // Don't log or show error - let the interceptor handle redirect
           return
         }
-        // Only log/show error if it's not an auth error
         if (isMounted && !authErrorOccurred) {
-          logger.error('Failed to fetch shifts', error as Error)
-          toast.error('Failed to load shifts')
+          logger.error('Failed to load schedule', error as Error)
+          toast.error('Failed to load schedule')
         }
       } finally {
         if (isMounted && !authErrorOccurred) {
@@ -242,36 +217,14 @@ export default function SchedulesPage() {
       }
     }
 
-    // Fetch both in parallel
-    fetchEmployees()
-    fetchShifts()
+    void load()
 
-    // Cleanup function
     return () => {
       isMounted = false
       abortController.abort()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentWeek, selectedEmployee, weekStartStr, weekEndStr])
-
-  // Fetch company settings for schedule day start/end (once on mount)
-  useEffect(() => {
-    let isMounted = true
-    const fetchCompanySettings = async () => {
-      try {
-        const response = await api.get('/company/info')
-        if (isMounted && response.data?.settings) {
-          const s = response.data.settings
-          setScheduleDayStartHour(s.schedule_day_start_hour ?? 7)
-          setScheduleDayEndHour(s.schedule_day_end_hour ?? 7)
-        }
-      } catch (_) {
-        // Use defaults if fetch fails
-      }
-    }
-    fetchCompanySettings()
-    return () => { isMounted = false }
-  }, [])
 
   const handleCreateShift = async () => {
     // Client-side validation

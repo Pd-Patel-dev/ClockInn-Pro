@@ -2,6 +2,7 @@ from typing import Optional, List
 from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_, func, delete as sql_delete
+from app.schemas.user import UserResponse
 from fastapi import HTTPException, status
 
 from app.core.error_handling import client_error_detail
@@ -83,6 +84,68 @@ async def list_employees(
     )
     
     return await get_paginated_results(db, query, skip=skip, limit=limit)
+
+
+async def list_employee_user_responses(
+    db: AsyncSession,
+    company_id: UUID,
+    skip: int = 0,
+    limit: int = 1000,
+) -> List[UserResponse]:
+    """List employees as ``UserResponse`` with last punch and clocked-in status (same as GET /users/admin/employees)."""
+    from app.models.time_entry import TimeEntry
+
+    employees, _total = await list_employees(db, company_id, skip, limit)
+
+    employee_ids = [emp.id for emp in employees]
+    last_punches: dict = {}
+    clock_status = {emp_id: False for emp_id in employee_ids}
+
+    if employee_ids:
+        open_entries_result = await db.execute(
+            select(TimeEntry).where(
+                TimeEntry.employee_id.in_(employee_ids),
+                TimeEntry.company_id == company_id,
+                TimeEntry.clock_out_at.is_(None),
+            )
+        )
+        for entry in open_entries_result.scalars().all():
+            clock_status[entry.employee_id] = True
+
+        result = await db.execute(
+            select(TimeEntry)
+            .where(
+                TimeEntry.employee_id.in_(employee_ids),
+                TimeEntry.company_id == company_id,
+            )
+            .order_by(TimeEntry.employee_id, TimeEntry.clock_in_at.desc())
+        )
+        entries = result.scalars().all()
+        seen_employees = set()
+        for entry in entries:
+            if entry.employee_id not in seen_employees:
+                last_punches[entry.employee_id] = (
+                    entry.clock_out_at if entry.clock_out_at else entry.clock_in_at
+                )
+                seen_employees.add(entry.employee_id)
+
+    return [
+        UserResponse(
+            id=emp.id,
+            company_id=emp.company_id,
+            name=emp.name,
+            email=emp.email,
+            role=emp.role,
+            status=emp.status,
+            has_pin=emp.pin_hash is not None,
+            pay_rate=float(emp.pay_rate) if emp.pay_rate is not None else None,
+            created_at=emp.created_at,
+            last_login_at=emp.last_login_at,
+            last_punch_at=last_punches.get(emp.id),
+            is_clocked_in=clock_status.get(emp.id, False),
+        )
+        for emp in employees
+    ]
 
 
 async def create_employee(

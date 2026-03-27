@@ -11,7 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
 from app.core.database import get_db
-from app.core.dependencies import get_current_admin, get_current_user
+from app.core.dependencies import get_current_admin, get_current_user, require_permission
 from app.core.error_handling import handle_endpoint_errors, parse_uuid
 from app.models.user import User, UserRole
 from app.models.shift import Shift, ShiftStatus
@@ -33,6 +33,8 @@ from app.schemas.shift import (
 from app.schemas.bulk_shift import (
     BulkWeekShiftCreate, BulkWeekShiftPreviewResponse, BulkWeekShiftCreateResponse,
 )
+from app.schemas.schedule_context import SchedulePageContextResponse
+from app.schemas.user import UserResponse
 from app.services.shift_service import (
     create_shift, update_shift, get_shift, list_shifts, delete_shift, approve_shift,
     create_shift_template, generate_shifts_from_template,
@@ -40,6 +42,8 @@ from app.services.shift_service import (
 from app.services.bulk_shift_service import (
     preview_bulk_week_shifts, create_bulk_week_shifts,
 )
+from app.services.schedule_context_service import get_schedule_page_context
+from app.services.user_service import list_employee_user_responses
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -142,6 +146,40 @@ async def list_shifts_endpoint(
         )
         for shift in shifts
     ]
+
+
+@router.get("/schedules/employees", response_model=List[UserResponse])
+@handle_endpoint_errors(operation_name="list_schedules_employees")
+async def list_schedules_employees_endpoint(
+    skip: int = Query(0, ge=0),
+    limit: int = Query(1000, ge=1, le=1000),
+    current_user: User = Depends(require_permission("schedule")),
+    db: AsyncSession = Depends(get_db),
+):
+    """Employee list for scheduling UIs (same payload shape as GET /users/admin/employees; requires ``schedule``)."""
+    return await list_employee_user_responses(db, current_user.company_id, skip, limit)
+
+
+@router.get("/schedules/view-context", response_model=SchedulePageContextResponse)
+@handle_endpoint_errors(operation_name="get_schedule_page_context")
+async def get_schedule_page_context_endpoint(
+    start_date: date = Query(..., description="Range start (inclusive)"),
+    end_date: date = Query(..., description="Range end (inclusive)"),
+    employee_id: Optional[str] = Query(None, description="Filter shifts by employee"),
+    limit: int = Query(1000, ge=1, le=1000),
+    current_user: User = Depends(require_permission("schedule")),
+    db: AsyncSession = Depends(get_db),
+):
+    """Batch employees, shifts in range, and timeline hours. Requires ``schedule`` (not ``user_management``).
+    Operational roles still only receive their own shifts in ``shifts`` (see ``list_shifts`` rules)."""
+    return await get_schedule_page_context(
+        db,
+        current_user,
+        start_date=start_date,
+        end_date=end_date,
+        employee_id=employee_id,
+        shift_limit=limit,
+    )
 
 
 @router.post("/shifts/bulk/week/preview", response_model=BulkWeekShiftPreviewResponse)
