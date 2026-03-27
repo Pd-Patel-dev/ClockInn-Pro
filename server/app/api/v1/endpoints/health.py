@@ -150,6 +150,7 @@ async def health_check(db: Optional[AsyncSession] = Depends(get_db)):
             "frontend_url": settings.FRONTEND_URL,
             "rate_limiting_enabled": settings.RATE_LIMIT_ENABLED,
             "rate_limit_per_minute": settings.RATE_LIMIT_PER_MINUTE,
+            "rate_limit_schedule_per_minute": settings.RATE_LIMIT_SCHEDULE_PER_MINUTE,
             "rate_limit_auth_kiosk_per_minute": settings.RATE_LIMIT_AUTH_KIOSK_PER_MINUTE,
             "login_lockout_store": "redis" if settings.REDIS_URL else "memory",
             "login_lockout_use_ip": settings.LOGIN_LOCKOUT_USE_IP,

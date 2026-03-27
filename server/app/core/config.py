@@ -119,6 +119,10 @@ class Settings(BaseSettings):
         default=30,
         description="Stricter cap for /api/v1/auth/* and /api/v1/kiosk/*. Login also has per-email lockout.",
     )
+    RATE_LIMIT_SCHEDULE_PER_MINUTE: int = Field(
+        default=300,
+        description="Separate cap per IP per 60s for /api/v1/schedules/* and /api/v1/shifts/* (heavy schedule UI).",
+    )
     LOGIN_ATTEMPTS_LIMIT: int = 5
     PIN_ATTEMPTS_LIMIT: int = 5
     LOCKOUT_DURATION_MINUTES: int = 10

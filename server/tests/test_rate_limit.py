@@ -9,9 +9,11 @@ from app.middleware import rate_limit as rl
 def clear_rate_limit_windows():
     rl._global_window.clear()
     rl._strict_window.clear()
+    rl._schedule_window.clear()
     yield
     rl._global_window.clear()
     rl._strict_window.clear()
+    rl._schedule_window.clear()
 
 
 def test_health_paths_exempt():
@@ -72,3 +74,31 @@ def test_disabled_allows_all(monkeypatch):
     ip, path = "5.5.5.5", "/api/v1/auth/login"
     for _ in range(20):
         assert rl.check_rate_limit(ip, path)[0]
+
+
+def test_schedule_path_separate_higher_bucket(monkeypatch):
+    monkeypatch.setattr(rl.settings, "RATE_LIMIT_ENABLED", True)
+    monkeypatch.setattr(rl.settings, "RATE_LIMIT_PER_MINUTE", 3)
+    monkeypatch.setattr(rl.settings, "RATE_LIMIT_SCHEDULE_PER_MINUTE", 8)
+    monkeypatch.setattr(rl.settings, "RATE_LIMIT_AUTH_KIOSK_PER_MINUTE", 100)
+    ip = "6.6.6.6"
+    shift_path = "/api/v1/shifts"
+    for _ in range(8):
+        assert rl.check_rate_limit(ip, shift_path)[0]
+    ok, reason = rl.check_rate_limit(ip, shift_path)
+    assert not ok
+    assert reason == "schedule"
+
+
+def test_schedule_requests_do_not_consume_global_bucket(monkeypatch):
+    monkeypatch.setattr(rl.settings, "RATE_LIMIT_ENABLED", True)
+    monkeypatch.setattr(rl.settings, "RATE_LIMIT_PER_MINUTE", 2)
+    monkeypatch.setattr(rl.settings, "RATE_LIMIT_SCHEDULE_PER_MINUTE", 10)
+    monkeypatch.setattr(rl.settings, "RATE_LIMIT_AUTH_KIOSK_PER_MINUTE", 100)
+    ip = "7.7.7.7"
+    for _ in range(5):
+        assert rl.check_rate_limit(ip, "/api/v1/schedules/view-context")[0]
+    other = "/api/v1/time/my"
+    assert rl.check_rate_limit(ip, other)[0]
+    assert rl.check_rate_limit(ip, other)[0]
+    assert not rl.check_rate_limit(ip, other)[0]

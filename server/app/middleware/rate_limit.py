@@ -26,6 +26,7 @@ WINDOW_SECONDS = 60.0
 # Per-IP sliding windows: timestamps (monotonic) of allowed requests — in-memory fallback
 _global_window: Dict[str, Deque[float]] = defaultdict(deque)
 _strict_window: Dict[str, Deque[float]] = defaultdict(deque)
+_schedule_window: Dict[str, Deque[float]] = defaultdict(deque)
 
 # Lazy async Redis for shared rate limits (same client pattern as login_attempts)
 _redis_rl_client: Any = None
@@ -59,6 +60,22 @@ if is_strict == 1 then
   redis.call('ZADD', KEYS[2], now, member)
   redis.call('EXPIRE', KEYS[2], math.floor(window) + 30)
 end
+return 1
+"""
+
+# Schedule-only bucket (higher limit; does not share the global counter)
+_SCHEDULE_RL_LUA = """
+local now = tonumber(ARGV[1])
+local window = tonumber(ARGV[2])
+local lim = tonumber(ARGV[3])
+local member = ARGV[4]
+redis.call('ZREMRANGEBYSCORE', KEYS[1], '-inf', now - window)
+local c = redis.call('ZCARD', KEYS[1])
+if c >= lim then
+  return 2
+end
+redis.call('ZADD', KEYS[1], now, member)
+redis.call('EXPIRE', KEYS[1], math.floor(window) + 30)
 return 1
 """
 
@@ -97,8 +114,24 @@ def _is_exempt_path(path: str) -> bool:
     return False
 
 
+def _is_schedule_path(path: str) -> bool:
+    return path.startswith("/api/v1/schedules") or path.startswith("/api/v1/shifts")
+
+
 def _is_strict_path(path: str) -> bool:
     return path.startswith("/api/v1/auth") or path.startswith("/api/v1/kiosk")
+
+
+def _check_schedule_window_memory(client_ip: str) -> Tuple[bool, str]:
+    now = time.monotonic()
+    schedule_limit = max(1, settings.RATE_LIMIT_SCHEDULE_PER_MINUTE)
+    sq = _schedule_window[client_ip]
+    _prune_old(sq, now)
+    if len(sq) >= schedule_limit:
+        logger.warning("Rate limit exceeded (schedule) ip=%s", client_ip)
+        return False, "schedule"
+    sq.append(now)
+    return True, ""
 
 
 def check_rate_limit(client_ip: str, path: str) -> Tuple[bool, str]:
@@ -111,6 +144,9 @@ def check_rate_limit(client_ip: str, path: str) -> Tuple[bool, str]:
 
     if _is_exempt_path(path):
         return True, ""
+
+    if _is_schedule_path(path):
+        return _check_schedule_window_memory(client_ip)
 
     now = time.monotonic()
     global_limit = max(1, settings.RATE_LIMIT_PER_MINUTE)
@@ -163,6 +199,37 @@ async def close_rate_limit_redis() -> None:
         _redis_rl_client = None
 
 
+async def _check_schedule_window_redis(client_ip: str) -> Tuple[bool, str]:
+    redis_client = await _get_rate_limit_redis()
+    if redis_client is None:
+        return _check_schedule_window_memory(client_ip)
+
+    schedule_limit = max(1, settings.RATE_LIMIT_SCHEDULE_PER_MINUTE)
+    now = time.time()
+    member = str(uuid.uuid4())
+    ipk = _redis_key_ip(client_ip)
+    key = f"clockinn:ratelimit:schedule:{ipk}"
+
+    try:
+        rc = await redis_client.eval(
+            _SCHEDULE_RL_LUA,
+            1,
+            key,
+            str(now),
+            str(int(WINDOW_SECONDS)),
+            str(schedule_limit),
+            member,
+        )
+    except Exception as e:
+        logger.warning("Redis schedule rate limit failed, falling back to in-memory: %s", e)
+        return _check_schedule_window_memory(client_ip)
+
+    if rc == 1:
+        return True, ""
+    logger.warning("Rate limit exceeded (schedule, Redis) ip=%s", client_ip)
+    return False, "schedule"
+
+
 async def check_rate_limit_async(client_ip: str, path: str) -> Tuple[bool, str]:
     """
     Rate limit for middleware. Uses Redis sliding window when REDIS_URL is set; otherwise in-memory ``check_rate_limit``.
@@ -172,6 +239,9 @@ async def check_rate_limit_async(client_ip: str, path: str) -> Tuple[bool, str]:
 
     if _is_exempt_path(path):
         return True, ""
+
+    if _is_schedule_path(path):
+        return await _check_schedule_window_redis(client_ip)
 
     redis_client = await _get_rate_limit_redis()
     if redis_client is None:
