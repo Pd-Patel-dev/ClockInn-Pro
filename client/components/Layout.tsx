@@ -16,7 +16,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   const [sideMenuOpen, setSideMenuOpen] = useState(false)
   const [openDropdown, setOpenDropdown] = useState<string | null>(null)
   const dropdownRefs = useRef<{ [key: string]: HTMLDivElement | null }>({})
-  /** From GET /company/info — hide shift notepad / shift log when company disables feature */
+  /** From GET /company/info — hide employee shift notepad only; admin Shift Log stays available */
   const [shiftNotesEnabled, setShiftNotesEnabled] = useState(true)
   const { can } = usePermissions(user)
 
@@ -205,9 +205,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         items: [
           { href: '/schedules', label: 'Schedules', permission: 'schedule' },
           { href: '/time-entries', label: 'Time Entries', permission: 'schedule' },
-          ...(shiftNotesEnabled
-            ? [{ href: '/admin/shift-log', label: 'Shift Log', permission: 'common_log' }]
-            : []),
+          { href: '/admin/shift-log', label: 'Shift Log', permission: 'common_log' },
         ],
       },
       {
@@ -228,7 +226,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       .filter((group) => group.items.length > 0)
 
     return filtered
-  }, [shiftNotesEnabled, can])
+  }, [can])
 
   const requiredPermission = useMemo(
     () =>

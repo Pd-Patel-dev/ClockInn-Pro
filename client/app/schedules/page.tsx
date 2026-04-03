@@ -7,7 +7,9 @@ import api from '@/lib/api'
 import { useToast } from '@/components/Toast'
 import logger from '@/lib/logger'
 import { format, startOfWeek, endOfWeek, addDays, addWeeks, subWeeks, parseISO } from 'date-fns'
-import { parseTime24, toApiTime24, toTime12h } from '@/lib/time'
+import { parseTime24, toApiTime24 } from '@/lib/time'
+import { buildSchedulePrintHtml, printScheduleHtml } from '@/lib/schedulePrintExport'
+import { getCurrentUser } from '@/lib/auth'
 import { ShiftTimeline } from '@/components/ShiftTimeline'
 import TimeInput12h from '@/components/TimeInput12h'
 import ConfirmationDialog from '@/components/ConfirmationDialog'
@@ -395,12 +397,10 @@ export default function SchedulesPage() {
     return shift.end_time <= shift.start_time
   }
 
-  /** Open print-friendly schedule in new window and trigger print (or Save as PDF). */
-  const handlePrintSchedule = () => {
-    const dayLabels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
-    // Use filtered employees (by department) so print matches current view
+  /** Print / Save as PDF using professional schedule template (see `schedulePrintExport.ts`). */
+  const handlePrintSchedule = async () => {
     const sortedEmployees = [...filteredEmployees]
-      .map((emp) => ({ id: emp.id, name: emp.name || 'Unknown' }))
+      .map((emp) => ({ id: emp.id, name: emp.name || 'Unknown', role: emp.role }))
       .sort((a, b) => a.name.localeCompare(b.name))
 
     if (sortedEmployees.length === 0) {
@@ -408,152 +408,27 @@ export default function SchedulesPage() {
       return
     }
 
-    const shiftsByEmployeeAndDay = new Map<string, Map<string, Shift[]>>()
-    filteredShifts.forEach((shift) => {
-      if (!shiftsByEmployeeAndDay.has(shift.employee_id)) {
-        shiftsByEmployeeAndDay.set(shift.employee_id, new Map())
-      }
-      const byDay = shiftsByEmployeeAndDay.get(shift.employee_id)!
-      const d = shift.shift_date
-      if (!byDay.has(d)) byDay.set(d, [])
-      byDay.get(d)!.push(shift)
+    let companyName = 'Company'
+    try {
+      const user = await getCurrentUser()
+      if (user.company_name?.trim()) companyName = user.company_name.trim()
+    } catch {
+      /* keep default */
+    }
+
+    const html = buildSchedulePrintHtml({
+      companyName,
+      weekStart,
+      weekEnd,
+      weekDays,
+      employees: sortedEmployees,
+      shifts: filteredShifts,
     })
 
-    /** 12-hour time for print/PDF (e.g. 9:00 AM, 2:30 PM) */
-    const formatTime12ForPrint = (t: string) => {
-      if (!t || !parseTime24(t)) return '—'
-      const { hour12, minute, ampm } = toTime12h(t)
-      const mm = String(minute).padStart(2, '0')
-      return `${hour12}:${mm} ${ampm}`
-    }
-
-    const formatCell = (dayShifts: Shift[] | undefined) => {
-      if (!dayShifts || dayShifts.length === 0) return '<span class="cell-empty">—</span>'
-      return dayShifts
-        .map((s) => {
-          const start = formatTime12ForPrint(s.start_time)
-          const end = formatTime12ForPrint(s.end_time)
-          const br = s.break_minutes ? ` <span class="cell-break">(${s.break_minutes}m break)</span>` : ''
-          return `<span class="cell-time">${start} – ${end}</span>${br}`
-        })
-        .join('<br/>')
-    }
-
-    const dayHeaders = weekDays
-      .map(
-        (d, i) =>
-          `<th class="day-col"><span class="day-name">${dayLabels[i]}</span><span class="day-num">${format(d, 'd')}</span><span class="day-month">${format(d, 'MMM')}</span></th>`
-      )
-      .join('')
-    const rows = sortedEmployees
-      .map(({ id, name }, idx) => {
-        const byDay = shiftsByEmployeeAndDay.get(id)
-        const cells = weekDays
-          .map((day) => {
-            const key = format(day, 'yyyy-MM-dd')
-            const dayShifts = byDay?.get(key)
-            return `<td class="cell">${formatCell(dayShifts)}</td>`
-          })
-          .join('')
-        const rowClass = idx % 2 === 0 ? 'row-even' : 'row-odd'
-        return `<tr class="${rowClass}"><td class="cell-employee">${escapeHtml(name)}</td>${cells}</tr>`
-      })
-      .join('')
-
-    const title = `Week of ${format(weekStart, 'MMMM d')} – ${format(weekEnd, 'MMMM d, yyyy')}`
-    const generated = format(new Date(), "MMM d, yyyy 'at' h:mm a")
-    const html = `<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <title>Schedule – ${escapeHtml(title)}</title>
-  <style>
-    * { box-sizing: border-box; }
-    body { margin: 0; font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; background: #f8fafc; color: #1e293b; padding: 24px; font-size: 16px; line-height: 1.4; }
-    .print-sheet { max-width: 880px; margin: 0 auto; background: #fff; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 24px rgba(0,0,0,0.08); }
-    .print-header { background: linear-gradient(135deg, #1e3a5f 0%, #2563eb 100%); color: #fff; padding: 24px 28px; }
-    .print-header h1 { margin: 0; font-size: 13px; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; opacity: 0.9; }
-    .print-header .print-title { margin: 8px 0 0 0; font-size: 26px; font-weight: 700; letter-spacing: -0.02em; }
-    .print-header .print-sub { margin: 4px 0 0 0; font-size: 15px; opacity: 0.9; }
-    table { width: 100%; border-collapse: collapse; table-layout: fixed; }
-    thead { background: #f1f5f9; }
-    th { text-align: left; padding: 10px 8px; font-weight: 600; font-size: 14px; color: #475569; border-bottom: 2px solid #e2e8f0; overflow: hidden; }
-    th.day-col { text-align: center; min-width: 0; width: 12%; }
-    th.cell-employee { width: 16%; min-width: 0; }
-    th .day-name { display: block; font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; color: #64748b; }
-    th .day-num { display: block; font-size: 20px; color: #1e293b; margin-top: 2px; }
-    th .day-month { display: block; font-size: 12px; color: #64748b; margin-top: 1px; }
-    td { padding: 10px 8px; border-bottom: 1px solid #e2e8f0; vertical-align: top; font-size: 15px; overflow: hidden; word-wrap: break-word; }
-    td.cell-employee { font-weight: 600; color: #1e293b; background: #fafbfc; width: 16%; min-width: 0; }
-    tr.row-odd td.cell-employee { background: #f8fafc; }
-    td.cell { color: #475569; width: 12%; min-width: 0; text-align: center; }
-    tr.row-even td.cell { background: #fefefe; }
-    tr.row-odd td.cell { background: #f8fafc; }
-    .cell-empty { color: #94a3b8; font-style: italic; }
-    .cell-time { font-weight: 500; color: #1e293b; }
-    .cell-break { font-size: 12px; color: #64748b; }
-    .print-footer { padding: 12px 20px; border-top: 1px solid #e2e8f0; font-size: 13px; color: #94a3b8; background: #f8fafc; }
-    .no-print { margin-top: 16px; font-size: 14px; color: #64748b; }
-    @page { size: landscape; margin: 0.5in; }
-    @media print {
-      body { background: #fff; padding: 0; margin: 0; }
-      .print-sheet { max-width: 100%; width: 100%; box-shadow: none; border-radius: 0; }
-      .print-header, .print-footer { padding-left: 0.5in; padding-right: 0.5in; }
-      .print-body { padding: 0 0.25in; }
-      table { width: 100%; }
-      .no-print { display: none !important; }
-    }
-  </style>
-</head>
-<body>
-  <div class="print-sheet">
-    <div class="print-header">
-      <h1>ClockIn Pro</h1>
-      <p class="print-title">Schedule</p>
-      <p class="print-sub">${escapeHtml(title)}</p>
-    </div>
-    <div class="print-body">
-  <table>
-    <thead><tr><th class="cell-employee">Employee</th>${dayHeaders}</tr></thead>
-    <tbody>${rows}</tbody>
-  </table>
-    </div>
-    <div class="print-footer">
-      Generated on ${escapeHtml(generated)} · Print or save as PDF from your browser
-    </div>
-  </div>
-  <p class="no-print">Use Print or Save as PDF to export this schedule.</p>
-
-</body>
-</html>`
-
-    // Use a hidden iframe to avoid pop-up blockers (no new window needed)
-    const iframe = document.createElement('iframe')
-    iframe.setAttribute('style', 'position:absolute;width:0;height:0;border:0;left:-9999px;')
-    document.body.appendChild(iframe)
-    const doc = iframe.contentWindow?.document
-    if (!doc) {
-      document.body.removeChild(iframe)
+    const filenameBase = `schedule-${format(weekStart, 'yyyy-MM-dd')}`
+    if (!printScheduleHtml(html, filenameBase)) {
       toast.error('Could not open print preview.')
-      return
     }
-    doc.open()
-    doc.write(html)
-    doc.close()
-    iframe.contentWindow?.focus()
-    iframe.contentWindow?.print()
-    // Remove iframe after print dialog closes (user may cancel or print)
-    setTimeout(() => {
-      if (iframe.parentNode) document.body.removeChild(iframe)
-    }, 1000)
-  }
-
-  function escapeHtml(text: string): string {
-    // Single place we inject user-supplied text into HTML (print iframe). Always escape;
-    // do not use dangerouslySetInnerHTML with unsanitized data elsewhere.
-    const div = document.createElement('div')
-    div.textContent = text
-    return div.innerHTML
   }
 
   return (

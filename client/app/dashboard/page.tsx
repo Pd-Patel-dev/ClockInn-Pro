@@ -196,6 +196,26 @@ export default function DashboardPage() {
           </div>
         </div>
 
+        {isAdmin && !shiftNotesFeatureEnabled && (
+          <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden border-l-4 border-l-slate-600">
+            <div className="p-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <h2 className="text-lg font-semibold text-slate-900">Shift log</h2>
+                <p className="text-sm text-slate-500 mt-0.5">
+                  Shift notes are turned off for employees, but you can still open the full shift log (time entries,
+                  cash drawer, and any saved notes).
+                </p>
+              </div>
+              <Link
+                href="/admin/shift-log"
+                className="inline-flex shrink-0 text-sm font-medium text-blue-600 hover:text-blue-700"
+              >
+                Open shift log →
+              </Link>
+            </div>
+          </div>
+        )}
+
         {shiftNotesFeatureEnabled && (
           <div>
             <div className="flex flex-col gap-3 sm:flex-row sm:justify-between sm:items-center mb-4">

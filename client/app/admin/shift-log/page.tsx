@@ -1,11 +1,11 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useMemo, Fragment } from 'react'
 import { useRouter } from 'next/navigation'
 import Layout from '@/components/Layout'
 import api from '@/lib/api'
 import { getCurrentUser, User } from '@/lib/auth'
-import { format } from 'date-fns'
+import { addWeeks, endOfWeek, format, isValid, parseISO, startOfWeek } from 'date-fns'
 import { useToast } from '@/components/Toast'
 import ConfirmationDialog from '@/components/ConfirmationDialog'
 import { useForm } from 'react-hook-form'
@@ -50,8 +50,12 @@ export default function AdminShiftLogPage() {
   const [loading, setLoading] = useState(true)
   const [sessions, setSessions] = useState<CashDrawerSession[]>([])
   const [loadingSessions, setLoadingSessions] = useState(false)
-  const [fromDate, setFromDate] = useState(format(new Date(Date.now() - 30 * 24 * 60 * 60 * 1000), 'yyyy-MM-dd'))
-  const [toDate, setToDate] = useState(format(new Date(), 'yyyy-MM-dd'))
+  /** Monday-start week; list + export use this range */
+  const [weekStart, setWeekStart] = useState(() => startOfWeek(new Date(), { weekStartsOn: 1 }))
+  const weekEnd = endOfWeek(weekStart, { weekStartsOn: 1 })
+  const fromDate = format(weekStart, 'yyyy-MM-dd')
+  const toDate = format(weekEnd, 'yyyy-MM-dd')
+  const weekRangeLabel = `Week of ${format(weekStart, 'MMM d')} – ${format(weekEnd, 'MMM d, yyyy')}`
   const [statusFilter, setStatusFilter] = useState<string>('')
   const [selectedSession, setSelectedSession] = useState<CashDrawerSession | null>(null)
   const [showEditDialog, setShowEditDialog] = useState(false)
@@ -110,6 +114,43 @@ export default function AdminShiftLogPage() {
       setLoadingSessions(false)
     }
   }, [fromDate, toDate, statusFilter, toast])
+
+  const sessionsGroupedByWeek = useMemo(() => {
+    const map = new Map<string, CashDrawerSession[]>()
+    const orphans: CashDrawerSession[] = []
+    for (const s of sessions) {
+      const d = new Date(s.start_counted_at)
+      if (!isValid(d)) {
+        orphans.push(s)
+        continue
+      }
+      const monday = startOfWeek(d, { weekStartsOn: 1 })
+      const key = format(monday, 'yyyy-MM-dd')
+      if (!map.has(key)) map.set(key, [])
+      map.get(key)!.push(s)
+    }
+    const keys = [...map.keys()].sort((a, b) => b.localeCompare(a))
+    const groups = keys.map((k) => {
+      const rows = map.get(k)!
+      rows.sort((a, b) => new Date(b.start_counted_at).getTime() - new Date(a.start_counted_at).getTime())
+      const ws = parseISO(k)
+      const we = endOfWeek(ws, { weekStartsOn: 1 })
+      return {
+        key: k,
+        label: `Week of ${format(ws, 'MMM d')} – ${format(we, 'MMM d, yyyy')}`,
+        rows,
+      }
+    })
+    if (orphans.length > 0) {
+      orphans.sort((a, b) => new Date(b.start_counted_at).getTime() - new Date(a.start_counted_at).getTime())
+      groups.push({
+        key: 'unknown-week',
+        label: 'Other (invalid or missing session date)',
+        rows: orphans,
+      })
+    }
+    return groups
+  }, [sessions])
 
   useEffect(() => {
     if (user) {
@@ -296,29 +337,64 @@ export default function AdminShiftLogPage() {
         <div className="max-w-6xl mx-auto">
           <div className="mb-6">
             <h1 className="text-2xl font-semibold text-slate-900 mb-1">Shift Log</h1>
-            <p className="text-sm text-slate-600">View everything for each shift. Click a row to open full details (clock in/out, cash drawer, beverages, shift notes).</p>
+            <p className="text-sm text-slate-600">
+              Browse shifts by week (Mon–Sun). Click a row to open full details (clock in/out, cash drawer, beverages, shift notes).
+            </p>
           </div>
 
           {/* Filters */}
           <div className="bg-white rounded-lg border border-slate-200 p-4 mb-6">
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">From Date</label>
-                <input
-                  type="date"
-                  value={fromDate}
-                  onChange={(e) => setFromDate(e.target.value)}
-                  className="block w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">To Date</label>
-                <input
-                  type="date"
-                  value={toDate}
-                  onChange={(e) => setToDate(e.target.value)}
-                  className="block w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
-                />
+              <div className="md:col-span-2">
+                <label className="block text-sm font-medium text-slate-700 mb-2">Week</label>
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setWeekStart((d) => addWeeks(d, -1))}
+                    className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
+                    aria-label="Previous week"
+                  >
+                    ‹
+                  </button>
+                  <span className="min-w-0 flex-1 text-center text-sm font-medium text-slate-900 px-1">
+                    {weekRangeLabel}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setWeekStart((d) => addWeeks(d, 1))}
+                    className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
+                    aria-label="Next week"
+                  >
+                    ›
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setWeekStart(startOfWeek(new Date(), { weekStartsOn: 1 }))}
+                    className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-1.5 text-sm font-medium text-blue-700 hover:bg-blue-100"
+                  >
+                    This week
+                  </button>
+                </div>
+                <div className="mt-2 flex flex-wrap items-center gap-3">
+                  <label className="flex items-center gap-2 text-xs text-slate-600">
+                    <span className="shrink-0">Jump to</span>
+                    <input
+                      type="date"
+                      value={fromDate}
+                      onChange={(e) => {
+                        const parsed = parseISO(e.target.value)
+                        if (isValid(parsed)) {
+                          setWeekStart(startOfWeek(parsed, { weekStartsOn: 1 }))
+                        }
+                      }}
+                      className="rounded-md border border-slate-300 px-2 py-1 text-sm text-slate-900"
+                      title="Pick any day in the week you want to view"
+                    />
+                  </label>
+                  <span className="text-xs text-slate-400">
+                    Range sent to server: {fromDate} → {toDate}
+                  </span>
+                </div>
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-2">Status</label>
@@ -374,113 +450,125 @@ export default function AdminShiftLogPage() {
               <tbody className="divide-y divide-slate-100">
                 {loadingSessions ? (
                   <tr>
-                    <td colSpan={10} className="px-3 py-8 text-center">
+                    <td colSpan={12} className="px-3 py-8 text-center">
                       <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600 mx-auto"></div>
                     </td>
                   </tr>
                 ) : sessions.length === 0 ? (
                   <tr>
                     <td colSpan={12} className="px-3 py-8 text-center text-slate-500 text-sm">
-                      No shift sessions found
+                      No shift sessions in this week
                     </td>
                   </tr>
                 ) : (
-                  sessions.map((session) => (
-                    <tr
-                      key={session.id}
-                      onClick={() => handleViewFullDetails(session)}
-                      className="hover:bg-slate-50 cursor-pointer"
-                    >
-                      <td className="px-3 py-2 text-sm text-slate-900 text-center">
-                        {format(new Date(session.start_counted_at), 'MM/dd/yy')}
-                      </td>
-                      <td className="px-3 py-2 text-sm font-medium text-slate-900 text-center">
-                        {session.employee_name}
-                      </td>
-                      <td className="px-3 py-2 text-xs text-slate-600 text-center">
-                        {session.clock_in_at ? (
-                          <>
-                            {format(new Date(session.clock_in_at), 'h:mma')}
-                            {session.clock_out_at ? (
-                              <span className="text-slate-400"> - {format(new Date(session.clock_out_at), 'h:mma')}</span>
-                            ) : (
-                              <span className="text-yellow-600"> (open)</span>
-                            )}
-                          </>
-                        ) : '-'}
-                      </td>
-                      <td className="px-3 py-2 text-sm text-slate-900 text-center">
-                        {formatCurrency(session.start_cash_cents)}
-                      </td>
-                      <td className="px-3 py-2 text-sm text-slate-900 text-center">
-                        {formatCurrency(session.end_cash_cents)}
-                      </td>
-                      <td className="px-3 py-2 text-sm text-slate-900 text-center">
-                        {formatCurrency(session.collected_cash_cents)}
-                      </td>
-                      <td className="px-3 py-2 text-sm text-slate-900 text-center">
-                        {formatCurrencyOptional(session.drop_amount_cents)}
-                      </td>
-                      <td className="px-3 py-2 text-sm text-slate-900 text-center">
-                        {formatCurrency(session.beverages_cash_cents)}
-                      </td>
-                      <td className="px-3 py-2 text-sm text-slate-900 text-center font-medium" title="Start + Collected - Drop">
-                        {formatCurrency(session.expected_balance_cents)}
-                      </td>
-                      <td className={`px-3 py-2 text-sm font-medium text-center ${getDeltaColor(session.delta_cents)}`}>
-                        {session.delta_cents !== null ? (
-                          session.delta_cents > 0 ? `+${formatCurrency(session.delta_cents)}` : formatCurrency(session.delta_cents)
-                        ) : '-'}
-                      </td>
-                      <td className="px-3 py-2 text-center">
-                        <span className={`px-2 py-0.5 rounded text-xs font-medium ${getStatusBadge(session.status)}`}>
-                          {session.status === 'REVIEW_NEEDED' ? 'Review' : session.status}
-                        </span>
-                      </td>
-                      <td className="px-3 py-2 text-center" onClick={(e) => e.stopPropagation()}>
-                        <div className="flex gap-1 justify-center">
-                          <button
-                            onClick={(e) => { e.stopPropagation(); handleViewFullDetails(session); }}
-                            className="p-1 text-slate-600 hover:bg-slate-100 rounded"
-                            title="View full shift details"
-                          >
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                            </svg>
-                          </button>
-                          <button
-                            onClick={(e) => { e.stopPropagation(); handleEdit(session); }}
-                            className="p-1 text-blue-600 hover:bg-blue-50 rounded"
-                            title="Edit"
-                          >
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                            </svg>
-                          </button>
-                          {session.status === 'REVIEW_NEEDED' && (
-                            <button
-                              onClick={(e) => { e.stopPropagation(); handleReview(session); }}
-                              className="p-1 text-green-600 hover:bg-green-50 rounded"
-                              title="Review"
-                            >
-                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                              </svg>
-                            </button>
-                          )}
-                          <button
-                            onClick={(e) => { e.stopPropagation(); handleDelete(session); }}
-                            className="p-1 text-red-600 hover:bg-red-50 rounded"
-                            title="Delete"
-                          >
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                            </svg>
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
+                  sessionsGroupedByWeek.map((group) => (
+                    <Fragment key={group.key}>
+                      <tr className="bg-slate-100 border-y border-slate-200">
+                        <td colSpan={12} className="px-3 py-2 text-left text-sm font-semibold text-slate-800">
+                          {group.label}
+                          <span className="ml-2 font-normal text-slate-500">
+                            ({group.rows.length} shift{group.rows.length === 1 ? '' : 's'})
+                          </span>
+                        </td>
+                      </tr>
+                      {group.rows.map((session) => (
+                        <tr
+                          key={session.id}
+                          onClick={() => handleViewFullDetails(session)}
+                          className="hover:bg-slate-50 cursor-pointer"
+                        >
+                          <td className="px-3 py-2 text-sm text-slate-900 text-center">
+                            {format(new Date(session.start_counted_at), 'MM/dd/yy')}
+                          </td>
+                          <td className="px-3 py-2 text-sm font-medium text-slate-900 text-center">
+                            {session.employee_name}
+                          </td>
+                          <td className="px-3 py-2 text-xs text-slate-600 text-center">
+                            {session.clock_in_at ? (
+                              <>
+                                {format(new Date(session.clock_in_at), 'h:mma')}
+                                {session.clock_out_at ? (
+                                  <span className="text-slate-400"> - {format(new Date(session.clock_out_at), 'h:mma')}</span>
+                                ) : (
+                                  <span className="text-yellow-600"> (open)</span>
+                                )}
+                              </>
+                            ) : '-'}
+                          </td>
+                          <td className="px-3 py-2 text-sm text-slate-900 text-center">
+                            {formatCurrency(session.start_cash_cents)}
+                          </td>
+                          <td className="px-3 py-2 text-sm text-slate-900 text-center">
+                            {formatCurrency(session.end_cash_cents)}
+                          </td>
+                          <td className="px-3 py-2 text-sm text-slate-900 text-center">
+                            {formatCurrency(session.collected_cash_cents)}
+                          </td>
+                          <td className="px-3 py-2 text-sm text-slate-900 text-center">
+                            {formatCurrencyOptional(session.drop_amount_cents)}
+                          </td>
+                          <td className="px-3 py-2 text-sm text-slate-900 text-center">
+                            {formatCurrency(session.beverages_cash_cents)}
+                          </td>
+                          <td className="px-3 py-2 text-sm text-slate-900 text-center font-medium" title="Start + Collected - Drop">
+                            {formatCurrency(session.expected_balance_cents)}
+                          </td>
+                          <td className={`px-3 py-2 text-sm font-medium text-center ${getDeltaColor(session.delta_cents)}`}>
+                            {session.delta_cents !== null ? (
+                              session.delta_cents > 0 ? `+${formatCurrency(session.delta_cents)}` : formatCurrency(session.delta_cents)
+                            ) : '-'}
+                          </td>
+                          <td className="px-3 py-2 text-center">
+                            <span className={`px-2 py-0.5 rounded text-xs font-medium ${getStatusBadge(session.status)}`}>
+                              {session.status === 'REVIEW_NEEDED' ? 'Review' : session.status}
+                            </span>
+                          </td>
+                          <td className="px-3 py-2 text-center" onClick={(e) => e.stopPropagation()}>
+                            <div className="flex gap-1 justify-center">
+                              <button
+                                onClick={(e) => { e.stopPropagation(); handleViewFullDetails(session); }}
+                                className="p-1 text-slate-600 hover:bg-slate-100 rounded"
+                                title="View full shift details"
+                              >
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                                </svg>
+                              </button>
+                              <button
+                                onClick={(e) => { e.stopPropagation(); handleEdit(session); }}
+                                className="p-1 text-blue-600 hover:bg-blue-50 rounded"
+                                title="Edit"
+                              >
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                                </svg>
+                              </button>
+                              {session.status === 'REVIEW_NEEDED' && (
+                                <button
+                                  onClick={(e) => { e.stopPropagation(); handleReview(session); }}
+                                  className="p-1 text-green-600 hover:bg-green-50 rounded"
+                                  title="Review"
+                                >
+                                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                  </svg>
+                                </button>
+                              )}
+                              <button
+                                onClick={(e) => { e.stopPropagation(); handleDelete(session); }}
+                                className="p-1 text-red-600 hover:bg-red-50 rounded"
+                                title="Delete"
+                              >
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                </svg>
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </Fragment>
                   ))
                 )}
               </tbody>

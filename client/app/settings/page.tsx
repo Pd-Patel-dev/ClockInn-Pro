@@ -1093,7 +1093,8 @@ export default function AdminSettingsPage() {
               <div className="border-t border-slate-200 pt-6">
                 <h3 className="text-lg font-semibold text-slate-900 mb-2">Shift notes</h3>
                 <p className="text-sm text-slate-600 mb-4">
-                  Let employees and admins use the shift notepad (common log) for handoffs and notes tied to shifts. When turned off, shift note features are hidden and API access is disabled for your company.
+                  Let employees use the shift notepad on punch and the shared “recent notes” feed on the dashboard. When turned off, those employee features are hidden and their shift-note APIs are disabled.{' '}
+                  <span className="font-medium text-slate-700">Admin Shift Log</span> under Scheduling stays available so you can still review shifts, time entries, and any notes that were saved before.
                 </p>
                 <Controller
                   name="shift_notes_enabled"
@@ -1112,7 +1113,7 @@ export default function AdminSettingsPage() {
                   )}
                 />
                 <p className="mt-1 text-xs text-slate-500">
-                  Disable if your company does not use shift handoff notes. Employees will no longer see Shift Notepad in the menu when disabled.
+                  Disable if your company does not use employee shift notes. Shift Notepad is hidden from employees; Shift Log for admins remains in the menu.
                 </p>
               </div>
 

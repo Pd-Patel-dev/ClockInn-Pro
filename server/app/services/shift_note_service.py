@@ -507,6 +507,8 @@ async def check_shift_note_required_for_clock_out(
     return error message. Otherwise return None.
     """
     settings = await get_company_shift_note_settings(db, company_id)
+    if not settings.get("shift_notes_enabled", True):
+        return None
     if not settings.get("shift_notes_required_on_clock_out"):
         return None
     result = await db.execute(

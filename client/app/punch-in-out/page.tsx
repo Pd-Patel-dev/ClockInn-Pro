@@ -31,6 +31,7 @@ export default function PunchInOutPage() {
   const [error, setError] = useState<string | null>(null)
   const [cashDrawerRequired, setCashDrawerRequired] = useState(false)
   const [geofenceRequired, setGeofenceRequired] = useState(false)
+  const [shiftNotesEnabled, setShiftNotesEnabled] = useState(true)
   const [cashAmount, setCashAmount] = useState('')
   const [collectedCash, setCollectedCash] = useState('')
   const [dropAmount, setDropAmount] = useState('')
@@ -112,13 +113,13 @@ export default function PunchInOutPage() {
   }, [])
 
   useEffect(() => {
-    if (currentStatus === 'in') {
+    if (currentStatus === 'in' && shiftNotesEnabled) {
       fetchShiftNote()
     } else {
       setShiftNote(null)
       setShiftNoteContent('')
     }
-  }, [currentStatus, fetchShiftNote])
+  }, [currentStatus, shiftNotesEnabled, fetchShiftNote])
 
   useEffect(() => {
     if (!shiftNote?.can_edit || shiftNoteSaveStatus === 'saving') return
@@ -178,9 +179,11 @@ export default function PunchInOutPage() {
             setCashDrawerRequired(false)
           }
           setGeofenceRequired(settings.geofence_enabled === true)
+          setShiftNotesEnabled(settings.shift_notes_enabled !== false)
         } catch {
           setCashDrawerRequired(false)
           setGeofenceRequired(false)
+          setShiftNotesEnabled(true)
         }
         await fetchStatusAndEntries()
       } catch {
@@ -524,8 +527,8 @@ export default function PunchInOutPage() {
           </div>
         )}
 
-        {/* Shift note — when clocked in */}
-        {currentStatus === 'in' && (
+        {/* Shift note — when clocked in and company has shift notes enabled */}
+        {shiftNotesEnabled && currentStatus === 'in' && (
           <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
             <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
               <div>

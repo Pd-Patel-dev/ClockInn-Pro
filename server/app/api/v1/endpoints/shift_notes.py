@@ -125,6 +125,12 @@ async def list_my_shift_notes_endpoint(
     db: AsyncSession = Depends(get_db),
 ):
     """List current user's shift notes."""
+    settings = await get_company_shift_note_settings(db, current_user.company_id)
+    if not settings.get("shift_notes_enabled", True):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Shift notepad is not enabled for your company.",
+        )
     notes, total = await list_my_shift_notes(
         db, current_user.company_id, current_user.id, from_date, to_date, skip, limit
     )
