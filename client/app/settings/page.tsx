@@ -1113,7 +1113,7 @@ export default function AdminSettingsPage() {
                   )}
                 />
                 <p className="mt-1 text-xs text-slate-500">
-                  Disable if your company does not use employee shift notes. Shift Notepad is hidden from employees; Shift Log for admins remains in the menu.
+                  Disable if your company does not use employee shift notes. The employee Shift log page is hidden; admin team shift log and drawer log stay in the menu.
                 </p>
               </div>
 

@@ -186,11 +186,17 @@ export default function AdminShiftLogPage() {
     setLoadingDetail(true)
     try {
       const res = await api.get(`/admin/shift-notes/by-time-entry/${session.time_entry_id}`)
+      const d = res.data as {
+        content?: string
+        beverage_sold?: number | null
+        clock_in_at?: string | null
+        clock_out_at?: string | null
+      }
       setShiftNoteDetail({
-        content: (res.data as any).content ?? '',
-        beverage_sold: (res.data as any).beverage_sold,
-        clock_in_at: (res.data as any).clock_in_at ?? null,
-        clock_out_at: (res.data as any).clock_out_at ?? null,
+        content: d.content ?? '',
+        beverage_sold: d.beverage_sold,
+        clock_in_at: d.clock_in_at ?? null,
+        clock_out_at: d.clock_out_at ?? null,
       })
     } catch {
       setShiftNoteDetail(null)
@@ -374,26 +380,6 @@ export default function AdminShiftLogPage() {
                   >
                     This week
                   </button>
-                </div>
-                <div className="mt-2 flex flex-wrap items-center gap-3">
-                  <label className="flex items-center gap-2 text-xs text-slate-600">
-                    <span className="shrink-0">Jump to</span>
-                    <input
-                      type="date"
-                      value={fromDate}
-                      onChange={(e) => {
-                        const parsed = parseISO(e.target.value)
-                        if (isValid(parsed)) {
-                          setWeekStart(startOfWeek(parsed, { weekStartsOn: 1 }))
-                        }
-                      }}
-                      className="rounded-md border border-slate-300 px-2 py-1 text-sm text-slate-900"
-                      title="Pick any day in the week you want to view"
-                    />
-                  </label>
-                  <span className="text-xs text-slate-400">
-                    Range sent to server: {fromDate} → {toDate}
-                  </span>
                 </div>
               </div>
               <div>

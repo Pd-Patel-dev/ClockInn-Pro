@@ -33,6 +33,8 @@ export interface ShiftNoteListItemType {
   clock_in_at: string | null
   clock_out_at: string | null
   preview: string
+  content?: string | null
+  latest_manager_comment?: string | null
   beverage_sold?: number | null
   status: string
   updated_at: string

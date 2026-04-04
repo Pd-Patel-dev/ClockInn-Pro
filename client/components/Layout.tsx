@@ -169,14 +169,14 @@ export default function Layout({ children }: { children: React.ReactNode }) {
     const all = [
       { href: '/dashboard', label: 'Dashboard', permission: 'clock' },
       { href: '/punch-in-out', label: 'Punch In/Out', permission: 'clock' },
-      { href: '/my/shift-notepad', label: 'Shift Notepad', permission: 'shift_notes' },
+      { href: '/shift-notes', label: 'Shift log', permission: 'shift_notes' },
       { href: '/my-schedule', label: 'My Schedule', permission: 'schedule' },
       { href: '/logs', label: 'My Logs', permission: 'clock' },
       { href: '/leave', label: 'Leave', permission: 'leave' },
     ]
     const filtered = all.filter((l) => can(l.permission))
     if (!shiftNotesEnabled) {
-      return filtered.filter((l) => l.href !== '/my/shift-notepad')
+      return filtered.filter((l) => l.href !== '/shift-notes')
     }
     return filtered
   }, [shiftNotesEnabled, can])
@@ -205,7 +205,8 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         items: [
           { href: '/schedules', label: 'Schedules', permission: 'schedule' },
           { href: '/time-entries', label: 'Time Entries', permission: 'schedule' },
-          { href: '/admin/shift-log', label: 'Shift Log', permission: 'common_log' },
+          { href: '/admin/common-log', label: 'Shift log', permission: 'common_log' },
+          { href: '/admin/shift-log', label: 'Drawer log', permission: 'common_log' },
         ],
       },
       {

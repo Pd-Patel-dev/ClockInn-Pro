@@ -46,6 +46,8 @@ class ShiftNoteListItem(BaseModel):
     clock_in_at: Optional[datetime] = None
     clock_out_at: Optional[datetime] = None
     preview: str  # First 1-2 lines
+    content: Optional[str] = None
+    latest_manager_comment: Optional[str] = None
     beverage_sold: Optional[int] = None
     status: str
     updated_at: datetime
@@ -56,6 +58,24 @@ class ShiftNoteListItem(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class ShiftNotePastItem(BaseModel):
+    """Past closed-shift note for employee shift log UI."""
+    id: str
+    time_entry_id: str
+    content: str
+    status: str
+    clock_in_at: Optional[datetime] = None
+    clock_out_at: Optional[datetime] = None
+    latest_manager_comment: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+
+class ShiftNotePastListResponse(BaseModel):
+    items: list[ShiftNotePastItem]
 
 
 class ShiftNoteListResponse(BaseModel):

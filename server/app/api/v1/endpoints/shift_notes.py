@@ -15,12 +15,15 @@ from app.schemas.shift_note import (
     ShiftNoteListResponse,
     ShiftNoteCommentCreate,
     ShiftNoteCommentResponse,
+    ShiftNotePastListResponse,
+    ShiftNotePastItem,
 )
 from app.services.shift_note_service import (
     get_company_shift_note_settings,
     get_current_shift_note,
     update_current_shift_note,
     list_my_shift_notes,
+    list_past_shift_notes_for_employee,
     admin_list_shift_notes,
     admin_get_shift_note,
     admin_get_shift_note_by_time_entry,
@@ -87,6 +90,41 @@ async def get_current_shift_note_endpoint(
     return _note_to_response(note, time_entry=entry, employee_name=current_user.name, can_edit=can_edit)
 
 
+@router.get("/shift-notes/active", response_model=ShiftNoteResponse)
+@handle_endpoint_errors(operation_name="get_active_shift_note")
+async def get_active_shift_note_endpoint(
+    current_user: User = Depends(require_permission("shift_note:view:self")),
+    db: AsyncSession = Depends(get_db),
+):
+    """Alias for GET /shift-notes/current — note for the open time entry."""
+    return await get_current_shift_note_endpoint(current_user=current_user, db=db)
+
+
+@router.get("/shift-notes/past", response_model=ShiftNotePastListResponse)
+@handle_endpoint_errors(operation_name="list_past_shift_notes")
+async def list_past_shift_notes_endpoint(
+    limit: int = Query(10, ge=1, le=50),
+    current_user: User = Depends(require_permission("shift_note:view:self")),
+    db: AsyncSession = Depends(get_db),
+):
+    """Last N closed-shift notes for the employee (full content), newest first."""
+    settings = await get_company_shift_note_settings(db, current_user.company_id)
+    if not settings.get("shift_notes_enabled", True):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Shift notepad is not enabled for your company.",
+        )
+    if current_user.role in (UserRole.ADMIN, UserRole.DEVELOPER):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only employees can view past shift notes.",
+        )
+    rows = await list_past_shift_notes_for_employee(
+        db, current_user.company_id, current_user.id, limit=limit
+    )
+    return ShiftNotePastListResponse(items=[ShiftNotePastItem(**r) for r in rows])
+
+
 @router.put("/shift-notes/current", response_model=ShiftNoteResponse)
 @handle_endpoint_errors(operation_name="update_current_shift_note")
 async def update_current_shift_note_endpoint(
@@ -147,6 +185,8 @@ async def list_my_shift_notes_endpoint(
                 clock_in_at=None,
                 clock_out_at=None,
                 preview=preview,
+                content=None,
+                latest_manager_comment=None,
                 beverage_sold=note.beverage_sold,
                 status=note.status.value,
                 updated_at=note.updated_at,
@@ -230,6 +270,7 @@ async def admin_list_shift_notes_endpoint(
         limit=limit,
         sort_by=sort_by,
         order=order,
+        include_full_content=True,
     )
     return ShiftNoteListResponse(
         items=[ShiftNoteListItem(**x) for x in items],
@@ -297,4 +338,18 @@ async def admin_add_shift_note_comment_endpoint(
         actor_name=current_user.name,
         comment=comment.comment,
         created_at=comment.created_at,
+    )
+
+
+@router.patch("/admin/shift-notes/{note_id}/comment", response_model=ShiftNoteCommentResponse)
+@handle_endpoint_errors(operation_name="admin_patch_shift_note_comment")
+async def admin_patch_shift_note_comment_endpoint(
+    note_id: str,
+    data: ShiftNoteCommentCreate,
+    current_user: User = Depends(get_current_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Same as POST — appends a manager comment (no separate edit model)."""
+    return await admin_add_shift_note_comment_endpoint(
+        note_id=note_id, data=data, current_user=current_user, db=db
     )

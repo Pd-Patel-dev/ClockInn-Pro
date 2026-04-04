@@ -207,7 +207,7 @@ export default function DashboardPage() {
                 </p>
               </div>
               <Link
-                href="/admin/shift-log"
+                href="/admin/common-log"
                 className="inline-flex shrink-0 text-sm font-medium text-blue-600 hover:text-blue-700"
               >
                 Open shift log →
@@ -224,10 +224,10 @@ export default function DashboardPage() {
                 <p className="text-sm text-slate-500 mt-0.5">Recent notes from your team</p>
               </div>
               <Link
-                href={isAdmin ? '/admin/shift-log' : '/my/shift-notepad'}
+                href={isAdmin ? '/admin/common-log' : '/shift-notes'}
                 className="text-sm font-medium text-blue-600 hover:text-blue-700 shrink-0"
               >
-                {isAdmin ? 'View shift log' : 'My shift notepad'}
+                {isAdmin ? 'View team shift log' : 'Open shift log'}
               </Link>
             </div>
             <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden min-h-[200px] border-l-4 border-l-blue-600">

@@ -344,12 +344,18 @@ api.interceptors.response.use(
       error.response?.status === 403 &&
       typeof originalRequest.url === 'string' &&
       originalRequest.url.includes('shift-notes')
+    // Drawer log may request note by time entry; wrong/unknown id can 404 — not a session error
+    const isShiftNoteByTimeEntry404 =
+      error.response?.status === 404 &&
+      typeof originalRequest.url === 'string' &&
+      originalRequest.url.includes('/admin/shift-notes/by-time-entry/')
     if (
       process.env.NODE_ENV === 'development' &&
       error.response &&
       !error.config?.url?.includes('/auth/refresh') &&
       !isExpected401 &&
-      !isShiftNotesDisabled403
+      !isShiftNotesDisabled403 &&
+      !isShiftNoteByTimeEntry404
     ) {
       // Only log first few errors to prevent spam
       if (!(window as any).__errorLogCount) {

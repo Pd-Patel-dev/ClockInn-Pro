@@ -544,7 +544,7 @@ export default function PunchInOutPage() {
                     Saved {format(shiftNoteSavedAt, 'h:mm a')}
                   </span>
                 )}
-                <Link href="/my/shift-notepad" className="text-xs font-medium text-blue-600 hover:text-blue-700 sm:text-sm">
+                <Link href="/shift-notes" className="text-xs font-medium text-blue-600 hover:text-blue-700 sm:text-sm">
                   Full notepad →
                 </Link>
               </div>

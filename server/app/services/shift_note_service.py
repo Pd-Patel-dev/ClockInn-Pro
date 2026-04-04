@@ -3,7 +3,7 @@ from typing import Optional, List, Tuple
 from uuid import UUID
 from datetime import datetime, date, timedelta
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_, func
+from sqlalchemy import select, and_, func, or_
 from fastapi import HTTPException, status
 import uuid
 
@@ -185,6 +185,67 @@ async def list_my_shift_notes(
     return notes, total
 
 
+async def _latest_manager_comment_by_note_ids(
+    db: AsyncSession,
+    note_ids: List[UUID],
+) -> dict:
+    """Most recent comment text per shift note id."""
+    if not note_ids:
+        return {}
+    result = await db.execute(
+        select(ShiftNoteComment)
+        .where(ShiftNoteComment.shift_note_id.in_(note_ids))
+        .order_by(ShiftNoteComment.created_at.desc())
+    )
+    out = {}
+    for row in result.scalars():
+        if row.shift_note_id not in out:
+            out[row.shift_note_id] = row.comment
+    return out
+
+
+async def list_past_shift_notes_for_employee(
+    db: AsyncSession,
+    company_id: UUID,
+    employee_id: UUID,
+    limit: int = 10,
+) -> List[dict]:
+    """Closed-shift notes for the employee, newest clock-in first (excludes open shift)."""
+    q = (
+        select(ShiftNote, TimeEntry)
+        .join(TimeEntry, TimeEntry.id == ShiftNote.time_entry_id)
+        .where(
+            and_(
+                ShiftNote.company_id == company_id,
+                ShiftNote.employee_id == employee_id,
+                TimeEntry.clock_out_at.isnot(None),
+            )
+        )
+        .order_by(TimeEntry.clock_in_at.desc())
+        .limit(min(max(limit, 1), 50))
+    )
+    result = await db.execute(q)
+    pairs = result.all()
+    if not pairs:
+        return []
+    note_ids = [n.id for n, _ in pairs]
+    latest = await _latest_manager_comment_by_note_ids(db, note_ids)
+    out = []
+    for note, entry in pairs:
+        out.append(
+            {
+                "id": str(note.id),
+                "time_entry_id": str(note.time_entry_id),
+                "content": note.content or "",
+                "status": note.status.value,
+                "clock_in_at": entry.clock_in_at,
+                "clock_out_at": entry.clock_out_at,
+                "latest_manager_comment": latest.get(note.id),
+            }
+        )
+    return out
+
+
 async def admin_list_shift_notes(
     db: AsyncSession,
     company_id: UUID,
@@ -197,6 +258,7 @@ async def admin_list_shift_notes(
     limit: int = 100,
     sort_by: Optional[str] = "clock_in_at",
     order: Optional[str] = "desc",
+    include_full_content: bool = False,
 ) -> Tuple[List[dict], int]:
     """List shift notes for admin common log with filters and search."""
     from app.models.cash_drawer import CashDrawerSession
@@ -221,7 +283,7 @@ async def admin_list_shift_notes(
             pass
     if search and search.strip():
         term = f"%{search.strip()}%"
-        q = q.where(ShiftNote.content.ilike(term))
+        q = q.where(or_(ShiftNote.content.ilike(term), User.name.ilike(term)))
     # Sort: by shift time (clock_in_at) or by note updated_at
     sort_by = (sort_by or "clock_in_at").lower()
     order_asc = (order or "desc").lower() == "asc"
@@ -250,11 +312,17 @@ async def admin_list_shift_notes(
             pass
     if search and search.strip():
         term = f"%{search.strip()}%"
-        count_q = count_q.where(ShiftNote.content.ilike(term))
+        count_q = count_q.join(User, User.id == ShiftNote.employee_id).where(
+            or_(ShiftNote.content.ilike(term), User.name.ilike(term))
+        )
     total = (await db.execute(count_q)).scalar() or 0
     q = q.offset(skip).limit(limit)
     result = await db.execute(q)
     rows = result.all()
+    note_ids = [r[0].id for r in rows]
+    latest_map = (
+        await _latest_manager_comment_by_note_ids(db, note_ids) if include_full_content else {}
+    )
 
     time_entry_ids = [r[1].id for r in rows]
     cash_result = await db.execute(
@@ -292,6 +360,8 @@ async def admin_list_shift_notes(
             "clock_in_at": entry.clock_in_at,
             "clock_out_at": entry.clock_out_at,
             "preview": preview,
+            "content": (note.content or "") if include_full_content else None,
+            "latest_manager_comment": latest_map.get(note.id) if include_full_content else None,
             "beverage_sold": getattr(note, "beverage_sold", None),
             "status": note.status.value,
             "updated_at": note.updated_at,
@@ -335,6 +405,22 @@ async def admin_get_shift_note(
         )
     )
     cash_session = cash_result.scalar_one_or_none()
+    comm_result = await db.execute(
+        select(ShiftNoteComment, User.name.label("actor_name"))
+        .join(User, User.id == ShiftNoteComment.actor_user_id)
+        .where(ShiftNoteComment.shift_note_id == note.id)
+        .order_by(ShiftNoteComment.created_at.asc())
+    )
+    comments = [
+        {
+            "id": str(c.id),
+            "actor_name": actor_name,
+            "comment": c.comment,
+            "created_at": c.created_at,
+        }
+        for c, actor_name in comm_result.all()
+    ]
+    latest_comment = comments[-1]["comment"] if comments else None
     return {
         "id": str(note.id),
         "company_id": str(note.company_id),
@@ -359,6 +445,8 @@ async def admin_get_shift_note(
         "collected_cash_cents": getattr(cash_session, "collected_cash_cents", None) if cash_session else None,
         "drop_amount_cents": getattr(cash_session, "drop_amount_cents", None) if cash_session else None,
         "beverages_cash_cents": getattr(cash_session, "beverages_cash_cents", None) if cash_session else None,
+        "comments": comments,
+        "latest_manager_comment": latest_comment,
     }
 
 
@@ -367,7 +455,7 @@ async def admin_get_shift_note_by_time_entry(
     company_id: UUID,
     time_entry_id: UUID,
 ) -> dict:
-    """Get full shift note + cash drawer by time_entry_id for combined shift log view. Returns 404 if no note."""
+    """Get shift note + cash drawer for drawer log detail. If no note row exists yet, returns 200 with empty content."""
     from app.models.cash_drawer import CashDrawerSession
 
     result = await db.execute(
@@ -383,7 +471,55 @@ async def admin_get_shift_note_by_time_entry(
     )
     row = result.one_or_none()
     if not row:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Shift note not found for this time entry")
+        te_result = await db.execute(
+            select(TimeEntry, User.name.label("employee_name"))
+            .join(User, User.id == TimeEntry.employee_id)
+            .where(
+                and_(
+                    TimeEntry.id == time_entry_id,
+                    TimeEntry.company_id == company_id,
+                )
+            )
+        )
+        te_row = te_result.one_or_none()
+        if not te_row:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Time entry not found")
+        entry, employee_name = te_row
+        cash_result = await db.execute(
+            select(CashDrawerSession).where(
+                and_(
+                    CashDrawerSession.company_id == company_id,
+                    CashDrawerSession.time_entry_id == entry.id,
+                )
+            )
+        )
+        cash_session = cash_result.scalar_one_or_none()
+        return {
+            "id": None,
+            "company_id": str(company_id),
+            "time_entry_id": str(entry.id),
+            "employee_id": str(entry.employee_id),
+            "employee_name": employee_name,
+            "content": "",
+            "beverage_sold": None,
+            "status": None,
+            "last_edited_at": None,
+            "last_edited_by": None,
+            "reviewed_by": None,
+            "reviewed_at": None,
+            "created_at": None,
+            "updated_at": None,
+            "clock_in_at": entry.clock_in_at,
+            "clock_out_at": entry.clock_out_at,
+            "is_shift_open": entry.clock_out_at is None,
+            "cash_start_cents": cash_session.start_cash_cents if cash_session else None,
+            "cash_end_cents": cash_session.end_cash_cents if cash_session else None,
+            "cash_delta_cents": getattr(cash_session, "delta_cents", None) if cash_session else None,
+            "collected_cash_cents": getattr(cash_session, "collected_cash_cents", None) if cash_session else None,
+            "drop_amount_cents": getattr(cash_session, "drop_amount_cents", None) if cash_session else None,
+            "beverages_cash_cents": getattr(cash_session, "beverages_cash_cents", None) if cash_session else None,
+            "has_shift_note": False,
+        }
     note, entry, employee_name = row
     cash_result = await db.execute(
         select(CashDrawerSession).where(
@@ -418,6 +554,7 @@ async def admin_get_shift_note_by_time_entry(
         "collected_cash_cents": getattr(cash_session, "collected_cash_cents", None) if cash_session else None,
         "drop_amount_cents": getattr(cash_session, "drop_amount_cents", None) if cash_session else None,
         "beverages_cash_cents": getattr(cash_session, "beverages_cash_cents", None) if cash_session else None,
+        "has_shift_note": True,
     }
 
 
