@@ -2,7 +2,7 @@ from typing import Dict, List
 from uuid import UUID
 from decimal import Decimal
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, delete as sql_delete
 from sqlalchemy.orm import selectinload
 from fastapi import HTTPException, status
 
@@ -291,4 +291,71 @@ async def get_company_admin_emails(db: AsyncSession, company_id: UUID) -> List[s
     # select(User.email).scalars().all() returns list of str (one scalar per row), not list of Row
     emails = list(result.scalars().all())
     return [e for e in emails if e and str(e).strip()]
+
+
+# Reserved company used for global/default role_permissions rows (see permission model).
+_SYSTEM_DEFAULT_COMPANY_ID = UUID("00000000-0000-0000-0000-000000000000")
+
+
+async def delete_company_as_developer(
+    db: AsyncSession,
+    company_id: UUID,
+    actor_user_company_id: UUID,
+) -> None:
+    """
+    Permanently remove a tenant company and dependent rows (developer-only).
+    Order respects FK constraints on typical Postgres schemas (no ON DELETE on users.company_id).
+    """
+    from app.models.payroll import PayrollRun, PayrollLineItem, PayrollAdjustment
+    from app.models.session import Session
+    from app.models.shift import ScheduleSwap, Shift, ShiftTemplate
+    from app.models.time_entry import TimeEntry
+    from app.models.leave_request import LeaveRequest
+    from app.models.permission import RolePermission
+    from app.models.cash_drawer import CashDrawerAudit, CashDrawerSession
+    from app.models.shift_note import ShiftNoteComment, ShiftNote
+
+    if company_id == actor_user_company_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="You cannot delete the company your own account belongs to.",
+        )
+    if company_id == _SYSTEM_DEFAULT_COMPANY_ID:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Cannot delete the system default company used for global permissions.",
+        )
+
+    await get_company_info(db, company_id)
+
+    run_ids = select(PayrollRun.id).where(PayrollRun.company_id == company_id)
+    await db.execute(
+        sql_delete(PayrollAdjustment).where(PayrollAdjustment.payroll_run_id.in_(run_ids))
+    )
+    await db.execute(sql_delete(PayrollLineItem).where(PayrollLineItem.company_id == company_id))
+    await db.execute(sql_delete(PayrollRun).where(PayrollRun.company_id == company_id))
+
+    await db.execute(sql_delete(Session).where(Session.company_id == company_id))
+
+    await db.execute(sql_delete(ScheduleSwap).where(ScheduleSwap.company_id == company_id))
+    await db.execute(sql_delete(Shift).where(Shift.company_id == company_id))
+    await db.execute(sql_delete(ShiftTemplate).where(ShiftTemplate.company_id == company_id))
+
+    # Rows that reference time_entries (FK may be NO ACTION on older DBs).
+    await db.execute(sql_delete(ShiftNoteComment).where(ShiftNoteComment.company_id == company_id))
+    await db.execute(sql_delete(ShiftNote).where(ShiftNote.company_id == company_id))
+
+    # Cash drawer references time_entries; many DBs use NO ACTION (not CASCADE) on that FK.
+    await db.execute(sql_delete(CashDrawerAudit).where(CashDrawerAudit.company_id == company_id))
+    await db.execute(sql_delete(CashDrawerSession).where(CashDrawerSession.company_id == company_id))
+
+    await db.execute(sql_delete(TimeEntry).where(TimeEntry.company_id == company_id))
+
+    await db.execute(sql_delete(LeaveRequest).where(LeaveRequest.company_id == company_id))
+    await db.execute(sql_delete(AuditLog).where(AuditLog.company_id == company_id))
+    await db.execute(sql_delete(RolePermission).where(RolePermission.company_id == company_id))
+
+    await db.execute(sql_delete(User).where(User.company_id == company_id))
+    await db.execute(sql_delete(Company).where(Company.id == company_id))
+    await db.commit()
 

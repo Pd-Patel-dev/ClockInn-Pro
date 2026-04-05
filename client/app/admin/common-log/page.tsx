@@ -3,13 +3,13 @@
 import { useState, useEffect, useMemo, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import {
-  Search,
-  CheckCircle2,
-  MessageSquare,
-  ChevronDown,
-  ChevronUp,
-  X,
-} from 'lucide-react'
+  IconSearch,
+  IconX,
+  IconChevronDown,
+  IconChevronUp,
+  IconMessageSquare,
+  IconCheckCircle,
+} from '@/components/ui-icons'
 import Layout from '@/components/Layout'
 import api from '@/lib/api'
 import { getCurrentUser, type User } from '@/lib/auth'
@@ -200,7 +200,7 @@ export default function AdminCommonLogPage() {
 
         <div className="space-y-3">
           <div className="relative">
-            <Search
+            <IconSearch
               size={14}
               className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"
               aria-hidden
@@ -219,7 +219,7 @@ export default function AdminCommonLogPage() {
                 className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors duration-150"
                 aria-label="Clear search"
               >
-                <X size={13} />
+                <IconX size={13} />
               </button>
             )}
           </div>
@@ -269,7 +269,7 @@ export default function AdminCommonLogPage() {
                 onClick={clearFilters}
                 className="text-xs text-gray-400 hover:text-gray-600 flex items-center gap-1 transition-colors duration-150"
               >
-                <X size={12} aria-hidden />
+                <IconX size={12} aria-hidden />
                 Clear filters
               </button>
             )}
@@ -403,9 +403,9 @@ function NoteRow({
         <div className="flex items-center gap-3 shrink-0">
           <StatusPill status={st} />
           {expanded ? (
-            <ChevronUp size={14} className="text-gray-400" aria-hidden />
+            <IconChevronUp size={14} className="text-gray-400" aria-hidden />
           ) : (
-            <ChevronDown size={14} className="text-gray-400" aria-hidden />
+            <IconChevronDown size={14} className="text-gray-400" aria-hidden />
           )}
         </div>
       </button>
@@ -440,7 +440,7 @@ function NoteRow({
           <div className="flex items-start gap-4 pt-2 border-t border-gray-100 flex-wrap">
             <div className="flex-1 space-y-1.5 min-w-[200px]">
               <label className="text-xs font-medium text-gray-400 uppercase tracking-wide flex items-center gap-1">
-                <MessageSquare size={11} aria-hidden />
+                <IconMessageSquare size={11} aria-hidden />
                 Add manager comment
               </label>
               <textarea
@@ -469,12 +469,12 @@ function NoteRow({
                 onClick={onMarkReviewed}
                 className="flex items-center gap-1.5 text-sm bg-gray-900 text-white rounded-md px-3 py-2 transition-colors duration-150 hover:bg-gray-800 shrink-0 mt-5"
               >
-                <CheckCircle2 size={14} aria-hidden />
+                <IconCheckCircle size={14} aria-hidden />
                 Mark reviewed
               </button>
             ) : (
               <div className="flex items-center gap-1.5 text-sm text-gray-600 mt-5 shrink-0">
-                <CheckCircle2 size={14} aria-hidden />
+                <IconCheckCircle size={14} aria-hidden />
                 <span className="text-xs">Reviewed</span>
               </div>
             )}

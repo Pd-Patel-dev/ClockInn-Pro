@@ -101,7 +101,9 @@ export default function DeveloperPortalPage() {
   const [activeTab, setActiveTab] = useState<'overview' | 'stats' | 'system' | 'activity' | 'email' | 'companies' | 'add-developer'>('overview')
   const [refreshing, setRefreshing] = useState(false)
   const [companies, setCompanies] = useState<Array<{ id: string; name: string; slug: string; created_at: string | null; user_count: number }>>([])
+  const [deletingCompanyId, setDeletingCompanyId] = useState<string | null>(null)
   const toast = useToast()
+  const systemDefaultCompanyId = '00000000-0000-0000-0000-000000000000'
   const [addDevForm, setAddDevForm] = useState({ name: '', email: '', password: '', confirmPassword: '' })
   const [addDevSubmitting, setAddDevSubmitting] = useState(false)
   const [addDevError, setAddDevError] = useState<string | null>(null)
@@ -133,6 +135,38 @@ export default function DeveloperPortalPage() {
       api.get('/developer/companies').then((res) => setCompanies(res.data || [])).catch(() => setCompanies([]))
     }
   }, [activeTab, user?.role])
+
+  const handleDeleteCompany = async (c: { id: string; name: string }) => {
+    if (!user) return
+    if (c.id === user.company_id) {
+      toast.error('You cannot delete the company your developer account belongs to.')
+      return
+    }
+    if (c.id === systemDefaultCompanyId) {
+      toast.error('The system default company cannot be deleted.')
+      return
+    }
+    if (
+      !window.confirm(
+        `Permanently delete “${c.name}” and all of its users, time entries, payroll, and other data? This cannot be undone.`,
+      )
+    ) {
+      return
+    }
+    setDeletingCompanyId(c.id)
+    try {
+      await api.delete(`/developer/companies/${c.id}`)
+      setCompanies((prev) => prev.filter((x) => x.id !== c.id))
+      toast.success('Company deleted.')
+    } catch (e: unknown) {
+      const err = e as { response?: { data?: { detail?: string } } }
+      const msg = err.response?.data?.detail
+      toast.error(typeof msg === 'string' ? msg : 'Failed to delete company')
+      logger.error('Developer delete company failed', e as Error, { companyId: c.id })
+    } finally {
+      setDeletingCompanyId(null)
+    }
+  }
 
   const handleAddDeveloperSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -713,7 +747,9 @@ export default function DeveloperPortalPage() {
         {activeTab === 'companies' && (
           <div className="bg-white rounded-lg shadow p-6">
             <h3 className="text-lg font-semibold mb-4">All Companies</h3>
-            <p className="text-sm text-slate-600 mb-4">Click a company name to view full info and manage users (developer only).</p>
+            <p className="text-sm text-slate-600 mb-4">
+              Click a company name to view full info and manage users. You can delete a company from this list or its detail page; deletion is permanent.
+            </p>
             {companies.length === 0 && !refreshing ? (
               <p className="text-slate-500">No companies or loading…</p>
             ) : (
@@ -725,6 +761,7 @@ export default function DeveloperPortalPage() {
                       <th className="px-4 py-2 text-left text-xs font-medium text-slate-700 uppercase">Slug</th>
                       <th className="px-4 py-2 text-left text-xs font-medium text-slate-700 uppercase">Users</th>
                       <th className="px-4 py-2 text-left text-xs font-medium text-slate-700 uppercase">Created</th>
+                      <th className="px-4 py-2 text-right text-xs font-medium text-slate-700 uppercase">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-200">
@@ -742,6 +779,20 @@ export default function DeveloperPortalPage() {
                         <td className="px-4 py-3 text-sm text-slate-600">{c.user_count}</td>
                         <td className="px-4 py-3 text-sm text-slate-500">
                           {c.created_at ? new Date(c.created_at).toLocaleDateString() : '—'}
+                        </td>
+                        <td className="px-4 py-3 text-right">
+                          <button
+                            type="button"
+                            disabled={
+                              deletingCompanyId === c.id ||
+                              c.id === user?.company_id ||
+                              c.id === systemDefaultCompanyId
+                            }
+                            onClick={() => handleDeleteCompany(c)}
+                            className="text-sm font-medium text-red-600 hover:text-red-800 disabled:opacity-40 disabled:cursor-not-allowed"
+                          >
+                            {deletingCompanyId === c.id ? 'Deleting…' : 'Delete'}
+                          </button>
                         </td>
                       </tr>
                     ))}

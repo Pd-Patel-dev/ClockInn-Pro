@@ -1,6 +1,7 @@
 """Shift Notepad / Common Log API endpoints."""
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
 from datetime import date
 from typing import Optional
 
@@ -34,7 +35,20 @@ from app.services.shift_note_service import (
 router = APIRouter()
 
 
-def _note_to_response(note, time_entry=None, employee_name=None, can_edit=None):
+async def _reviewer_display_name(db: AsyncSession, reviewed_by) -> Optional[str]:
+    if reviewed_by is None:
+        return None
+    r = await db.execute(select(User.name).where(User.id == reviewed_by))
+    return r.scalar_one_or_none()
+
+
+def _note_to_response(
+    note,
+    time_entry=None,
+    employee_name=None,
+    can_edit=None,
+    reviewer_name: Optional[str] = None,
+):
     return ShiftNoteResponse(
         id=str(note.id),
         company_id=str(note.company_id),
@@ -48,6 +62,7 @@ def _note_to_response(note, time_entry=None, employee_name=None, can_edit=None):
         last_edited_by=str(note.last_edited_by) if note.last_edited_by else None,
         reviewed_by=str(note.reviewed_by) if note.reviewed_by else None,
         reviewed_at=note.reviewed_at,
+        reviewer_name=reviewer_name,
         created_at=note.created_at,
         updated_at=note.updated_at,
         clock_in_at=time_entry.clock_in_at if time_entry else None,
@@ -81,13 +96,20 @@ async def get_current_shift_note_endpoint(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="No open shift. Clock in first to use the shift notepad.",
         )
-    from sqlalchemy import select
     from app.models.time_entry import TimeEntry
+
     result = await db.execute(select(TimeEntry).where(TimeEntry.id == note.time_entry_id))
     entry = result.scalar_one_or_none()
     allow_edit_after = settings.get("shift_notes_allow_edit_after_clock_out", False)
     can_edit = entry.clock_out_at is None or allow_edit_after
-    return _note_to_response(note, time_entry=entry, employee_name=current_user.name, can_edit=can_edit)
+    reviewer_name = await _reviewer_display_name(db, note.reviewed_by)
+    return _note_to_response(
+        note,
+        time_entry=entry,
+        employee_name=current_user.name,
+        can_edit=can_edit,
+        reviewer_name=reviewer_name,
+    )
 
 
 @router.get("/shift-notes/active", response_model=ShiftNoteResponse)
@@ -141,15 +163,22 @@ async def update_current_shift_note_endpoint(
     note = await update_current_shift_note(
         db, current_user.company_id, current_user.id, data.content, current_user.id, beverage_sold=data.beverage_sold
     )
-    from sqlalchemy import select
     from app.models.time_entry import TimeEntry
+
     await db.commit()
     await db.refresh(note)
     result = await db.execute(select(TimeEntry).where(TimeEntry.id == note.time_entry_id))
     entry = result.scalar_one_or_none()
     allow_edit_after = settings.get("shift_notes_allow_edit_after_clock_out", False)
     can_edit = entry.clock_out_at is None or allow_edit_after
-    return _note_to_response(note, time_entry=entry, employee_name=current_user.name, can_edit=can_edit)
+    reviewer_name = await _reviewer_display_name(db, note.reviewed_by)
+    return _note_to_response(
+        note,
+        time_entry=entry,
+        employee_name=current_user.name,
+        can_edit=can_edit,
+        reviewer_name=reviewer_name,
+    )
 
 
 @router.get("/shift-notes/my", response_model=ShiftNoteListResponse)

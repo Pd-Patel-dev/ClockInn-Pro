@@ -8,7 +8,13 @@ import {
   forwardRef,
 } from 'react'
 import { useRouter } from 'next/navigation'
-import { Clock, CheckCircle2, Lock, ChevronDown, ChevronUp } from 'lucide-react'
+import {
+  IconClock,
+  IconCheckCircle,
+  IconLock,
+  IconChevronDown,
+  IconChevronUp,
+} from '@/components/ui-icons'
 import Layout from '@/components/Layout'
 import api from '@/lib/api'
 import { getCurrentUser, type User } from '@/lib/auth'
@@ -24,6 +30,8 @@ interface PastNoteRow {
   clock_in_at: string | null
   clock_out_at: string | null
   latest_manager_comment: string | null
+  reviewed_at: string | null
+  reviewer_name?: string | null
 }
 
 const AUTOSAVE_MS = 10_000
@@ -192,6 +200,12 @@ export default function ShiftNotesPage() {
               clockOutAt={activeNote.clock_out_at}
               isActive={activeNote.is_shift_open === true}
             />
+            {activeNote.reviewed_at && (
+              <ReviewedBanner
+                reviewedAt={activeNote.reviewed_at}
+                reviewerName={activeNote.reviewer_name ?? null}
+              />
+            )}
             <NoteEditor
               content={content}
               onChange={handleChange}
@@ -234,7 +248,7 @@ function ShiftHeader({
   if (!clockInAt) {
     return (
       <div className="flex items-center gap-2 text-sm text-gray-600">
-        <Clock size={14} className="text-gray-400" />
+        <IconClock size={14} className="text-gray-400" />
         <span>Current shift</span>
       </div>
     )
@@ -243,7 +257,7 @@ function ShiftHeader({
   return (
     <div className="flex items-center justify-between flex-wrap gap-2">
       <div className="flex items-center gap-2 text-sm text-gray-600">
-        <Clock size={14} className="text-gray-400" />
+        <IconClock size={14} className="text-gray-400" />
         <span>
           {start.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
         </span>
@@ -290,7 +304,7 @@ const NoteEditor = forwardRef<
       >
         {locked && (
           <div className="absolute top-3 right-3 flex items-center gap-1 text-xs text-gray-400">
-            <Lock size={12} aria-hidden />
+            <IconLock size={12} aria-hidden />
             <span>Locked</span>
           </div>
         )}
@@ -331,7 +345,7 @@ function SaveIndicator({ state, lastSaved }: { state: SaveState; lastSaved: Date
   if (state === 'saved') {
     return (
       <span className="text-xs text-gray-600 flex items-center gap-1">
-        <CheckCircle2 size={11} aria-hidden />
+        <IconCheckCircle size={11} aria-hidden />
         Saved
       </span>
     )
@@ -380,9 +394,9 @@ function PastNoteCard({ note }: { note: PastNoteRow }) {
           <StatusPill status={st} />
         </div>
         {expanded ? (
-          <ChevronUp size={14} className="text-gray-400 shrink-0" aria-hidden />
+          <IconChevronUp size={14} className="text-gray-400 shrink-0" aria-hidden />
         ) : (
-          <ChevronDown size={14} className="text-gray-400 shrink-0" aria-hidden />
+          <IconChevronDown size={14} className="text-gray-400 shrink-0" aria-hidden />
         )}
       </button>
 
@@ -395,6 +409,13 @@ function PastNoteCard({ note }: { note: PastNoteRow }) {
               <span className="text-gray-400 italic">No notes for this shift.</span>
             )}
           </p>
+          {note.reviewed_at && (
+            <ReviewedBanner
+              reviewedAt={note.reviewed_at}
+              reviewerName={note.reviewer_name ?? null}
+              compact
+            />
+          )}
           {note.latest_manager_comment && (
             <div className="border border-gray-100 rounded-md px-3 py-2 bg-gray-50">
               <p className="text-xs font-medium text-gray-500 mb-1">Manager note</p>
@@ -403,6 +424,49 @@ function PastNoteCard({ note }: { note: PastNoteRow }) {
           )}
         </div>
       )}
+    </div>
+  )
+}
+
+function ReviewedBanner({
+  reviewedAt,
+  reviewerName,
+  compact,
+}: {
+  reviewedAt: string
+  reviewerName: string | null
+  compact?: boolean
+}) {
+  const dt = new Date(reviewedAt)
+  const dateStr = dt.toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  })
+  const timeStr = dt.toLocaleTimeString('en-US', {
+    hour: 'numeric',
+    minute: '2-digit',
+  })
+  const who =
+    reviewerName?.trim() ||
+    'A manager'
+  const text = `${who} reviewed this note on ${dateStr} at ${timeStr}.`
+  return (
+    <div
+      className={`rounded-md border border-emerald-100 bg-emerald-50/80 ${
+        compact ? 'px-3 py-2' : 'px-4 py-3'
+      }`}
+    >
+      <p
+        className={`text-emerald-900 ${compact ? 'text-xs' : 'text-sm'} flex items-start gap-2`}
+      >
+        <IconCheckCircle
+          size={compact ? 14 : 16}
+          className="text-emerald-600 shrink-0 mt-0.5"
+          aria-hidden
+        />
+        <span>{text}</span>
+      </p>
     </div>
   )
 }

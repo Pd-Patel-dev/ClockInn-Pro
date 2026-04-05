@@ -25,6 +25,7 @@ class ShiftNoteResponse(BaseModel):
     last_edited_by: Optional[str] = None
     reviewed_by: Optional[str] = None
     reviewed_at: Optional[datetime] = None
+    reviewer_name: Optional[str] = None
     created_at: datetime
     updated_at: datetime
     # Shift metadata (when available)
@@ -69,6 +70,8 @@ class ShiftNotePastItem(BaseModel):
     clock_in_at: Optional[datetime] = None
     clock_out_at: Optional[datetime] = None
     latest_manager_comment: Optional[str] = None
+    reviewed_at: Optional[datetime] = None
+    reviewer_name: Optional[str] = None
 
     class Config:
         from_attributes = True

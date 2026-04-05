@@ -8,6 +8,7 @@ import api from '@/lib/api'
 import { getCurrentUser } from '@/lib/auth'
 import logger from '@/lib/logger'
 import BackButton from '@/components/BackButton'
+import { useToast } from '@/components/Toast'
 
 interface CompanySettings {
   timezone: string
@@ -75,11 +76,16 @@ export default function DeveloperCompanyPage() {
   const [kioskAllowedIpsText, setKioskAllowedIpsText] = useState('')
   const [savingKioskNetwork, setSavingKioskNetwork] = useState(false)
   const [kioskFetchingMyIp, setKioskFetchingMyIp] = useState(false)
+  const [myCompanyId, setMyCompanyId] = useState<string | null>(null)
+  const [deletingCompany, setDeletingCompany] = useState(false)
+  const toast = useToast()
+  const systemDefaultCompanyId = '00000000-0000-0000-0000-000000000000'
 
   useEffect(() => {
     const run = async () => {
       try {
         const user = await getCurrentUser()
+        setMyCompanyId(user.company_id)
         if (user.role !== 'DEVELOPER') {
           router.push('/dashboard')
           return
@@ -176,6 +182,46 @@ export default function DeveloperCompanyPage() {
               </>
             )}
           </dl>
+
+          {myCompanyId !== null &&
+            company.id !== myCompanyId &&
+            company.id !== systemDefaultCompanyId && (
+              <div className="mt-8 pt-6 border-t border-red-100">
+                <h3 className="text-sm font-semibold text-red-800">Danger zone</h3>
+                <p className="text-xs text-slate-600 mt-1 max-w-xl">
+                  Permanently delete this company, all users, time entries, payroll, schedules, and related data. This cannot be undone.
+                </p>
+                <button
+                  type="button"
+                  disabled={deletingCompany}
+                  onClick={async () => {
+                    if (
+                      !window.confirm(
+                        `Permanently delete “${company.name}” and all tenant data? This cannot be undone.`,
+                      )
+                    ) {
+                      return
+                    }
+                    setDeletingCompany(true)
+                    try {
+                      await api.delete(`/developer/companies/${company.id}`)
+                      toast.success('Company deleted.')
+                      router.push('/developer')
+                    } catch (e: unknown) {
+                      const err = e as { response?: { data?: { detail?: string } } }
+                      const msg = err.response?.data?.detail
+                      toast.error(typeof msg === 'string' ? msg : 'Failed to delete company')
+                      logger.error('Developer delete company failed', e as Error, { companyId: company.id })
+                    } finally {
+                      setDeletingCompany(false)
+                    }
+                  }}
+                  className="mt-3 px-3 py-2 text-sm font-medium text-white bg-red-600 rounded-md hover:bg-red-700 disabled:opacity-50"
+                >
+                  {deletingCompany ? 'Deleting…' : 'Delete company'}
+                </button>
+              </div>
+            )}
         </div>
 
         {/* Settings */}

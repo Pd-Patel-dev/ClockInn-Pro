@@ -4,6 +4,7 @@ from uuid import UUID
 from datetime import datetime, date, timedelta
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_, func, or_
+from sqlalchemy.orm import aliased
 from fastapi import HTTPException, status
 import uuid
 
@@ -211,9 +212,11 @@ async def list_past_shift_notes_for_employee(
     limit: int = 10,
 ) -> List[dict]:
     """Closed-shift notes for the employee, newest clock-in first (excludes open shift)."""
+    reviewer_user = aliased(User)
     q = (
-        select(ShiftNote, TimeEntry)
+        select(ShiftNote, TimeEntry, reviewer_user.name.label("reviewer_name"))
         .join(TimeEntry, TimeEntry.id == ShiftNote.time_entry_id)
+        .outerjoin(reviewer_user, reviewer_user.id == ShiftNote.reviewed_by)
         .where(
             and_(
                 ShiftNote.company_id == company_id,
@@ -228,10 +231,10 @@ async def list_past_shift_notes_for_employee(
     pairs = result.all()
     if not pairs:
         return []
-    note_ids = [n.id for n, _ in pairs]
+    note_ids = [r[0].id for r in pairs]
     latest = await _latest_manager_comment_by_note_ids(db, note_ids)
     out = []
-    for note, entry in pairs:
+    for note, entry, reviewer_name in pairs:
         out.append(
             {
                 "id": str(note.id),
@@ -241,6 +244,8 @@ async def list_past_shift_notes_for_employee(
                 "clock_in_at": entry.clock_in_at,
                 "clock_out_at": entry.clock_out_at,
                 "latest_manager_comment": latest.get(note.id),
+                "reviewed_at": note.reviewed_at,
+                "reviewer_name": reviewer_name,
             }
         )
     return out

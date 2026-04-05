@@ -22,7 +22,12 @@ from app.models.company import Company
 from app.models.session import Session
 from app.models.time_entry import TimeEntry
 from app.services.email_service import email_service
-from app.services.company_service import get_company_info, get_company_settings, update_company_settings
+from app.services.company_service import (
+    get_company_info,
+    get_company_settings,
+    update_company_settings,
+    delete_company_as_developer,
+)
 from app.services.user_service import get_user_by_id_any, update_user_developer
 from app.schemas.company import (
     CompanyInfoResponse,
@@ -469,6 +474,18 @@ async def get_company_developer(
     )
     admin_user = admin_result.scalar_one_or_none()
     return _build_company_info_response(company, settings, admin_user)
+
+
+@router.delete("/companies/{company_id}", status_code=status.HTTP_204_NO_CONTENT)
+@handle_endpoint_errors(operation_name="delete_company_developer")
+async def delete_company_developer(
+    company_id: str,
+    current_user: User = Depends(get_current_developer),
+    db: AsyncSession = Depends(get_db),
+):
+    """Permanently delete a company and all tenant data (developer only)."""
+    cid = parse_uuid(company_id, "Company ID")
+    await delete_company_as_developer(db, cid, current_user.company_id)
 
 
 @router.put("/companies/{company_id}/settings", response_model=CompanyInfoResponse)

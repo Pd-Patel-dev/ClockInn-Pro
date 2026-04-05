@@ -17,6 +17,7 @@ export interface ShiftNoteCurrent {
   last_edited_by: string | null
   reviewed_by: string | null
   reviewed_at: string | null
+  reviewer_name?: string | null
   created_at: string
   updated_at: string
   clock_in_at?: string | null
