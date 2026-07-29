@@ -1,6 +1,10 @@
 # Docs (do not push to GitHub)
 docs/
 
+# Tests (do not push to GitHub)
+server/tests/
+tests/
+
 # Dependencies
 node_modules/
 __pycache__/
