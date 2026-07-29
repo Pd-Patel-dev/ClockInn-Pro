@@ -1,6 +1,18 @@
-from sqlalchemy import Column, String, ForeignKey, Enum, DateTime, Boolean, Numeric, Integer, UniqueConstraint, Index
+from sqlalchemy import (
+    Column,
+    String,
+    ForeignKey,
+    Enum,
+    DateTime,
+    Boolean,
+    Numeric,
+    Integer,
+    Index,
+    CheckConstraint,
+    text,
+)
 from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import relationship, validates
 from sqlalchemy.sql import func
 import uuid
 import enum
@@ -32,7 +44,8 @@ class User(Base):
     __tablename__ = "users"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    company_id = Column(UUID(as_uuid=True), ForeignKey("companies.id"), nullable=False, index=True)
+    # NULL only for DEVELOPER (platform) accounts; required for all tenant roles
+    company_id = Column(UUID(as_uuid=True), ForeignKey("companies.id"), nullable=True, index=True)
     role = Column(Enum(UserRole, values_callable=lambda x: [e.value for e in x]), nullable=False, default=UserRole.FRONTDESK)
     name = Column(String(255), nullable=False)
     email = Column(String(255), nullable=False, index=True)
@@ -47,7 +60,7 @@ class User(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
     last_login_at = Column(DateTime(timezone=True), nullable=True)
-    
+
     # Email verification fields
     email_verified = Column(Boolean, nullable=False, default=False)
     last_verified_at = Column(DateTime(timezone=True), nullable=True)
@@ -69,7 +82,31 @@ class User(Base):
     leave_requests = relationship("LeaveRequest", back_populates="employee", foreign_keys="LeaveRequest.employee_id")
 
     __table_args__ = (
-        UniqueConstraint("company_id", "email", name="uq_user_company_email"),
+        CheckConstraint(
+            "(role = 'DEVELOPER' AND company_id IS NULL) OR (role <> 'DEVELOPER' AND company_id IS NOT NULL)",
+            name="ck_user_company_by_role",
+        ),
+        Index("uq_user_email", text("LOWER(email)"), unique=True),
         Index("idx_users_company_status", "company_id", "status"),
     )
 
+    @validates("company_id", "role")
+    def validate_company_by_role(self, key, value):
+        """Enforce: DEVELOPER <=> company_id IS NULL; all other roles require a company."""
+        role = value if key == "role" else self.__dict__.get("role")
+        company_id = value if key == "company_id" else self.__dict__.get("company_id")
+
+        if role is None:
+            return value
+
+        role_val = role.value if isinstance(role, UserRole) else str(role)
+        if role_val == UserRole.DEVELOPER.value:
+            if company_id is not None:
+                raise ValueError("DEVELOPER users must have company_id = NULL")
+        else:
+            # Only enforce when company_id is being set to None, or role is set while company_id is already None
+            if key == "company_id" and company_id is None:
+                raise ValueError("Non-DEVELOPER users must have a company_id")
+            if key == "role" and "company_id" in self.__dict__ and company_id is None:
+                raise ValueError("Non-DEVELOPER users must have a company_id")
+        return value

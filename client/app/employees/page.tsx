@@ -144,7 +144,13 @@ export default function AdminEmployeesPage() {
       setShowForm(false)
       fetchEmployees()
     } catch (error: any) {
-      toast.error(error.response?.data?.detail || 'Failed to create employee')
+      if (error.response?.status === 409) {
+        toast.error(
+          'This email is already in use on the platform. Emails must be unique across all companies and roles.',
+        )
+      } else {
+        toast.error(error.response?.data?.detail || 'Failed to create employee')
+      }
     } finally {
       setSubmitting(false)
     }
@@ -227,7 +233,13 @@ export default function AdminEmployeesPage() {
       closeEditForm()
       fetchEmployees()
     } catch (error: any) {
-      toast.error(error.response?.data?.detail || 'Failed to update employee')
+      if (error.response?.status === 409) {
+        toast.error(
+          'This email is already in use on the platform. Emails must be unique across all companies and roles.',
+        )
+      } else {
+        toast.error(error.response?.data?.detail || 'Failed to update employee')
+      }
     } finally {
       setUpdating(false)
     }

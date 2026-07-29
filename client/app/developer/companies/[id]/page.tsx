@@ -46,7 +46,7 @@ interface CompanyInfo {
 
 interface CompanyUser {
   id: string
-  company_id: string
+  company_id: string | null
   company_name: string
   name: string
   email: string
@@ -95,7 +95,11 @@ export default function DeveloperCompanyPage() {
           api.get(`/developer/companies/${companyId}/users`),
         ])
         setCompany(companyRes.data)
-        setUsers(Array.isArray(usersRes.data) ? usersRes.data : [])
+        setUsers(
+          (Array.isArray(usersRes.data) ? usersRes.data : []).filter(
+            (u: CompanyUser) => u.role !== 'DEVELOPER',
+          ),
+        )
         const s = companyRes.data?.settings
         if (s) {
           setGeofenceLat(s.office_latitude != null ? String(s.office_latitude) : '')
@@ -183,9 +187,7 @@ export default function DeveloperCompanyPage() {
             )}
           </dl>
 
-          {myCompanyId !== null &&
-            company.id !== myCompanyId &&
-            company.id !== systemDefaultCompanyId && (
+          {company.id !== systemDefaultCompanyId && (
               <div className="mt-8 pt-6 border-t border-red-100">
                 <h3 className="text-sm font-semibold text-red-800">Danger zone</h3>
                 <p className="text-xs text-slate-600 mt-1 max-w-xl">

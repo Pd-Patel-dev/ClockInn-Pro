@@ -12,10 +12,12 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
 from app.core.config import settings
 from app.core.security import get_password_hash, get_pin_hash
+from app.core.slug import generate_unique_slug
 from app.models.company import Company
 from app.models.user import User, UserRole, UserStatus, PayRateType
 import uuid
 from decimal import Decimal
+from datetime import datetime, timezone
 
 
 async def seed_data():
@@ -36,9 +38,11 @@ async def seed_data():
             return
         
         # Create company
+        slug = await generate_unique_slug(db, "Demo Company")
         company = Company(
             id=uuid.uuid4(),
             name="Demo Company",
+            slug=slug,
             settings_json={
                 "timezone": "America/New_York",
                 "payroll_week_start_day": 0,  # Monday (0=Mon, 6=Sun)
@@ -51,6 +55,8 @@ async def seed_data():
         db.add(company)
         await db.flush()
         
+        now = datetime.now(timezone.utc)
+
         # Create admin user
         admin = User(
             id=uuid.uuid4(),
@@ -60,6 +66,9 @@ async def seed_data():
             email="admin@demo.com",
             password_hash=get_password_hash("Admin123!"),
             status=UserStatus.ACTIVE,
+            email_verified=True,
+            verification_required=False,
+            last_verified_at=now,
         )
         db.add(admin)
         await db.flush()
@@ -113,6 +122,9 @@ async def seed_data():
                 pay_rate_cents=pay_rate_cents,
                 pay_rate_type=PayRateType.HOURLY,
                 overtime_multiplier=None,  # Use company default
+                email_verified=True,
+                verification_required=False,
+                last_verified_at=now,
             )
             db.add(employee)
         

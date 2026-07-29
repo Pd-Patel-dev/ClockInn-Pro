@@ -20,6 +20,7 @@ from app.core.security import (
     validate_password_strength,
     get_pin_hash,
     DUMMY_PASSWORD_HASH_FOR_TIMING,
+    jwt_company_id_claim,
 )
 from app.core.login_attempts import is_locked_out, record_failed_attempt, clear_attempts
 from app.core.slug import generate_unique_slug
@@ -45,15 +46,15 @@ async def register_company(
     # Normalize email
     normalized_email = normalize_email(request.admin_email)
     
-    # Check if email already exists (globally unique per company, but we check globally for simplicity)
+    # Check if email already exists (globally unique across the platform)
     result = await db.execute(
         select(User).where(User.email == normalized_email)
     )
     existing_user = result.scalar_one_or_none()
     if existing_user:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Email already registered",
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Email already in use on the platform.",
         )
     
     # Generate unique slug for company
@@ -87,7 +88,7 @@ async def register_company(
     now_ts = datetime.utcnow()
     refresh_token = create_refresh_token({
         "sub": str(user.id),
-        "company_id": str(company.id),
+        "company_id": jwt_company_id_claim(company.id),
         "session_start": int(now_ts.timestamp()),
     })
     from passlib.context import CryptContext
@@ -117,7 +118,7 @@ async def register_company(
     
     access_token = create_access_token({
         "sub": str(user.id),
-        "company_id": str(company.id),
+        "company_id": jwt_company_id_claim(company.id),
         "role": user.role.value,
         "permissions": sorted(list(ROLE_PERMISSIONS.get(user.role, set()))),
     })
@@ -195,7 +196,7 @@ async def login(
     now_ts = datetime.utcnow()
     refresh_token = create_refresh_token({
         "sub": str(user.id),
-        "company_id": str(user.company_id),
+        "company_id": jwt_company_id_claim(user.company_id),
         "session_start": int(now_ts.timestamp()),
     })
     from passlib.context import CryptContext
@@ -218,7 +219,7 @@ async def login(
     
     access_token = create_access_token({
         "sub": str(user.id),
-        "company_id": str(user.company_id),
+        "company_id": jwt_company_id_claim(user.company_id),
         "role": user.role.value,
         "permissions": sorted(list(ROLE_PERMISSIONS.get(user.role, set()))),
     })
@@ -242,9 +243,15 @@ async def refresh_access_token(
         )
     
     user_id = payload.get("sub")
+    # company_id may be null for DEVELOPER tokens — always present as a claim
+    if "company_id" not in payload:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid token payload",
+        )
     company_id = payload.get("company_id")
     
-    if not user_id or not company_id:
+    if not user_id:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid token payload",
@@ -254,15 +261,17 @@ async def refresh_access_token(
     from passlib.context import CryptContext
     token_context = CryptContext(schemes=["argon2"], deprecated="auto")
     
-    # We need to check all sessions for this user and verify the token
-    result = await db.execute(
-        select(Session).where(
-            Session.user_id == uuid.UUID(user_id),
-            Session.company_id == uuid.UUID(company_id),
-            Session.revoked_at.is_(None),
-            Session.expires_at > datetime.utcnow(),
-        )
-    )
+    session_filters = [
+        Session.user_id == uuid.UUID(user_id),
+        Session.revoked_at.is_(None),
+        Session.expires_at > datetime.utcnow(),
+    ]
+    if company_id is None:
+        session_filters.append(Session.company_id.is_(None))
+    else:
+        session_filters.append(Session.company_id == uuid.UUID(str(company_id)))
+
+    result = await db.execute(select(Session).where(*session_filters))
     sessions = result.scalars().all()
     
     matching_session = None
@@ -337,7 +346,7 @@ async def refresh_access_token(
 
     new_refresh_token = create_refresh_token({
         "sub": str(user.id),
-        "company_id": str(user.company_id),
+        "company_id": jwt_company_id_claim(user.company_id),
         "session_start": session_start,
     })
     new_refresh_token_hash = token_context.hash(new_refresh_token)
@@ -357,7 +366,7 @@ async def refresh_access_token(
     
     access_token = create_access_token({
         "sub": str(user.id),
-        "company_id": str(user.company_id),
+        "company_id": jwt_company_id_claim(user.company_id),
         "role": user.role.value,
         "permissions": sorted(list(ROLE_PERMISSIONS.get(user.role, set()))),
     })
@@ -376,22 +385,24 @@ async def logout(
         return
     
     user_id = payload.get("sub")
-    company_id = payload.get("company_id")
-    
-    if not user_id or not company_id:
+    if not user_id or "company_id" not in payload:
         return
+    company_id = payload.get("company_id")
     
     # Find and revoke session
     from passlib.context import CryptContext
     token_context = CryptContext(schemes=["argon2"], deprecated="auto")
     
-    result = await db.execute(
-        select(Session).where(
-            Session.user_id == uuid.UUID(user_id),
-            Session.company_id == uuid.UUID(company_id),
-            Session.revoked_at.is_(None),
-        )
-    )
+    session_filters = [
+        Session.user_id == uuid.UUID(user_id),
+        Session.revoked_at.is_(None),
+    ]
+    if company_id is None:
+        session_filters.append(Session.company_id.is_(None))
+    else:
+        session_filters.append(Session.company_id == uuid.UUID(str(company_id)))
+
+    result = await db.execute(select(Session).where(*session_filters))
     sessions = result.scalars().all()
     
     for session in sessions:
@@ -400,6 +411,6 @@ async def logout(
                 session.revoked_at = datetime.utcnow()
                 await db.commit()
                 return
-        except:
+        except Exception:
             continue
 

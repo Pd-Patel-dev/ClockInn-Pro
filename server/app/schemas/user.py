@@ -1,8 +1,12 @@
-from pydantic import BaseModel, EmailStr, Field, field_validator
+from pydantic import BaseModel, EmailStr, Field, field_validator, model_validator
 from typing import Optional
 from datetime import datetime
 from uuid import UUID
 from app.models.user import UserRole, UserStatus
+
+
+def _normalize_email_value(email: str) -> str:
+    return email.strip().lower()
 
 
 class UserBase(BaseModel):
@@ -18,6 +22,20 @@ class UserCreate(BaseModel):
     role: UserRole = UserRole.FRONTDESK
     pin: Optional[str] = Field(None, min_length=4, max_length=4, pattern="^[0-9]{4}$")
     pay_rate: Optional[float] = Field(None, ge=0)
+    # Optional; when present must be set for non-DEVELOPER (admin create supplies company via context)
+    company_id: Optional[UUID] = None
+
+    @field_validator("email")
+    @classmethod
+    def normalize_email(cls, v: EmailStr) -> str:
+        return _normalize_email_value(str(v))
+
+    @model_validator(mode="after")
+    def validate_role_company(self):
+        # Admin employee APIs must never create platform developers
+        if self.role == UserRole.DEVELOPER:
+            raise ValueError("Cannot create DEVELOPER users through tenant employee APIs")
+        return self
 
 
 class UserUpdate(BaseModel):
@@ -26,8 +44,10 @@ class UserUpdate(BaseModel):
     role: Optional[UserRole] = None
     pin: Optional[str] = Field(None, min_length=0, max_length=4)
     pay_rate: Optional[float] = Field(None, ge=0)
-    
-    @field_validator('pin')
+    company_id: Optional[UUID] = None
+    email: Optional[EmailStr] = None
+
+    @field_validator("pin")
     @classmethod
     def validate_pin(cls, v: Optional[str]) -> Optional[str]:
         """Validate PIN is either empty string or exactly 4 numeric digits."""
@@ -37,10 +57,40 @@ class UserUpdate(BaseModel):
             raise ValueError("PIN must be exactly 4 numeric digits")
         return v
 
+    @field_validator("email")
+    @classmethod
+    def normalize_email(cls, v: Optional[EmailStr]) -> Optional[str]:
+        if v is None:
+            return v
+        return _normalize_email_value(str(v))
+
+    @model_validator(mode="after")
+    def validate_role_company(self):
+        if self.role == UserRole.DEVELOPER:
+            if self.company_id is not None:
+                raise ValueError("DEVELOPER users must have company_id = NULL")
+            raise ValueError("Cannot assign DEVELOPER role through tenant employee APIs")
+        if self.role is not None and self.role != UserRole.DEVELOPER and self.company_id is None:
+            # company_id optional on update body; only enforce when explicitly provided as null with role
+            pass
+        return self
+
+
+class DeveloperCreate(BaseModel):
+    """Create a platform DEVELOPER account (no company)."""
+    name: str = Field(..., min_length=1, max_length=255)
+    email: EmailStr
+    password: str = Field(..., min_length=8, max_length=255)
+
+    @field_validator("email")
+    @classmethod
+    def normalize_email(cls, v: EmailStr) -> str:
+        return _normalize_email_value(str(v))
+
 
 class UserResponse(BaseModel):
     id: UUID
-    company_id: UUID
+    company_id: Optional[UUID] = None
     name: str
     email: str
     role: UserRole
@@ -58,7 +108,7 @@ class UserResponse(BaseModel):
 
 class UserMeResponse(BaseModel):
     id: UUID
-    company_id: UUID
+    company_id: Optional[UUID] = None
     name: str
     email: str
     role: UserRole
@@ -75,7 +125,7 @@ class UserMeResponse(BaseModel):
 class DeveloperUserResponse(BaseModel):
     """User response for developer portal (includes verification fields)."""
     id: UUID
-    company_id: UUID
+    company_id: Optional[UUID] = None
     company_name: str
     name: str
     email: str
@@ -102,8 +152,8 @@ class DeveloperUserUpdate(BaseModel):
     verification_required: Optional[bool] = None
     pin: Optional[str] = Field(None, min_length=0, max_length=4)
     pay_rate: Optional[float] = Field(None, ge=0)
-    
-    @field_validator('pin')
+
+    @field_validator("pin")
     @classmethod
     def validate_pin(cls, v: Optional[str]) -> Optional[str]:
         if v is None or v == "":
@@ -112,8 +162,13 @@ class DeveloperUserUpdate(BaseModel):
             raise ValueError("PIN must be exactly 4 numeric digits")
         return v
 
+    @field_validator("email")
+    @classmethod
+    def normalize_email(cls, v: Optional[EmailStr]) -> Optional[str]:
+        if v is None:
+            return v
+        return _normalize_email_value(str(v))
+
 
 class UserRoleUpdate(BaseModel):
     role: UserRole
-
-

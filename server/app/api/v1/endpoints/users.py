@@ -2,11 +2,13 @@ from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_
 from typing import List
+from uuid import UUID as UUIDType
 
 from app.core.database import get_db
 from app.core.dependencies import (
     get_current_user,
     get_current_verified_user,
+    get_current_tenant_company_id,
     require_permission,
 )
 from app.core.error_handling import handle_endpoint_errors, parse_uuid
@@ -82,6 +84,7 @@ async def get_me(
 async def create_employee_endpoint(
     data: UserCreate,
     current_user: User = Depends(require_permission("user_management")),
+    company_id: UUIDType = Depends(get_current_tenant_company_id),
     db: AsyncSession = Depends(get_db),
 ):
     """Create a new employee (admin only)."""
@@ -90,12 +93,12 @@ async def create_employee_endpoint(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Only admins can assign the admin role",
         )
-    employee = await create_employee(db, current_user.company_id, data)
+    employee = await create_employee(db, company_id, data)
     
     # Create audit log
     audit_log = AuditLog(
         id=uuid.uuid4(),
-        company_id=current_user.company_id,
+        company_id=company_id,
         actor_user_id=current_user.id,
         action="employee_created",
         entity_type="user",
@@ -125,10 +128,11 @@ async def list_employees_endpoint(
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=1000),
     current_user: User = Depends(require_permission("user_management")),
+    company_id: UUIDType = Depends(get_current_tenant_company_id),
     db: AsyncSession = Depends(get_db),
 ):
     """List all employees (admin only)."""
-    return await list_employee_user_responses(db, current_user.company_id, skip, limit)
+    return await list_employee_user_responses(db, company_id, skip, limit)
 
 
 @router.get("/admin/employees/{employee_id}", response_model=UserResponse)
@@ -136,6 +140,7 @@ async def list_employees_endpoint(
 async def get_employee_endpoint(
     employee_id: str,
     current_user: User = Depends(require_permission("user_management")),
+    company_id: UUIDType = Depends(get_current_tenant_company_id),
     db: AsyncSession = Depends(get_db),
 ):
     """Get a single employee by ID (admin only)."""
@@ -144,7 +149,7 @@ async def get_employee_endpoint(
     
     emp_id = parse_uuid(employee_id, "Employee ID")
     
-    employee = await get_user_by_id(db, emp_id, current_user.company_id)
+    employee = await get_user_by_id(db, emp_id, company_id)
     if not employee:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -168,7 +173,7 @@ async def get_employee_endpoint(
         .where(
             and_(
                 TimeEntry.employee_id == emp_id,
-                TimeEntry.company_id == current_user.company_id,
+                TimeEntry.company_id == company_id,
                 TimeEntry.clock_out_at.is_(None)
             )
         )
@@ -185,7 +190,7 @@ async def get_employee_endpoint(
             .where(
                 and_(
                     TimeEntry.employee_id == emp_id,
-                    TimeEntry.company_id == current_user.company_id
+                    TimeEntry.company_id == company_id
                 )
             )
             .order_by(TimeEntry.clock_in_at.desc())
@@ -217,6 +222,7 @@ async def update_employee_endpoint(
     employee_id: str,
     data: UserUpdate,
     current_user: User = Depends(require_permission("user_management")),
+    company_id: UUIDType = Depends(get_current_tenant_company_id),
     db: AsyncSession = Depends(get_db),
 ):
     """Update employee (admin only)."""
@@ -227,7 +233,7 @@ async def update_employee_endpoint(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Only admins can assign the admin role",
         )
-    employee = await update_employee(db, emp_id, current_user.company_id, data, actor_user_id=current_user.id)
+    employee = await update_employee(db, emp_id, company_id, data, actor_user_id=current_user.id)
     
     # Create general audit log for other changes (name, pay_rate)
     changes = data.dict(exclude_unset=True)
@@ -236,7 +242,7 @@ async def update_employee_endpoint(
     if general_changes:
         audit_log = AuditLog(
             id=uuid.uuid4(),
-            company_id=current_user.company_id,
+            company_id=company_id,
             actor_user_id=current_user.id,
             action="employee_updated",
             entity_type="user",
@@ -266,12 +272,13 @@ async def reset_password_endpoint(
     employee_id: str,
     new_password: str,
     current_user: User = Depends(require_permission("user_management")),
+    company_id: UUIDType = Depends(get_current_tenant_company_id),
     db: AsyncSession = Depends(get_db),
 ):
     """Reset employee password (admin only)."""
     emp_id = parse_uuid(employee_id, "Employee ID")
     
-    employee = await reset_password(db, emp_id, current_user.company_id, new_password, actor_user_id=current_user.id)
+    employee = await reset_password(db, emp_id, company_id, new_password, actor_user_id=current_user.id)
     
     return {"message": "Password reset successfully"}
 
@@ -281,6 +288,7 @@ async def reset_password_endpoint(
 async def delete_employee_endpoint(
     employee_id: str,
     current_user: User = Depends(require_permission("user_management")),
+    company_id: UUIDType = Depends(get_current_tenant_company_id),
     db: AsyncSession = Depends(get_db),
 ):
     """Delete employee (admin only)."""
@@ -288,7 +296,7 @@ async def delete_employee_endpoint(
     
     # Get employee info before deletion for audit log
     from app.services.user_service import get_user_by_id
-    employee = await get_user_by_id(db, emp_id, current_user.company_id)
+    employee = await get_user_by_id(db, emp_id, company_id)
     if not employee:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -299,12 +307,12 @@ async def delete_employee_endpoint(
     employee_name = employee.name
     
     # Delete employee
-    await delete_employee(db, emp_id, current_user.company_id)
+    await delete_employee(db, emp_id, company_id)
     
     # Create audit log
     audit_log = AuditLog(
         id=uuid.uuid4(),
-        company_id=current_user.company_id,
+        company_id=company_id,
         actor_user_id=current_user.id,
         action="employee_deleted",
         entity_type="user",
@@ -323,11 +331,12 @@ async def update_employee_role_endpoint(
     employee_id: str,
     body: UserRoleUpdate,
     current_user: User = Depends(require_permission("user_management")),
+    company_id: UUIDType = Depends(get_current_tenant_company_id),
     db: AsyncSession = Depends(get_db),
 ):
     """Update a user's role (admin/manager with user_management permission)."""
     emp_id = parse_uuid(employee_id, "Employee ID")
-    employee = await get_user_by_id(db, emp_id, current_user.company_id)
+    employee = await get_user_by_id(db, emp_id, company_id)
     if not employee:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -339,13 +348,18 @@ async def update_employee_role_endpoint(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Only admins can assign the admin role",
         )
+    if body.role == UserRole.DEVELOPER:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Cannot assign DEVELOPER role through tenant employee APIs",
+        )
 
     # Prevent users from accidentally removing the last admin from admin role.
     if employee.role == UserRole.ADMIN and body.role != UserRole.ADMIN:
         result = await db.execute(
             select(User).where(
                 and_(
-                    User.company_id == current_user.company_id,
+                    User.company_id == company_id,
                     User.role == UserRole.ADMIN,
                     User.status == employee.status,
                 )

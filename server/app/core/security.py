@@ -33,6 +33,13 @@ def get_pin_hash(pin: str) -> str:
     return pin_context.hash(pin)
 
 
+def jwt_company_id_claim(company_id) -> Optional[str]:
+    """Serialize company_id for JWT claims. Developers get explicit JSON null (None)."""
+    if company_id is None:
+        return None
+    return str(company_id)
+
+
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
     """Create a JWT access token."""
     to_encode = data.copy()

@@ -384,11 +384,17 @@ def check_verification_required(user: User) -> bool:
 async def check_verification_required_for_user(db: AsyncSession, user: User) -> bool:
     """
     Check if user requires email verification, taking into account company setting.
-    If the user's company has email_verification_required=False, returns False (no verification needed).
+    Platform DEVELOPER accounts (company_id=None) use user flags only.
+    If the user's company has email_verification_required=False, returns False.
     Otherwise returns check_verification_required(user).
     """
     from app.models.company import Company
+    from app.models.user import UserRole
     from app.services.company_service import get_company_settings
+
+    if user.role == UserRole.DEVELOPER or user.company_id is None:
+        return check_verification_required(user)
+
     result = await db.execute(select(Company).where(Company.id == user.company_id))
     company = result.scalar_one_or_none()
     if not company:

@@ -137,13 +137,28 @@ async def get_current_admin(
 async def get_current_developer(
     current_user: User = Depends(get_current_verified_user),
 ) -> User:
-    """Require DEVELOPER role and verified email."""
+    """Require DEVELOPER role and verified email. Developers have company_id=None."""
     if current_user.role != UserRole.DEVELOPER:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Developer access required",
         )
     return current_user
+
+
+async def get_current_tenant_company_id(
+    current_user: User = Depends(get_current_verified_user),
+) -> uuid.UUID:
+    """
+    Return the current user's company_id for tenant-scoped endpoints.
+    Raises 403 if the user has no company (e.g. platform DEVELOPER).
+    """
+    if current_user.company_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Tenant company context required. Platform developer accounts cannot use this endpoint.",
+        )
+    return current_user.company_id
 
 
 def require_permission(permission_name: str):

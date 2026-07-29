@@ -37,6 +37,9 @@ services:
       - REFRESH_TOKEN_EXPIRE_DAYS=${REFRESH_TOKEN_EXPIRE_DAYS:-7}
       - FRONTEND_URL=${FRONTEND_URL:-http://localhost:3000}
       - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:3000}
+      # Local Next.js HMR remounts fire many API calls; default 60/min is easy to hit in Docker.
+      - RATE_LIMIT_PER_MINUTE=${RATE_LIMIT_PER_MINUTE:-300}
+      - RATE_LIMIT_AUTH_KIOSK_PER_MINUTE=${RATE_LIMIT_AUTH_KIOSK_PER_MINUTE:-60}
       # Set to "true" to run migrations on API startup (optional)
       - RUN_MIGRATIONS=${RUN_MIGRATIONS:-false}
     depends_on:

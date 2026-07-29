@@ -35,7 +35,7 @@ from app.schemas.company import (
     CompanySettingsUpdate,
     AdminInfo,
 )
-from app.schemas.user import DeveloperUserResponse, DeveloperUserUpdate
+from app.schemas.user import DeveloperUserResponse, DeveloperUserUpdate, DeveloperCreate
 from app.core.config import settings
 from pydantic import BaseModel, EmailStr, Field
 
@@ -44,11 +44,10 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
-class DeveloperAccountCreate(BaseModel):
+# Kept for backward-compatible OpenAPI; prefer DeveloperCreate
+class DeveloperAccountCreate(DeveloperCreate):
     """Request body for creating a new developer account (developer-only)."""
-    name: str = Field(..., min_length=1, max_length=255)
-    email: EmailStr
-    password: str = Field(..., min_length=8, max_length=255)
+    pass
 
 
 @router.get("/stats")
@@ -408,32 +407,29 @@ async def list_companies_developer(
 @router.post("/accounts", status_code=status.HTTP_201_CREATED)
 @handle_endpoint_errors(operation_name="create_developer_account")
 async def create_developer_account(
-    data: DeveloperAccountCreate,
+    data: DeveloperCreate,
     current_user: User = Depends(get_current_developer),
     db: AsyncSession = Depends(get_db),
 ):
-    """Create a new developer account (developer only). New account is in the same company as the creating developer (super account)."""
+    """Create a platform developer account (no company). Email must be globally unique."""
     is_valid, error_msg = validate_password_strength(data.password)
     if not is_valid:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=error_msg)
     normalized_email = normalize_email(data.email)
     result = await db.execute(
-        select(User).where(
-            User.company_id == current_user.company_id,
-            User.email == normalized_email,
-        )
+        select(User).where(User.email == normalized_email)
     )
     existing = result.scalar_one_or_none()
     if existing:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="A user with this email already exists in this company.",
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Email already in use on the platform.",
         )
     password_hash = get_password_hash(data.password)
     now = datetime.now(timezone.utc)
     new_user = User(
         id=uuid.uuid4(),
-        company_id=current_user.company_id,
+        company_id=None,
         role=UserRole.DEVELOPER,
         name=data.name.strip(),
         email=normalized_email,
@@ -443,14 +439,25 @@ async def create_developer_account(
         verification_required=False,
         last_verified_at=now,
     )
-    db.add(new_user)
-    await db.commit()
-    await db.refresh(new_user)
+    try:
+        db.add(new_user)
+        await db.commit()
+        await db.refresh(new_user)
+    except Exception as e:
+        await db.rollback()
+        error_str = str(e).lower()
+        if "uq_user_email" in error_str or ("email" in error_str and "unique" in error_str):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Email already in use on the platform.",
+            )
+        raise
     return {
         "id": str(new_user.id),
         "name": new_user.name,
         "email": new_user.email,
         "role": new_user.role.value,
+        "company_id": None,
         "message": "Developer account created. They can log in with the email and password you set.",
     }
 
@@ -533,6 +540,54 @@ async def list_company_users_developer(
             id=u.id,
             company_id=u.company_id,
             company_name=company_name,
+            name=u.name,
+            email=u.email,
+            role=u.role,
+            status=u.status,
+            email_verified=u.email_verified,
+            verification_required=u.verification_required,
+            created_at=u.created_at,
+            last_login_at=u.last_login_at,
+            has_pin=u.pin_hash is not None,
+            pay_rate=float(u.pay_rate) if u.pay_rate is not None else None,
+        )
+        for u in users
+    ]
+
+
+@router.get("/users", response_model=List[DeveloperUserResponse])
+@handle_endpoint_errors(operation_name="list_all_users_developer")
+async def list_all_users_developer(
+    current_user: User = Depends(get_current_developer),
+    db: AsyncSession = Depends(get_db),
+    skip: int = Query(0, ge=0),
+    limit: int = Query(500, ge=1, le=1000),
+    role: Optional[str] = Query(None, description="Optional role filter, e.g. DEVELOPER or ADMIN"),
+    q: Optional[str] = Query(None, description="Search name or email"),
+):
+    """List all users across the platform (developer only), including platform developers."""
+    from sqlalchemy.orm import selectinload
+
+    query = select(User).options(selectinload(User.company)).order_by(User.name.asc())
+    if role:
+        try:
+            role_enum = UserRole(role.upper())
+            query = query.where(User.role == role_enum)
+        except ValueError:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Invalid role: {role}")
+    if q and q.strip():
+        term = f"%{q.strip().lower()}%"
+        query = query.where(
+            (func.lower(User.name).like(term)) | (func.lower(User.email).like(term))
+        )
+    query = query.offset(skip).limit(limit)
+    result = await db.execute(query)
+    users = result.scalars().all()
+    return [
+        DeveloperUserResponse(
+            id=u.id,
+            company_id=u.company_id,
+            company_name=u.company.name if u.company else "Platform (no company)",
             name=u.name,
             email=u.email,
             role=u.role,

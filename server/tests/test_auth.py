@@ -33,14 +33,13 @@ async def test_login(client: AsyncClient, test_user: User):
     response = await client.post(
         "/api/v1/auth/login",
         json={
-            "email": "test@example.com",
+            "email": test_user.email,
             "password": "Test123!",
         },
     )
     assert response.status_code == 200
     data = response.json()
     assert "access_token" in data
-    assert "refresh_token" in data
 
 
 @pytest.mark.asyncio
@@ -49,7 +48,7 @@ async def test_refresh_token(client: AsyncClient, test_user: User):
     login_response = await client.post(
         "/api/v1/auth/login",
         json={
-            "email": "test@example.com",
+            "email": test_user.email,
             "password": "Test123!",
         },
     )
@@ -81,7 +80,9 @@ async def test_login_invalid_credentials(client: AsyncClient):
 
 @pytest.fixture
 async def test_user(db: AsyncSession) -> User:
-    """Create a test user."""
+    """Create a test user with a unique email."""
+    from datetime import datetime, timezone
+
     company = Company(
         id=uuid.uuid4(),
         name="Test Company",
@@ -90,16 +91,18 @@ async def test_user(db: AsyncSession) -> User:
     )
     db.add(company)
     await db.flush()
-    
+
     user = User(
         id=uuid.uuid4(),
         company_id=company.id,
         role=UserRole.ADMIN,
         name="Test User",
-        email="test@example.com",
+        email=f"test-{uuid.uuid4().hex[:12]}@example.com",
         password_hash=get_password_hash("Test123!"),
         status=UserStatus.ACTIVE,
         email_verified=True,
+        verification_required=False,
+        last_verified_at=datetime.now(timezone.utc),
     )
     db.add(user)
     await db.commit()

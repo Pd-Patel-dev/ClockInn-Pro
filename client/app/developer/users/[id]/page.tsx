@@ -29,7 +29,7 @@ type DeveloperUserForm = z.infer<typeof developerUserSchema>
 
 interface DeveloperUser {
   id: string
-  company_id: string
+  company_id: string | null
   company_name: string
   name: string
   email: string
@@ -43,7 +43,7 @@ interface DeveloperUser {
   pay_rate?: number
 }
 
-const isSuperAccount = (u: DeveloperUser) => u.role === 'DEVELOPER'
+const isPlatformDeveloper = (u: DeveloperUser) => u.role === 'DEVELOPER' || u.company_id == null
 
 export default function DeveloperUserPage() {
   const router = useRouter()
@@ -167,7 +167,7 @@ export default function DeveloperUserPage() {
     <Layout>
       <div className="px-4 py-6 sm:px-0 max-w-2xl">
         <BackButton
-          fallbackHref={isSuperAccount(user) ? '/developer' : `/developer/companies/${user.company_id}`}
+          fallbackHref={isPlatformDeveloper(user) ? '/developer' : `/developer/companies/${user.company_id}`}
           className="text-sm text-blue-600 hover:text-blue-700 mb-4"
         >
           Back
@@ -175,8 +175,16 @@ export default function DeveloperUserPage() {
 
         <h1 className="text-2xl font-bold text-slate-900 mb-1">Edit User (Developer)</h1>
         <p className="text-sm text-slate-600 mb-6">
-          {isSuperAccount(user) ? 'Super account (no company)' : `${user.company_name} — modify user info and verification`}
+          {isPlatformDeveloper(user)
+            ? 'Platform Developer — no company'
+            : `${user.company_name} — modify user info and verification`}
         </p>
+
+        {isPlatformDeveloper(user) && (
+          <div className="mb-4 inline-flex items-center px-2.5 py-1 rounded text-xs font-medium bg-slate-100 text-slate-700">
+            Platform Developer — no company
+          </div>
+        )}
 
         <form onSubmit={form.handleSubmit(onSubmit)} className="bg-white rounded-lg shadow p-6 space-y-6">
           <FormField label="Name" error={form.formState.errors.name?.message} required>
@@ -185,8 +193,25 @@ export default function DeveloperUserPage() {
           <FormField label="Email" error={form.formState.errors.email?.message} required>
             <Input type="email" {...form.register('email')} error={!!form.formState.errors.email} />
           </FormField>
-          <FormField label="Role" error={form.formState.errors.role?.message}>
-            <Select {...form.register('role')} error={!!form.formState.errors.role}>
+          <FormField
+            label="Role"
+            error={form.formState.errors.role?.message}
+            hint={
+              isPlatformDeveloper(user)
+                ? 'Contact support to convert a developer account to a tenant user'
+                : undefined
+            }
+          >
+            <Select
+              {...form.register('role')}
+              error={!!form.formState.errors.role}
+              disabled={isPlatformDeveloper(user)}
+              title={
+                isPlatformDeveloper(user)
+                  ? 'Contact support to convert a developer account to a tenant user'
+                  : undefined
+              }
+            >
               {ROLES.map((r) => (
                 <option key={r} value={r}>{r}</option>
               ))}
@@ -244,7 +269,7 @@ export default function DeveloperUserPage() {
               {saving ? 'Saving...' : 'Save'}
             </button>
             <BackButton
-              fallbackHref={isSuperAccount(user) ? '/developer' : `/developer/companies/${user.company_id}`}
+              fallbackHref={isPlatformDeveloper(user) ? '/developer' : `/developer/companies/${user.company_id}`}
               className="px-4 py-2 bg-slate-100 text-slate-700 rounded-lg hover:bg-slate-200"
               showArrow={false}
             >

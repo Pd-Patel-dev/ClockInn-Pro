@@ -45,6 +45,10 @@ export default function DashboardPage() {
       try {
         const currentUser = await getCurrentUser()
         setUser(currentUser)
+        if (currentUser.role === 'DEVELOPER') {
+          router.replace('/developer')
+          return
+        }
         if (currentUser.role === 'ADMIN') {
           fetchStats()
         }

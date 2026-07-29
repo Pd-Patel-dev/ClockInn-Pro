@@ -1,8 +1,8 @@
-from typing import Dict, List
+from typing import Dict, List, Optional
 from uuid import UUID
 from decimal import Decimal
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, delete as sql_delete
+from sqlalchemy import select, delete as sql_delete, func
 from sqlalchemy.orm import selectinload
 from fastapi import HTTPException, status
 
@@ -300,11 +300,12 @@ _SYSTEM_DEFAULT_COMPANY_ID = UUID("00000000-0000-0000-0000-000000000000")
 async def delete_company_as_developer(
     db: AsyncSession,
     company_id: UUID,
-    actor_user_company_id: UUID,
+    actor_user_company_id: Optional[UUID] = None,
 ) -> None:
     """
     Permanently remove a tenant company and dependent rows (developer-only).
-    Order respects FK constraints on typical Postgres schemas (no ON DELETE on users.company_id).
+    Order respects FK constraints on typical Postgres schemas.
+    Developers have company_id=NULL and are never deleted by this path.
     """
     from app.models.payroll import PayrollRun, PayrollLineItem, PayrollAdjustment
     from app.models.session import Session
@@ -315,11 +316,6 @@ async def delete_company_as_developer(
     from app.models.cash_drawer import CashDrawerAudit, CashDrawerSession
     from app.models.shift_note import ShiftNoteComment, ShiftNote
 
-    if company_id == actor_user_company_id:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="You cannot delete the company your own account belongs to.",
-        )
     if company_id == _SYSTEM_DEFAULT_COMPANY_ID:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -327,6 +323,19 @@ async def delete_company_as_developer(
         )
 
     await get_company_info(db, company_id)
+
+    # Defensive: developers must not live under a company after the platform refactor
+    dev_check = await db.execute(
+        select(func.count(User.id)).where(
+            User.company_id == company_id,
+            User.role == UserRole.DEVELOPER,
+        )
+    )
+    if (dev_check.scalar_one() or 0) > 0:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Data integrity error: DEVELOPER users found under a company. Aborting delete.",
+        )
 
     run_ids = select(PayrollRun.id).where(PayrollRun.company_id == company_id)
     await db.execute(

@@ -76,7 +76,8 @@ Defined in **`server/app/models/user.py`**.
 - **Roles:** `UserRole` enum (ADMIN, MANAGER, DEVELOPER, MAINTENANCE, FRONTDESK, HOUSEKEEPING, RESTAURANT, SECURITY)—not just “admin vs employee”.
 - **PIN:** stored as **`pin_hash`** (Argon2); kiosk/punch verifies against the hash.
 - **Pay:** **`pay_rate_cents`** is the primary field for payroll; **`pay_rate`** is legacy. **`PayRateType`** is currently HOURLY. No separate employee contract table.
-- **Tenant isolation:** each user has **`company_id`**; email is unique per company (`uq_user_company_email`).
+- **Tenant isolation:** non-developer users have a required **`company_id`**. **DEVELOPER** accounts are platform-level with **`company_id = NULL`** (above the company hierarchy).
+- **Email uniqueness:** emails are **globally unique** (case-insensitive) across the entire platform (`uq_user_email` on `LOWER(email)`), not per company.
 
 Full field list and relationships: see the `User` class in that file.
 

@@ -6,11 +6,14 @@ interface TokenPayload {
   exp: number
   sub: string
   type: string
+  company_id?: string | null
+  role?: string
   [key: string]: any
 }
 
 /**
- * Decode JWT token without verification (for checking expiration)
+ * Decode JWT token without verification (for checking expiration).
+ * company_id may be null for DEVELOPER tokens — that is valid.
  */
 function decodeJWT(token: string): TokenPayload | null {
   try {
@@ -34,6 +37,10 @@ function decodeJWT(token: string): TokenPayload | null {
     // Invalid base64 or JSON - token is malformed
     return null
   }
+}
+
+function isDeveloperToken(payload: TokenPayload | null | undefined): boolean {
+  return payload?.role === 'DEVELOPER'
 }
 
 /**
@@ -73,5 +80,5 @@ function getTokenExpirationTime(token: string): number | null {
   return Math.max(0, Math.floor((expirationTime - now) / 1000))
 }
 
-export { decodeJWT, isTokenExpiringSoon, isTokenExpired, getTokenExpirationTime }
+export { decodeJWT, isTokenExpiringSoon, isTokenExpired, getTokenExpirationTime, isDeveloperToken }
 

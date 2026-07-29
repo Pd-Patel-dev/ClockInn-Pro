@@ -98,9 +98,25 @@ export default function DeveloperPortalPage() {
   const [systemInfo, setSystemInfo] = useState<SystemInfo | null>(null)
   const [healthStatus, setHealthStatus] = useState<HealthStatus | null>(null)
   const [recentActivity, setRecentActivity] = useState<RecentActivity | null>(null)
-  const [activeTab, setActiveTab] = useState<'overview' | 'stats' | 'system' | 'activity' | 'email' | 'companies' | 'add-developer'>('overview')
+  const [activeTab, setActiveTab] = useState<'overview' | 'stats' | 'system' | 'activity' | 'email' | 'companies' | 'users' | 'add-developer'>('overview')
   const [refreshing, setRefreshing] = useState(false)
   const [companies, setCompanies] = useState<Array<{ id: string; name: string; slug: string; created_at: string | null; user_count: number }>>([])
+  const [allUsers, setAllUsers] = useState<Array<{
+    id: string
+    company_id: string | null
+    company_name: string
+    name: string
+    email: string
+    role: string
+    status: string
+    email_verified: boolean
+    verification_required: boolean
+    created_at: string
+    last_login_at: string | null
+  }>>([])
+  const [usersLoading, setUsersLoading] = useState(false)
+  const [usersSearch, setUsersSearch] = useState('')
+  const [usersRoleFilter, setUsersRoleFilter] = useState('')
   const [deletingCompanyId, setDeletingCompanyId] = useState<string | null>(null)
   const toast = useToast()
   const systemDefaultCompanyId = '00000000-0000-0000-0000-000000000000'
@@ -136,12 +152,35 @@ export default function DeveloperPortalPage() {
     }
   }, [activeTab, user?.role])
 
+  useEffect(() => {
+    if (activeTab !== 'users' || user?.role !== 'DEVELOPER') return
+    let cancelled = false
+    const load = async () => {
+      setUsersLoading(true)
+      try {
+        const params: Record<string, string> = {}
+        if (usersSearch.trim()) params.q = usersSearch.trim()
+        if (usersRoleFilter) params.role = usersRoleFilter
+        const res = await api.get('/developer/users', { params })
+        if (!cancelled) setAllUsers(Array.isArray(res.data) ? res.data : [])
+      } catch (e) {
+        if (!cancelled) {
+          setAllUsers([])
+          logger.error('Failed to load users', e as Error)
+        }
+      } finally {
+        if (!cancelled) setUsersLoading(false)
+      }
+    }
+    const t = setTimeout(load, usersSearch ? 250 : 0)
+    return () => {
+      cancelled = true
+      clearTimeout(t)
+    }
+  }, [activeTab, user?.role, usersSearch, usersRoleFilter])
+
   const handleDeleteCompany = async (c: { id: string; name: string }) => {
     if (!user) return
-    if (c.id === user.company_id) {
-      toast.error('You cannot delete the company your developer account belongs to.')
-      return
-    }
     if (c.id === systemDefaultCompanyId) {
       toast.error('The system default company cannot be deleted.')
       return
@@ -190,9 +229,17 @@ export default function DeveloperPortalPage() {
       setAddDevForm({ name: '', email: '', password: '', confirmPassword: '' })
       fetchAllData()
     } catch (err: any) {
+      const statusCode = err.response?.status
       const msg = err.response?.data?.detail || err.message || 'Failed to create developer account'
-      setAddDevError(typeof msg === 'string' ? msg : JSON.stringify(msg))
-      toast.error(typeof msg === 'string' ? msg : 'Failed to create developer account')
+      if (statusCode === 409) {
+        const conflictMsg =
+          'This email is already in use by another user (in any company). Emails must be unique across the entire platform.'
+        setAddDevError(conflictMsg)
+        toast.error(conflictMsg)
+      } else {
+        setAddDevError(typeof msg === 'string' ? msg : JSON.stringify(msg))
+        toast.error(typeof msg === 'string' ? msg : 'Failed to create developer account')
+      }
     } finally {
       setAddDevSubmitting(false)
     }
@@ -245,15 +292,22 @@ export default function DeveloperPortalPage() {
   return (
     <Layout>
       <div className="px-4 py-6 sm:px-0">
-        <div className="flex items-center justify-between mb-6">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between mb-6">
           <div>
-            <h1 className="text-3xl font-bold text-slate-900">Developer Portal</h1>
-            <p className="text-sm text-slate-600 mt-1">System monitoring and administration</p>
+            <p className="text-sm font-medium text-blue-600 mb-1">Platform Developer</p>
+            <h1 className="text-3xl font-bold text-slate-900">
+              {user?.name ? `Welcome, ${user.name}` : 'Developer Portal'}
+            </h1>
+            <p className="text-sm text-slate-600 mt-1">
+              {user?.email
+                ? `${user.email} · System monitoring and administration`
+                : 'System monitoring and administration'}
+            </p>
           </div>
           <button
             onClick={fetchAllData}
             disabled={refreshing}
-            className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 text-sm"
+            className="shrink-0 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 text-sm"
           >
             {refreshing ? 'Refreshing...' : 'Refresh'}
           </button>
@@ -262,7 +316,7 @@ export default function DeveloperPortalPage() {
         {/* Tabs */}
         <div className="border-b border-slate-200 mb-6">
           <nav className="-mb-px flex space-x-8">
-            {['overview', 'stats', 'system', 'activity', 'email', 'companies', 'add-developer'].map((tab) => (
+            {['overview', 'stats', 'system', 'activity', 'email', 'companies', 'users', 'add-developer'].map((tab) => (
               <button
                 key={tab}
                 onClick={() => setActiveTab(tab as any)}
@@ -272,7 +326,13 @@ export default function DeveloperPortalPage() {
                     : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'
                 }`}
               >
-                {tab === 'overview' ? 'Overview' : tab === 'add-developer' ? 'Add developer' : tab}
+                {tab === 'overview'
+                  ? 'Overview'
+                  : tab === 'add-developer'
+                    ? 'Add developer'
+                    : tab === 'users'
+                      ? 'Users'
+                      : tab}
               </button>
             ))}
           </nav>
@@ -785,7 +845,6 @@ export default function DeveloperPortalPage() {
                             type="button"
                             disabled={
                               deletingCompanyId === c.id ||
-                              c.id === user?.company_id ||
                               c.id === systemDefaultCompanyId
                             }
                             onClick={() => handleDeleteCompany(c)}
@@ -803,11 +862,114 @@ export default function DeveloperPortalPage() {
           </div>
         )}
 
+        {/* Users Tab — all platform users */}
+        {activeTab === 'users' && (
+          <div className="bg-white rounded-lg shadow p-6">
+            <h3 className="text-lg font-semibold mb-2">All Users</h3>
+            <p className="text-sm text-slate-600 mb-4">
+              Every account on the platform, including platform developers (no company). Click a name to edit.
+            </p>
+            <div className="flex flex-col sm:flex-row gap-3 mb-4">
+              <input
+                type="search"
+                value={usersSearch}
+                onChange={(e) => setUsersSearch(e.target.value)}
+                placeholder="Search name or email…"
+                className="flex-1 px-3 py-2 border border-slate-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+              />
+              <select
+                value={usersRoleFilter}
+                onChange={(e) => setUsersRoleFilter(e.target.value)}
+                className="px-3 py-2 border border-slate-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+              >
+                <option value="">All roles</option>
+                <option value="DEVELOPER">DEVELOPER</option>
+                <option value="ADMIN">ADMIN</option>
+                <option value="MANAGER">MANAGER</option>
+                <option value="FRONTDESK">FRONTDESK</option>
+                <option value="HOUSEKEEPING">HOUSEKEEPING</option>
+                <option value="MAINTENANCE">MAINTENANCE</option>
+                <option value="RESTAURANT">RESTAURANT</option>
+                <option value="SECURITY">SECURITY</option>
+              </select>
+            </div>
+            {usersLoading ? (
+              <p className="text-slate-500 text-sm">Loading users…</p>
+            ) : allUsers.length === 0 ? (
+              <p className="text-slate-500 text-sm">No users found.</p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-slate-200">
+                  <thead className="bg-slate-50">
+                    <tr>
+                      <th className="px-4 py-2 text-left text-xs font-medium text-slate-700 uppercase">Name</th>
+                      <th className="px-4 py-2 text-left text-xs font-medium text-slate-700 uppercase">Email</th>
+                      <th className="px-4 py-2 text-left text-xs font-medium text-slate-700 uppercase">Role</th>
+                      <th className="px-4 py-2 text-left text-xs font-medium text-slate-700 uppercase">Company</th>
+                      <th className="px-4 py-2 text-left text-xs font-medium text-slate-700 uppercase">Status</th>
+                      <th className="px-4 py-2 text-left text-xs font-medium text-slate-700 uppercase">Verified</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-200">
+                    {allUsers.map((u) => (
+                      <tr key={u.id} className="hover:bg-slate-50">
+                        <td className="px-4 py-3">
+                          <Link
+                            href={`/developer/users/${u.id}`}
+                            className="text-blue-600 hover:text-blue-800 font-medium"
+                          >
+                            {u.name}
+                          </Link>
+                        </td>
+                        <td className="px-4 py-3 text-sm text-slate-600">{u.email}</td>
+                        <td className="px-4 py-3 text-sm">
+                          <span
+                            className={`inline-flex px-1.5 py-0.5 rounded text-xs font-medium ${
+                              u.role === 'DEVELOPER'
+                                ? 'bg-slate-800 text-white'
+                                : 'bg-slate-100 text-slate-700'
+                            }`}
+                          >
+                            {u.role}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-sm text-slate-600">
+                          {u.company_id ? (
+                            <Link
+                              href={`/developer/companies/${u.company_id}`}
+                              className="text-blue-600 hover:underline"
+                            >
+                              {u.company_name}
+                            </Link>
+                          ) : (
+                            <span className="text-slate-500">{u.company_name || 'Platform'}</span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3 text-sm text-slate-600 capitalize">{u.status}</td>
+                        <td className="px-4 py-3 text-sm">
+                          {u.email_verified ? (
+                            <span className="text-green-700">Yes</span>
+                          ) : (
+                            <span className="text-amber-700">No</span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                <p className="mt-3 text-xs text-slate-500">{allUsers.length} user(s)</p>
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Add developer Tab */}
         {activeTab === 'add-developer' && (
           <div className="bg-white rounded-lg shadow p-6 max-w-md">
             <h3 className="text-lg font-semibold mb-2">Add developer account</h3>
-            <p className="text-sm text-slate-600 mb-4">Create a new developer (super account). They can log in and access the Developer Portal.</p>
+            <p className="text-sm text-slate-600 mb-4">
+              Developer accounts have platform-wide access and do not belong to any company.
+            </p>
             {addDevError && (
               <div className="mb-4 p-3 rounded-lg bg-red-50 border border-red-200 text-red-800 text-sm">
                 {addDevError}

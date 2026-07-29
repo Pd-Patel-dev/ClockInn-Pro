@@ -41,7 +41,12 @@ async def get_company_info_public_endpoint(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Get company information and settings (for authenticated users)."""
+    """Get company information and settings (for authenticated tenant users)."""
+    if current_user.company_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Platform developers do not belong to a company. Use the Developer Portal for company management.",
+        )
     company = await get_company_info(db, current_user.company_id)
     settings = get_company_settings(company)
     

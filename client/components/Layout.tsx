@@ -125,6 +125,11 @@ export default function Layout({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (!user) return
+    // Platform developers have no company — skip tenant company info fetch
+    if (user.role === 'DEVELOPER' || user.company_id == null) {
+      setShiftNotesEnabled(true)
+      return
+    }
     let cancelled = false
     api
       .get('/company/info')
@@ -139,7 +144,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
     return () => {
       cancelled = true
     }
-  }, [user?.id])
+  }, [user?.id, user?.role, user?.company_id])
 
   // Stop token refresh interval when component unmounts (e.g., on logout)
   useEffect(() => {
@@ -396,12 +401,22 @@ export default function Layout({ children }: { children: React.ReactNode }) {
             </div>
             {/* User Menu + Hamburger (responsive) */}
             <div className="flex items-center gap-2 sm:gap-3">
-              <div className="hidden sm:flex sm:items-center sm:gap-2">
+              <div className="hidden sm:flex sm:items-center sm:gap-2 min-w-0">
                 <div
                   className="w-8 h-8 rounded-full bg-slate-700 flex items-center justify-center text-xs font-semibold text-white uppercase shrink-0"
                   title={user.name}
                 >
                   {user.name.trim().slice(0, 2).toUpperCase() || '?'}
+                </div>
+                <div className="min-w-0">
+                  <p className="text-sm font-medium text-white truncate max-w-[10rem] lg:max-w-[14rem]">
+                    {user.name}
+                  </p>
+                  <p className="text-xs text-slate-400 truncate max-w-[10rem] lg:max-w-[14rem]">
+                    {user.role === 'DEVELOPER'
+                      ? 'Platform Developer'
+                      : user.company_name || user.email}
+                  </p>
                 </div>
               </div>
               <button
@@ -553,7 +568,14 @@ export default function Layout({ children }: { children: React.ReactNode }) {
               <div className="w-8 h-8 rounded-full bg-slate-700 flex items-center justify-center text-xs font-semibold text-white uppercase shrink-0">
                 {user.name.trim().slice(0, 2).toUpperCase() || '?'}
               </div>
-              <p className="text-xs text-gray-700 font-medium truncate">{user.name}</p>
+              <div className="min-w-0">
+                <p className="text-xs text-gray-700 font-medium truncate">{user.name}</p>
+                <p className="text-[11px] text-gray-500 truncate">
+                  {user.role === 'DEVELOPER'
+                    ? 'Platform Developer'
+                    : user.company_name || user.email}
+                </p>
+              </div>
             </div>
           </div>
         </div>

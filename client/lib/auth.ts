@@ -14,7 +14,7 @@ export interface RegisterData {
 
 export interface User {
   id: string
-  company_id: string
+  company_id: string | null
   name: string
   email: string
   role:
@@ -31,6 +31,19 @@ export interface User {
   email_verified: boolean
   verification_required: boolean
   permissions: string[]
+}
+
+export interface JwtPayload {
+  sub?: string
+  company_id?: string | null
+  role?: string
+  exp?: number
+  type?: string
+  [key: string]: unknown
+}
+
+export function isDeveloperToken(payload: JwtPayload | null | undefined): boolean {
+  return payload?.role === 'DEVELOPER'
 }
 
 export const login = async (credentials: LoginCredentials) => {

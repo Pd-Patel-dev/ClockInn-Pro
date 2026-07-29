@@ -176,20 +176,15 @@ async def create_employee(
     
     normalized_email = normalize_email(data.email)
     
-    # Check if email exists in company
+    # Emails are globally unique across the platform
     result = await db.execute(
-        select(User).where(
-            and_(
-                User.email == normalized_email,
-                User.company_id == company_id,
-            )
-        )
+        select(User).where(User.email == normalized_email)
     )
     existing = result.scalar_one_or_none()
     if existing:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Email already exists in company",
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Email already in use on the platform.",
         )
     
     # Check if PIN is unique within the company (if PIN is provided)
@@ -258,8 +253,13 @@ async def create_employee(
         return user
     except Exception as e:
         await db.rollback()
-        # Check if it's a unique constraint violation for PIN
+        # Check if it's a unique constraint violation for PIN or email
         error_str = str(e).lower()
+        if "uq_user_email" in error_str or ("email" in error_str and "unique" in error_str):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Email already in use on the platform.",
+            )
         if 'pin_hash' in error_str or 'ix_users_company_pin_hash_unique' in error_str:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -441,7 +441,6 @@ async def update_user_developer(
             result = await db.execute(
                 select(User).where(
                     and_(
-                        User.company_id == company_id,
                         User.email == normalized,
                         User.id != user_id,
                     )
@@ -449,11 +448,19 @@ async def update_user_developer(
             )
             if result.scalar_one_or_none():
                 raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="Email already exists in this company",
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="Email already in use on the platform.",
                 )
             user.email = normalized
     if data.role is not None:
+        if user.role == UserRole.DEVELOPER and data.role != UserRole.DEVELOPER:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Cannot convert a developer account to a tenant user via this endpoint.",
+            )
+        if data.role == UserRole.DEVELOPER:
+            # Platform developers must not belong to a company
+            user.company_id = None
         user.role = data.role
     if data.status is not None:
         user.status = UserStatus(data.status.value) if isinstance(data.status, UserStatus) else data.status
@@ -467,6 +474,11 @@ async def update_user_developer(
         if data.pin == "":
             user.pin_hash = None
         else:
+            if company_id is None:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="PIN is only valid for tenant users",
+                )
             new_pin_hash = get_pin_hash(data.pin)
             result = await db.execute(
                 select(User).where(
@@ -503,10 +515,15 @@ async def update_user_developer(
     except Exception as e:
         await db.rollback()
         error_str = str(e).lower()
-        if "pin_hash" in error_str or "unique" in error_str or "uq_user_company_email" in error_str:
+        if "uq_user_email" in error_str or ("email" in error_str and "unique" in error_str):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Email already in use on the platform.",
+            )
+        if "pin_hash" in error_str or "unique" in error_str:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="PIN or email already in use in this company",
+                detail="PIN or email already in use",
             )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
