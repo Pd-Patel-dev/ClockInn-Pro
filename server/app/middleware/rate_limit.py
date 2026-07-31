@@ -109,6 +109,9 @@ def _is_exempt_path(path: str) -> bool:
         if path.startswith("/api/v1/health/test-error"):
             return False
         return True
+    # Long-lived SSE / frequent tail for developer console
+    if path.startswith("/api/v1/developer/logs"):
+        return True
     if path in ("/docs", "/openapi.json", "/redoc"):
         return True
     return False

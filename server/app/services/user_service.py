@@ -16,8 +16,10 @@ from app.core.security import (
     get_pin_hash,
     normalize_email,
     validate_password_strength,
+    generate_temp_password,
 )
-from app.schemas.user import UserCreate, UserUpdate, DeveloperUserUpdate
+from app.schemas.user import UserCreate, UserUpdate, DeveloperUserUpdate, TenantUserCreate
+from app.models.company import Company
 import uuid
 
 logger = logging.getLogger(__name__)
@@ -237,7 +239,14 @@ async def create_employee(
         # If password was not provided, send password setup email
         if not data.password:
             try:
-                setup_token = create_password_setup_token(str(user.id), normalized_email)
+                from app.core.security import hash_password_setup_jti
+                setup_token, jti, expires_at = create_password_setup_token(
+                    str(user.id), normalized_email, hours=48
+                )
+                user.password_setup_token_hash = hash_password_setup_jti(jti)
+                user.password_setup_expires_at = expires_at
+                await db.commit()
+                await db.refresh(user)
                 setup_link = f"{settings.FRONTEND_URL}/set-password?token={setup_token}"
                 email_sent = await email_service.send_password_setup_email(
                     normalized_email,
@@ -271,6 +280,138 @@ async def create_employee(
             detail=client_error_detail(
                 dev_detail=f"Failed to create employee: {str(e)}",
                 prod_detail="Failed to create employee. Please try again.",
+            ),
+        )
+
+
+async def create_tenant_user_as_developer(
+    db: AsyncSession,
+    company_id: UUID,
+    data: TenantUserCreate,
+    actor_user_id: UUID,
+) -> tuple[User, Optional[str]]:
+    """
+    Create a tenant user in any company (developer portal).
+    Returns (user, temp_password_or_none). Temp password is only set when caller omitted password.
+    """
+    if data.role == UserRole.DEVELOPER:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Use POST /api/v1/developer/accounts to create developers.",
+        )
+
+    company_result = await db.execute(select(Company).where(Company.id == company_id))
+    company = company_result.scalar_one_or_none()
+    if not company:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Company not found.")
+
+    temp_password: Optional[str] = None
+    if data.password:
+        is_valid, error_msg = validate_password_strength(data.password)
+        if not is_valid:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=error_msg)
+        password_hash = get_password_hash(data.password)
+    else:
+        temp_password = generate_temp_password(16)
+        password_hash = get_password_hash(temp_password)
+
+    normalized_email = normalize_email(data.email)
+    existing = await db.execute(select(User).where(User.email == normalized_email))
+    if existing.scalar_one_or_none():
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Email already in use on the platform.",
+        )
+
+    pin_hash = None
+    if data.pin:
+        pin_hash = get_pin_hash(data.pin)
+        pin_check = await db.execute(
+            select(User).where(
+                and_(
+                    User.company_id == company_id,
+                    User.pin_hash == pin_hash,
+                    User.role.in_([
+                        UserRole.MAINTENANCE,
+                        UserRole.FRONTDESK,
+                        UserRole.HOUSEKEEPING,
+                        UserRole.RESTAURANT,
+                        UserRole.SECURITY,
+                    ]),
+                )
+            )
+        )
+        if pin_check.scalar_one_or_none():
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="This PIN is already in use by another user in this company. Please choose a different PIN.",
+            )
+
+    from datetime import datetime, timezone
+
+    now = datetime.now(timezone.utc)
+
+    email_verified = bool(data.email_verified)
+    user = User(
+        id=uuid.uuid4(),
+        company_id=company_id,
+        role=data.role,
+        name=data.name.strip(),
+        email=normalized_email,
+        password_hash=password_hash,
+        pin_hash=pin_hash,
+        status=UserStatus.ACTIVE,
+        pay_rate=float(data.pay_rate) if data.pay_rate is not None else None,
+        email_verified=email_verified,
+        verification_required=not email_verified,
+        last_verified_at=now if email_verified else None,
+    )
+
+    try:
+        db.add(user)
+        db.add(
+            AuditLog(
+                id=uuid.uuid4(),
+                company_id=company_id,
+                actor_user_id=actor_user_id,
+                action="TENANT_USER_CREATED_BY_DEVELOPER",
+                entity_type="user",
+                entity_id=user.id,
+                metadata_json={
+                    "email": normalized_email,
+                    "role": data.role.value,
+                    "temp_password_issued": temp_password is not None,
+                },
+            )
+        )
+        await db.commit()
+        await db.refresh(user)
+        logger.info(
+            "Developer created tenant user %s (%s) in company %s",
+            user.id,
+            normalized_email,
+            company_id,
+        )
+        return user, temp_password
+    except Exception as e:
+        await db.rollback()
+        error_str = str(e).lower()
+        if "uq_user_email" in error_str or ("email" in error_str and "unique" in error_str):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Email already in use on the platform.",
+            )
+        if "pin_hash" in error_str or "ix_users_company_pin_hash_unique" in error_str:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="This PIN is already in use by another user in this company. Please choose a different PIN.",
+            )
+        logger.error("Failed to create tenant user as developer: %s", e, exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=client_error_detail(
+                dev_detail=f"Failed to create user: {str(e)}",
+                prod_detail="Failed to create user. Please try again.",
             ),
         )
 

@@ -815,7 +815,7 @@ To get started, please set your password by clicking the link below:
 
 {setup_link}
 
-This link will expire in 7 days.
+This link will expire in 48 hours and can only be used once.
 
 If you didn't expect this email, please ignore it.
 

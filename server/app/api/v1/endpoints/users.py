@@ -76,6 +76,17 @@ async def get_me(
         email_verified=email_verified,
         verification_required=verification_required,
         permissions=sorted(list(ROLE_PERMISSIONS.get(user.role, set()))),
+        preferred_name=user.preferred_name,
+        phone=user.phone,
+        avatar_url=user.avatar_url,
+        timezone=user.timezone or "America/Chicago",
+        date_format=user.date_format or "MM/DD/YYYY",
+        time_format=user.time_format or "12h",
+        first_day_of_week=user.first_day_of_week if user.first_day_of_week is not None else 0,
+        theme_preference=user.theme_preference or "system",
+        created_at=user.created_at,
+        last_verified_at=user.last_verified_at,
+        has_pin=bool(user.pin_hash),
     )
 
 

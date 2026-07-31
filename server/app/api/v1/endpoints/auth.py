@@ -237,7 +237,8 @@ async def get_password_setup_info(
 ):
     """Get user information from password setup token."""
     from sqlalchemy import select
-    from app.core.security import decode_token, normalize_email
+    from datetime import datetime, timezone
+    from app.core.security import decode_token, normalize_email, hash_password_setup_jti
     
     # Decode and verify token
     payload = decode_token(token)
@@ -256,6 +257,7 @@ async def get_password_setup_info(
     
     user_id = payload.get("sub")
     token_email = payload.get("email")
+    jti = payload.get("jti")
     
     if not user_id or not token_email:
         raise HTTPException(
@@ -290,6 +292,23 @@ async def get_password_setup_info(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Token email does not match user email."
         )
+
+    # One-time invite: require matching server-side jti hash when present
+    if user.password_setup_token_hash:
+        if not jti or hash_password_setup_jti(jti) != user.password_setup_token_hash:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid or already used setup link.",
+            )
+        if user.password_setup_expires_at:
+            expires = user.password_setup_expires_at
+            if expires.tzinfo is None:
+                expires = expires.replace(tzinfo=timezone.utc)
+            if datetime.now(timezone.utc) > expires:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="This setup link has expired. Ask an administrator to resend it.",
+                )
     
     return {
         "name": user.name,
@@ -305,11 +324,13 @@ async def set_password_endpoint(
 ):
     """Set password for new employee using setup token."""
     from sqlalchemy import select
+    from datetime import datetime, timezone
     from app.core.security import (
         decode_token,
         validate_password_strength,
         get_password_hash,
         normalize_email,
+        hash_password_setup_jti,
     )
     
     # Decode and verify token
@@ -329,6 +350,7 @@ async def set_password_endpoint(
     
     user_id = payload.get("sub")
     token_email = payload.get("email")
+    jti = payload.get("jti")
     
     if not user_id or not token_email:
         raise HTTPException(
@@ -371,9 +393,28 @@ async def set_password_endpoint(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Token email does not match user email."
         )
+
+    # Enforce one-time use when a setup token was issued
+    if user.password_setup_token_hash:
+        if not jti or hash_password_setup_jti(jti) != user.password_setup_token_hash:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid or already used setup link.",
+            )
+        if user.password_setup_expires_at:
+            expires = user.password_setup_expires_at
+            if expires.tzinfo is None:
+                expires = expires.replace(tzinfo=timezone.utc)
+            if datetime.now(timezone.utc) > expires:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="This setup link has expired. Ask an administrator to resend it.",
+                )
     
-    # Set password
+    # Set password and invalidate invite token
     user.password_hash = get_password_hash(request.password)
+    user.password_setup_token_hash = None
+    user.password_setup_expires_at = None
     
     try:
         db.add(user)

@@ -1,5 +1,5 @@
-from datetime import datetime, timedelta
-from typing import Optional
+from datetime import datetime, timedelta, timezone
+from typing import Optional, Tuple
 from jose import JWTError, jwt
 from passlib.context import CryptContext
 from app.core.config import settings
@@ -104,15 +104,62 @@ def validate_password_strength(password: str) -> tuple[bool, Optional[str]]:
     return True, None
 
 
-def create_password_setup_token(user_id: str, email: str) -> str:
-    """Create a JWT token for password setup (valid for 7 days)."""
+def generate_temp_password(length: int = 16) -> str:
+    """Generate a secure temporary password that passes validate_password_strength."""
+    import secrets
+    import string
+
+    if length < 8:
+        length = 8
+    upper = string.ascii_uppercase
+    lower = string.ascii_lowercase
+    digits = string.digits
+    symbols = "!@#$%^&*"
+    # Guarantee at least one of each required class
+    chars = [
+        secrets.choice(upper),
+        secrets.choice(lower),
+        secrets.choice(digits),
+        secrets.choice(symbols),
+    ]
+    alphabet = upper + lower + digits + symbols
+    chars.extend(secrets.choice(alphabet) for _ in range(length - 4))
+    # Shuffle so required chars are not always at the front
+    for i in range(len(chars) - 1, 0, -1):
+        j = secrets.randbelow(i + 1)
+        chars[i], chars[j] = chars[j], chars[i]
+    return "".join(chars)
+
+
+def hash_password_setup_jti(jti: str) -> str:
+    """SHA-256 hex digest of password-setup token jti (one-time invite)."""
+    import hashlib
+    return hashlib.sha256(jti.encode("utf-8")).hexdigest()
+
+
+def create_password_setup_token(
+    user_id: str,
+    email: str,
+    *,
+    hours: int = 48,
+) -> Tuple[str, str, datetime]:
+    """
+    Create a JWT for password setup.
+
+    Returns (token, jti, expires_at_utc). Store hash_password_setup_jti(jti) on the user
+    so the link is single-use and server-revocable.
+    """
+    import secrets
+
+    jti = secrets.token_urlsafe(32)
+    expire_naive = datetime.utcnow() + timedelta(hours=hours)
+    expire_aware = expire_naive.replace(tzinfo=timezone.utc)
     to_encode = {
         "sub": user_id,
         "email": email,
         "type": "password_setup",
+        "jti": jti,
+        "exp": expire_naive,
     }
-    expire = datetime.utcnow() + timedelta(days=7)
-    to_encode.update({"exp": expire})
     encoded_jwt = jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
-    return encoded_jwt
-
+    return encoded_jwt, jti, expire_aware

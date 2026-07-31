@@ -1,7 +1,8 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, EmailStr, field_validator
 from typing import Optional, List
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal
+from uuid import UUID
 
 
 class CompanySettingsResponse(BaseModel):
@@ -100,4 +101,42 @@ class CompanySettingsUpdate(BaseModel):
 class CompanyNameUpdate(BaseModel):
     """Update company name."""
     name: str = Field(..., min_length=1, max_length=255)
+
+
+class CompanyCreateWithAdmin(BaseModel):
+    """Developer creates a company and its first admin in one request."""
+    name: str = Field(min_length=2, max_length=100)
+    timezone: str = Field(default="America/Chicago")
+    address: Optional[str] = None
+    phone: Optional[str] = None
+    email: Optional[EmailStr] = None  # company contact email, separate from admin email
+    email_verification_required: bool = Field(default=False)
+
+    admin_name: str = Field(min_length=2, max_length=100)
+    admin_email: EmailStr
+    admin_pin: Optional[str] = Field(default=None, pattern=r"^\d{4}$")
+
+    @field_validator("admin_email")
+    @classmethod
+    def normalize_admin_email(cls, v: EmailStr) -> str:
+        return str(v).strip().lower()
+
+    @field_validator("email")
+    @classmethod
+    def normalize_contact_email(cls, v: Optional[EmailStr]) -> Optional[str]:
+        if v is None:
+            return None
+        return str(v).strip().lower()
+
+
+class CompanyOut(BaseModel):
+    """Minimal company payload for developer create responses."""
+    id: UUID
+    name: str
+    slug: str
+    kiosk_enabled: bool
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
 

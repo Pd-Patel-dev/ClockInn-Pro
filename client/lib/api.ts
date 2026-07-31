@@ -507,5 +507,48 @@ api.interceptors.response.use(
   }
 )
 
+// --- Developer portal typed helpers ---
+
+export type CompanyCreateWithAdminPayload = {
+  name: string
+  timezone?: string
+  address?: string | null
+  phone?: string | null
+  email?: string | null
+  email_verification_required?: boolean
+  admin_name: string
+  admin_email: string
+  admin_pin?: string | null
+}
+
+export type TenantUserCreatePayload = {
+  name: string
+  email: string
+  password?: string | null
+  role: string
+  pin?: string | null
+  pay_rate?: number | null
+  email_verified?: boolean
+}
+
+export async function createCompanyWithAdmin(
+  payload: CompanyCreateWithAdminPayload,
+): Promise<{
+  company: { id: string; name: string; slug: string; kiosk_enabled: boolean; created_at: string }
+  admin: { id: string; name: string; email: string; role: string }
+  password_setup_email_sent: boolean
+}> {
+  const res = await api.post('/developer/companies', payload)
+  return res.data
+}
+
+export async function createUserInCompany(
+  companyId: string,
+  payload: TenantUserCreatePayload,
+): Promise<{ user: { id: string; name: string; email: string; role: string; company_id: string | null }; temp_password: string | null }> {
+  const res = await api.post(`/developer/companies/${companyId}/users`, payload)
+  return res.data
+}
+
 export default api
 

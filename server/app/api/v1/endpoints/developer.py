@@ -4,7 +4,7 @@ All routes require DEVELOPER role (get_current_developer).
 Responses must not expose details that could help attackers (e.g. secret names,
 token expiry, file paths, CORS origins, or database host/port).
 """
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi import APIRouter, Depends, HTTPException, status, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, text
 from typing import Dict, Any, List, Optional
@@ -27,15 +27,25 @@ from app.services.company_service import (
     get_company_settings,
     update_company_settings,
     delete_company_as_developer,
+    create_company_with_admin,
 )
-from app.services.user_service import get_user_by_id_any, update_user_developer
+from app.services.user_service import get_user_by_id_any, update_user_developer, create_tenant_user_as_developer
 from app.schemas.company import (
     CompanyInfoResponse,
     CompanySettingsResponse,
     CompanySettingsUpdate,
     AdminInfo,
+    CompanyCreateWithAdmin,
+    CompanyOut,
 )
-from app.schemas.user import DeveloperUserResponse, DeveloperUserUpdate, DeveloperCreate
+from app.schemas.user import (
+    DeveloperUserResponse,
+    DeveloperUserUpdate,
+    DeveloperCreate,
+    TenantUserCreate,
+    TenantUserCreateResponse,
+    UserResponse,
+)
 from app.core.config import settings
 from pydantic import BaseModel, EmailStr, Field
 
@@ -312,6 +322,126 @@ async def get_recent_activity(
     }
 
 
+# ---------------------------------------------------------------------------
+# Live log console (ring buffer + SSE)
+# ---------------------------------------------------------------------------
+
+@router.get("/logs/tail")
+@handle_endpoint_errors(operation_name="developer_logs_tail")
+async def developer_logs_tail(
+    lines: int = Query(500, ge=1, le=2000),
+    level: Optional[str] = Query(
+        None,
+        description="Filter: INFO, ERROR, comma list, or INFO+ (min level)",
+    ),
+    q: Optional[str] = Query(None, description="Substring match"),
+    current_user: User = Depends(get_current_developer),
+):
+    """Return the most recent in-memory log lines for the developer console."""
+    from app.core.log_buffer import log_buffer, parse_levels_param
+
+    levels = parse_levels_param(level)
+    return {"lines": log_buffer.get_recent(limit=lines, levels=levels, q=q)}
+
+
+@router.get("/logs/stream")
+async def developer_logs_stream(
+    request: Request,
+    level: Optional[str] = Query(None),
+    q: Optional[str] = Query(None),
+    current_user: User = Depends(get_current_developer),
+):
+    """
+    Server-Sent Events stream of new log lines.
+
+    Note: some reverse proxies (e.g. Render free tier) may idle-timeout long SSE
+    connections; the client reconnects with backoff automatically.
+    """
+    import asyncio
+    import json
+    from fastapi.responses import StreamingResponse
+    from app.core.log_buffer import log_buffer, parse_levels_param
+
+    levels = parse_levels_param(level)
+
+    async def event_gen():
+        queue: asyncio.Queue = asyncio.Queue(maxsize=500)
+
+        async def pump():
+            try:
+                async for entry in log_buffer.subscribe(levels=levels, q=q):
+                    await queue.put(("log", entry))
+            except asyncio.CancelledError:
+                return
+            except Exception as exc:
+                await queue.put(("error", str(exc)))
+
+        task = asyncio.create_task(pump())
+        try:
+            while True:
+                if await request.is_disconnected():
+                    break
+                try:
+                    kind, payload = await asyncio.wait_for(queue.get(), timeout=15.0)
+                except asyncio.TimeoutError:
+                    yield ": heartbeat\n\n"
+                    continue
+                if kind == "error":
+                    yield f"event: error\ndata: {json.dumps({'message': payload})}\n\n"
+                    break
+                entry = payload
+                data = {
+                    "timestamp": entry.get("timestamp"),
+                    "level": entry.get("level"),
+                    "logger": entry.get("logger"),
+                    "message": entry.get("message"),
+                    "raw": entry.get("raw"),
+                    "seq": entry.get("seq"),
+                }
+                yield f"data: {json.dumps(data, default=str)}\n\n"
+        finally:
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
+
+    return StreamingResponse(
+        event_gen(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
+@router.get("/logs/download")
+async def developer_logs_download(
+    lines: int = Query(2000, ge=1, le=2000),
+    level: Optional[str] = Query(None),
+    q: Optional[str] = Query(None),
+    current_user: User = Depends(get_current_developer),
+):
+    """Download the current buffer as a plain-text .log file."""
+    from fastapi.responses import PlainTextResponse
+    from app.core.log_buffer import log_buffer, parse_levels_param
+
+    levels = parse_levels_param(level)
+    entries = log_buffer.get_recent(limit=lines, levels=levels, q=q)
+    body = "\n".join(e.get("raw") or "" for e in entries)
+    if body and not body.endswith("\n"):
+        body += "\n"
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+    filename = f"clockinn-logs-{stamp}.log"
+    return PlainTextResponse(
+        content=body or "",
+        media_type="text/plain; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
 def _build_company_info_response(company: Company, settings: Dict, admin_user: Optional[User]) -> CompanyInfoResponse:
     """Build CompanyInfoResponse from company, settings dict, and optional admin user."""
     biweekly_anchor = None
@@ -376,11 +506,16 @@ async def list_companies_developer(
     db: AsyncSession = Depends(get_db),
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=500),
+    q: Optional[str] = Query(None, description="Search name or slug"),
 ):
     """List all companies (developer only). Click company to view details."""
-    result = await db.execute(
-        select(Company).order_by(Company.name.asc()).offset(skip).limit(limit)
-    )
+    query = select(Company).order_by(Company.name.asc())
+    if q and q.strip():
+        term = f"%{q.strip().lower()}%"
+        query = query.where(
+            (func.lower(Company.name).like(term)) | (func.lower(Company.slug).like(term))
+        )
+    result = await db.execute(query.offset(skip).limit(limit))
     companies = result.scalars().all()
     company_ids = [c.id for c in companies]
     counts = {}
@@ -402,6 +537,83 @@ async def list_companies_developer(
         }
         for c in companies
     ]
+
+
+@router.post("/companies", status_code=status.HTTP_201_CREATED)
+@handle_endpoint_errors(operation_name="create_company_with_admin_developer")
+async def create_company_with_admin_developer(
+    data: CompanyCreateWithAdmin,
+    current_user: User = Depends(get_current_developer),
+    db: AsyncSession = Depends(get_db),
+):
+    """Create a company and its first admin atomically (developer only).
+    Admin receives a secure set-password email; developer does not set the password.
+    """
+    company, admin, setup_email_sent = await create_company_with_admin(db, data, current_user.id)
+    return {
+        "company": CompanyOut.model_validate(company),
+        "admin": UserResponse(
+            id=admin.id,
+            company_id=admin.company_id,
+            name=admin.name,
+            email=admin.email,
+            role=admin.role,
+            status=admin.status,
+            has_pin=admin.pin_hash is not None,
+            pay_rate=float(admin.pay_rate) if admin.pay_rate is not None else None,
+            created_at=admin.created_at,
+            last_login_at=admin.last_login_at,
+            last_punch_at=getattr(admin, "last_punch_at", None),
+            is_clocked_in=None,
+        ),
+        "password_setup_email_sent": setup_email_sent,
+    }
+
+
+@router.post(
+    "/companies/{company_id}/users",
+    status_code=status.HTTP_201_CREATED,
+    response_model=TenantUserCreateResponse,
+)
+@handle_endpoint_errors(operation_name="create_company_user_developer")
+async def create_company_user_developer(
+    company_id: str,
+    data: TenantUserCreate,
+    current_user: User = Depends(get_current_developer),
+    db: AsyncSession = Depends(get_db),
+):
+    """Create a tenant user in any company (developer only). Cannot create DEVELOPER role."""
+    if data.role == UserRole.DEVELOPER:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Use POST /api/v1/developer/accounts to create developers.",
+        )
+    cid = parse_uuid(company_id, "Company ID")
+    user, temp_password = await create_tenant_user_as_developer(
+        db, cid, data, current_user.id
+    )
+    company_name = ""
+    if user.company_id:
+        company = await get_company_info(db, user.company_id)
+        company_name = company.name
+    return TenantUserCreateResponse(
+        user=DeveloperUserResponse(
+            id=user.id,
+            company_id=user.company_id,
+            company_name=company_name,
+            name=user.name,
+            email=user.email,
+            role=user.role,
+            status=user.status,
+            email_verified=user.email_verified,
+            verification_required=user.verification_required,
+            created_at=user.created_at,
+            last_login_at=user.last_login_at,
+            has_pin=user.pin_hash is not None,
+            pay_rate=float(user.pay_rate) if user.pay_rate is not None else None,
+        ),
+        temp_password=temp_password,
+    )
 
 
 @router.post("/accounts", status_code=status.HTTP_201_CREATED)
@@ -563,15 +775,26 @@ async def list_all_users_developer(
     skip: int = Query(0, ge=0),
     limit: int = Query(500, ge=1, le=1000),
     role: Optional[str] = Query(None, description="Optional role filter, e.g. DEVELOPER or ADMIN"),
+    exclude_developers: bool = Query(
+        False,
+        description="If true, omit DEVELOPER accounts (tenant/company users only)",
+    ),
     q: Optional[str] = Query(None, description="Search name or email"),
 ):
-    """List all users across the platform (developer only), including platform developers."""
+    """List users across the platform (developer only). Use role / exclude_developers to split lists."""
     from sqlalchemy.orm import selectinload
 
     query = select(User).options(selectinload(User.company)).order_by(User.name.asc())
+    if exclude_developers:
+        query = query.where(User.role != UserRole.DEVELOPER)
     if role:
         try:
             role_enum = UserRole(role.upper())
+            if exclude_developers and role_enum == UserRole.DEVELOPER:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Cannot filter role=DEVELOPER when exclude_developers=true",
+                )
             query = query.where(User.role == role_enum)
         except ValueError:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Invalid role: {role}")

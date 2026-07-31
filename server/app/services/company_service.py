@@ -1,16 +1,26 @@
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 from uuid import UUID
 from decimal import Decimal
+from datetime import datetime, timezone
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, delete as sql_delete, func
-from sqlalchemy.orm import selectinload
+from sqlalchemy.exc import IntegrityError
 from fastapi import HTTPException, status
+import logging
 
 from app.models.company import Company
-from app.models.user import User, UserRole
+from app.models.user import User, UserRole, UserStatus
 from app.models.audit_log import AuditLog
-from app.schemas.company import CompanySettingsUpdate, CompanyNameUpdate
+from app.schemas.company import CompanySettingsUpdate, CompanyNameUpdate, CompanyCreateWithAdmin
+from app.core.security import (
+    get_password_hash,
+    get_pin_hash,
+    normalize_email,
+)
+from app.core.slug import generate_unique_slug
 import uuid
+
+logger = logging.getLogger(__name__)
 
 # Default company settings (matching payroll_service defaults)
 DEFAULT_TIMEZONE = "America/Chicago"
@@ -277,6 +287,160 @@ async def update_company_settings(
     logger.info(f"Company settings_json after commit (from fresh query): {fresh_company.settings_json}")
     
     return fresh_company
+
+
+async def create_company_with_admin(
+    db: AsyncSession,
+    payload: CompanyCreateWithAdmin,
+    actor_user_id: UUID,
+) -> Tuple[Company, User, bool]:
+    """
+    Create a company and its first ADMIN in one transaction (developer onboarding).
+    Admin does not receive a password from the developer — a secure set-password
+    email is sent after commit. Returns (company, admin, setup_email_sent).
+    """
+    import secrets
+    from app.core.config import settings
+    from app.core.security import (
+        create_password_setup_token,
+        hash_password_setup_jti,
+    )
+    from app.services.email_service import email_service
+
+    admin_email = normalize_email(payload.admin_email)
+    existing = await db.execute(select(User).where(User.email == admin_email))
+    if existing.scalar_one_or_none():
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Admin email already in use on the platform.",
+        )
+
+    company_id = uuid.uuid4()
+    admin_id = uuid.uuid4()
+    now = datetime.now(timezone.utc)
+
+    settings_json: Dict = {
+        "timezone": payload.timezone or DEFAULT_TIMEZONE,
+        "email_verification_required": payload.email_verification_required,
+    }
+    if payload.address is not None and str(payload.address).strip():
+        settings_json["address"] = str(payload.address).strip()
+    if payload.phone is not None and str(payload.phone).strip():
+        settings_json["phone"] = str(payload.phone).strip()
+    if payload.email:
+        settings_json["contact_email"] = normalize_email(str(payload.email))
+
+    pin_hash = None
+    if payload.admin_pin:
+        pin_hash = get_pin_hash(payload.admin_pin)
+
+    # Unusable random password until admin completes the email setup link
+    placeholder_password_hash = get_password_hash(secrets.token_urlsafe(48))
+
+    try:
+        slug = await generate_unique_slug(db, payload.name.strip())
+        company = Company(
+            id=company_id,
+            name=payload.name.strip(),
+            slug=slug,
+            settings_json=settings_json,
+            kiosk_enabled=True,
+        )
+        admin = User(
+            id=admin_id,
+            company_id=company_id,
+            role=UserRole.ADMIN,
+            name=payload.admin_name.strip(),
+            email=admin_email,
+            password_hash=placeholder_password_hash,
+            pin_hash=pin_hash,
+            status=UserStatus.ACTIVE,
+            email_verified=True,
+            verification_required=False,
+            last_verified_at=now,
+        )
+        audit_log = AuditLog(
+            id=uuid.uuid4(),
+            company_id=company_id,
+            actor_user_id=actor_user_id,
+            action="COMPANY_CREATED_WITH_ADMIN",
+            entity_type="company",
+            entity_id=company_id,
+            metadata_json={
+                "company_name": company.name,
+                "admin_user_id": str(admin_id),
+                "admin_email": admin_email,
+                "password_setup_via_email": True,
+            },
+        )
+        db.add(company)
+        db.add(admin)
+        db.add(audit_log)
+        await db.commit()
+        await db.refresh(company)
+        await db.refresh(admin)
+    except HTTPException:
+        await db.rollback()
+        raise
+    except IntegrityError as e:
+        await db.rollback()
+        error_str = str(e).lower()
+        if "uq_user_email" in error_str or ("email" in error_str and "unique" in error_str):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Admin email already in use on the platform.",
+            )
+        logger.error("IntegrityError creating company with admin: %s", e, exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to create company. Please try again.",
+        )
+    except Exception as e:
+        await db.rollback()
+        logger.error("Failed to create company with admin: %s", e, exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to create company. Please try again.",
+        )
+
+    setup_email_sent = False
+    try:
+        token, jti, expires_at = create_password_setup_token(
+            str(admin.id), admin_email, hours=48
+        )
+        admin.password_setup_token_hash = hash_password_setup_jti(jti)
+        admin.password_setup_expires_at = expires_at
+        await db.commit()
+        await db.refresh(admin)
+
+        setup_link = f"{settings.FRONTEND_URL}/set-password?token={token}"
+        setup_email_sent = await email_service.send_password_setup_email(
+            admin_email,
+            admin.name,
+            setup_link,
+        )
+        if not setup_email_sent:
+            logger.warning(
+                "Company %s created but password setup email failed for %s",
+                company.id,
+                admin_email,
+            )
+    except Exception as e:
+        logger.error(
+            "Failed to issue password setup for admin %s: %s",
+            admin_email,
+            e,
+            exc_info=True,
+        )
+
+    logger.info(
+        "Developer created company %s (%s) with admin %s (setup_email_sent=%s)",
+        company.id,
+        company.name,
+        admin_email,
+        setup_email_sent,
+    )
+    return company, admin, setup_email_sent
 
 
 async def get_company_admin_emails(db: AsyncSession, company_id: UUID) -> List[str]:

@@ -1,12 +1,14 @@
 'use client'
 
-import { useEffect, useState, useRef, useMemo } from 'react'
+import { useEffect, useState, useMemo } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
 import { getCurrentUser, logout, User } from '@/lib/auth'
 import api, { initializeAuth, startTokenRefreshInterval, stopTokenRefreshInterval } from '@/lib/api'
 import Link from 'next/link'
 import { usePermissions } from '@/hooks/usePermissions'
 import { ROUTE_PERMISSIONS } from '@/config/navigation'
+import { AppHeader } from '@/components/AppHeader'
+import { DeveloperChromeProvider } from '@/components/DeveloperChromeContext'
 
 export default function Layout({ children }: { children: React.ReactNode }) {
   const router = useRouter()
@@ -15,7 +17,6 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true)
   const [sideMenuOpen, setSideMenuOpen] = useState(false)
   const [openDropdown, setOpenDropdown] = useState<string | null>(null)
-  const dropdownRefs = useRef<{ [key: string]: HTMLDivElement | null }>({})
   /** From GET /company/info — hide employee shift notepad only; admin Shift Log stays available */
   const [shiftNotesEnabled, setShiftNotesEnabled] = useState(true)
   const { can } = usePermissions(user)
@@ -153,23 +154,6 @@ export default function Layout({ children }: { children: React.ReactNode }) {
     }
   }, [])
 
-  // Close dropdown when clicking outside - MUST be called before any early returns
-  useEffect(() => {
-    if (!openDropdown) return
-
-    const handleClickOutside = (event: MouseEvent) => {
-      const ref = dropdownRefs.current[openDropdown]
-      if (ref && !ref.contains(event.target as Node)) {
-        setOpenDropdown(null)
-      }
-    }
-
-    document.addEventListener('mousedown', handleClickOutside)
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside)
-    }
-  }, [openDropdown])
-
   const employeeLinks = useMemo(() => {
     const all = [
       { href: '/dashboard', label: 'Dashboard', permission: 'clock' },
@@ -256,10 +240,10 @@ export default function Layout({ children }: { children: React.ReactNode }) {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-50">
+      <div className="min-h-screen flex items-center justify-center bg-surface">
         <div className="text-center" role="status" aria-live="polite" aria-label="Loading">
-          <div className="mx-auto h-9 w-9 rounded-full border-2 border-slate-200 border-t-blue-600 animate-spin" />
-          <p className="mt-4 text-sm text-slate-500">Loading…</p>
+          <div className="mx-auto h-9 w-9 rounded-full border-2 border-border border-t-accent animate-spin" />
+          <p className="mt-4 text-sm text-foreground-muted">Loading…</p>
         </div>
       </div>
     )
@@ -275,180 +259,42 @@ export default function Layout({ children }: { children: React.ReactNode }) {
 
   const developerLinks = [
     { href: '/developer', label: 'Developer Portal' },
-    { href: '/settings', label: 'Email Service' },
+    { href: '/developer/logs', label: 'Logs' },
+    { href: '/settings/email', label: 'Email Service' },
   ]
 
-  const links = isDeveloper ? developerLinks : (isAdmin ? adminNavGroups : employeeLinks)
+  const tenantNavLinks = isDeveloper
+    ? developerLinks
+    : isAdmin
+      ? []
+      : employeeLinks.map(({ href, label }) => ({ href, label }))
 
   const isActive = (href: string) => {
-    if (href === '/dashboard') {
-      return pathname === href
-    }
+    if (href === '/dashboard') return pathname === href
+    if (href === '/developer') return pathname === '/developer' || pathname === '/developer/'
     return pathname.startsWith(href)
   }
 
-  const isDropdownActive = (items: Array<{ href: string; label: string }>) => {
-    return items.some(item => isActive(item.href))
-  }
+  const isDropdownActive = (items: Array<{ href: string; label: string }>) =>
+    items.some((item) => isActive(item.href))
 
   return (
-    <div className="min-h-screen bg-slate-50">
-      {/* Navigation */}
-      <nav className="bg-slate-900 shadow-sm">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between h-14">
-            <div className="flex">
-              <div className="flex-shrink-0 flex items-center">
-                <Link href="/dashboard" className="inline-flex items-center text-xl font-semibold text-white">
-                  <span className="inline-block w-2 h-2 rounded-full bg-blue-500 mr-2" aria-hidden />
-                  ClockInn
-                </Link>
-              </div>
-              {/* Desktop Navigation - from 950px */}
-              <div className="hidden min-[950px]:ml-8 min-[950px]:flex min-[950px]:gap-1 min-[950px]:items-center">
-                {isAdmin ? (
-                  adminNavGroups.map((group, idx) => {
-                    if (group.type === 'single') {
-                      return group.items.map((item) => (
-                        <Link
-                          key={item.href}
-                          href={item.href}
-                          className={`inline-flex items-center rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
-                            isActive(item.href)
-                              ? 'bg-slate-700 text-white'
-                              : 'text-slate-300 hover:text-white hover:bg-slate-700'
-                          }`}
-                        >
-                          {item.label}
-                        </Link>
-                      ))
-                    } else {
-                      const dropdownId = `dropdown-${idx}`
-                      const isActiveGroup = isDropdownActive(group.items)
-                      return (
-                        <div
-                          key={dropdownId}
-                          ref={(el) => {
-                            if (el) {
-                              dropdownRefs.current[dropdownId] = el
-                            } else {
-                              delete dropdownRefs.current[dropdownId]
-                            }
-                          }}
-                          className="relative"
-                        >
-                          <button
-                            type="button"
-                            onClick={() => setOpenDropdown(openDropdown === dropdownId ? null : dropdownId)}
-                            className={`inline-flex items-center rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
-                              isActiveGroup
-                                ? 'bg-slate-700 text-white'
-                                : 'text-slate-300 hover:text-white hover:bg-slate-700'
-                            }`}
-                          >
-                            {group.label}
-                            <svg
-                              className={`ml-1 h-4 w-4 transition-transform ${
-                                openDropdown === dropdownId ? 'rotate-180' : ''
-                              }`}
-                              fill="none"
-                              stroke="currentColor"
-                              viewBox="0 0 24 24"
-                            >
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                            </svg>
-                          </button>
-                          {openDropdown === dropdownId && (
-                            <div className="absolute top-full left-0 mt-1 w-48 bg-slate-800 border border-slate-700 rounded-lg shadow-xl z-50">
-                              <div className="py-1">
-                                {group.items.map((item) => (
-                                  <Link
-                                    key={item.href}
-                                    href={item.href}
-                                    onClick={() => setOpenDropdown(null)}
-                                    className={`block px-4 py-2 text-sm transition-colors ${
-                                      isActive(item.href)
-                                        ? 'bg-slate-700 text-white font-medium'
-                                        : 'text-slate-300 hover:bg-slate-700 hover:text-white'
-                                    }`}
-                                  >
-                                    {item.label}
-                                  </Link>
-                                ))}
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      )
-                    }
-                  })
-                ) : (
-                  (links as Array<{ href: string; label: string }>).map((link) => (
-                  <Link
-                    key={link.href}
-                    href={link.href}
-                    className={`inline-flex items-center rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
-                      isActive(link.href)
-                        ? 'bg-slate-700 text-white'
-                        : 'text-slate-300 hover:text-white hover:bg-slate-700'
-                    }`}
-                  >
-                    {link.label}
-                  </Link>
-                  ))
-                )}
-              </div>
-            </div>
-            {/* User Menu + Hamburger (responsive) */}
-            <div className="flex items-center gap-2 sm:gap-3">
-              <div className="hidden sm:flex sm:items-center sm:gap-2 min-w-0">
-                <div
-                  className="w-8 h-8 rounded-full bg-slate-700 flex items-center justify-center text-xs font-semibold text-white uppercase shrink-0"
-                  title={user.name}
-                >
-                  {user.name.trim().slice(0, 2).toUpperCase() || '?'}
-                </div>
-                <div className="min-w-0">
-                  <p className="text-sm font-medium text-white truncate max-w-[10rem] lg:max-w-[14rem]">
-                    {user.name}
-                  </p>
-                  <p className="text-xs text-slate-400 truncate max-w-[10rem] lg:max-w-[14rem]">
-                    {user.role === 'DEVELOPER'
-                      ? 'Platform Developer'
-                      : user.company_name || user.email}
-                  </p>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={handleLogout}
-                className="text-slate-300 hover:text-white hover:bg-slate-700 px-3 py-1.5 text-sm rounded-md transition-colors"
-              >
-                Logout
-              </button>
-              {/* Hamburger - visible below 950px, opens side menu */}
-              <button
-                type="button"
-                onClick={() => setSideMenuOpen(!sideMenuOpen)}
-                className="min-[950px]:hidden inline-flex items-center justify-center p-2 rounded-md text-slate-300 hover:text-white hover:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-slate-500"
-                aria-expanded={sideMenuOpen}
-                aria-label={sideMenuOpen ? 'Close menu' : 'Open menu'}
-              >
-                <span className="sr-only">{sideMenuOpen ? 'Close menu' : 'Open menu'}</span>
-                <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                  {sideMenuOpen ? (
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                  ) : (
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
-                  )}
-                </svg>
-              </button>
-            </div>
-          </div>
-        </div>
-      </nav>
+    <DeveloperChromeProvider isDeveloper={isDeveloper}>
+      <div className="min-h-screen bg-border-subtle/30">
+        <AppHeader
+          user={user}
+          onLogout={handleLogout}
+          isDeveloper={isDeveloper}
+          isAdmin={isAdmin}
+          adminNavGroups={adminNavGroups}
+          tenantLinks={tenantNavLinks}
+          onMobileMenuToggle={() => setSideMenuOpen((o) => !o)}
+          showMobileNavButton={!isDeveloper}
+        />
 
-      {/* Side menu overlay - below 950px only */}
+      {/* Side menu overlay - below 950px only (tenant admin/employee) */}
+      {!isDeveloper && (
+        <>
       <div
         role="presentation"
         className={`fixed inset-0 z-40 bg-black/50 transition-opacity duration-200 min-[950px]:hidden ${
@@ -460,19 +306,19 @@ export default function Layout({ children }: { children: React.ReactNode }) {
 
       {/* Side menu drawer - below 950px only */}
       <aside
-        className={`fixed top-0 left-0 z-50 h-full w-72 max-w-[85vw] bg-white shadow-xl transition-transform duration-200 ease-out min-[950px]:hidden ${
+        className={`fixed top-0 left-0 z-50 h-full w-72 max-w-[85vw] border-r border-border bg-surface shadow-lifted transition-transform duration-200 ease-out min-[950px]:hidden ${
           sideMenuOpen ? 'translate-x-0' : '-translate-x-full'
         }`}
         aria-modal="true"
         aria-label="Main navigation"
       >
         <div className="flex flex-col h-full">
-          <div className="flex items-center justify-between h-14 px-4 bg-slate-900 border-b border-slate-700">
-            <span className="text-lg font-semibold text-white">Menu</span>
+          <div className="flex items-center justify-between h-14 px-4 border-b border-border bg-surface">
+            <span className="text-lg font-semibold text-foreground">Menu</span>
             <button
               type="button"
               onClick={() => setSideMenuOpen(false)}
-              className="p-2 rounded-md text-slate-300 hover:text-white hover:bg-slate-700"
+              className="p-2 rounded-control text-foreground-muted hover:bg-border-subtle hover:text-foreground"
               aria-label="Close menu"
             >
               <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -480,7 +326,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
               </svg>
             </button>
           </div>
-          <nav className="flex-1 overflow-y-auto py-4 px-2 bg-white">
+          <nav className="flex-1 overflow-y-auto py-4 px-2">
             <div className="space-y-1">
               {isAdmin ? (
                 adminNavGroups.map((group, idx) => {
@@ -490,10 +336,10 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                         key={item.href}
                         href={item.href}
                         onClick={() => setSideMenuOpen(false)}
-                        className={`block px-3 py-2.5 text-sm font-medium rounded-lg transition-colors ${
+                        className={`block px-3 py-2.5 text-sm font-medium rounded-control transition-colors ${
                           isActive(item.href)
-                            ? 'bg-blue-50 text-blue-700'
-                            : 'text-gray-700 hover:bg-gray-100'
+                            ? 'bg-accent/10 text-accent'
+                            : 'text-foreground-muted hover:bg-border-subtle/80 hover:text-foreground'
                         }`}
                       >
                         {item.label}
@@ -506,10 +352,10 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                         <button
                           type="button"
                           onClick={() => setOpenDropdown(openDropdown === dropdownId ? null : dropdownId)}
-                          className={`w-full flex items-center justify-between px-3 py-2.5 text-sm font-medium rounded-lg transition-colors ${
+                          className={`w-full flex items-center justify-between px-3 py-2.5 text-sm font-medium rounded-control transition-colors ${
                             isDropdownActive(group.items)
-                              ? 'bg-blue-50 text-blue-700'
-                              : 'text-gray-700 hover:bg-gray-100'
+                              ? 'bg-accent/10 text-accent'
+                              : 'text-foreground-muted hover:bg-border-subtle/80 hover:text-foreground'
                           }`}
                         >
                           {group.label}
@@ -531,10 +377,10 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                                 setSideMenuOpen(false)
                                 setOpenDropdown(null)
                               }}
-                              className={`block px-3 py-2 text-sm rounded-lg transition-colors ${
+                              className={`block px-3 py-2 text-sm rounded-control transition-colors ${
                                 isActive(item.href)
-                                  ? 'bg-blue-50 text-blue-700 font-medium'
-                                  : 'text-gray-600 hover:bg-gray-50'
+                                  ? 'bg-accent/10 text-accent font-medium'
+                                  : 'text-foreground-muted hover:bg-border-subtle/70'
                               }`}
                             >
                               {item.label}
@@ -546,15 +392,15 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                   }
                 })
               ) : (
-                (links as Array<{ href: string; label: string }>).map((link) => (
+                tenantNavLinks.map((link) => (
                   <Link
                     key={link.href}
                     href={link.href}
                     onClick={() => setSideMenuOpen(false)}
-                    className={`block px-3 py-2.5 text-sm font-medium rounded-lg transition-colors ${
+                    className={`block px-3 py-2.5 text-sm font-medium rounded-control transition-colors ${
                       isActive(link.href)
-                        ? 'bg-blue-50 text-blue-700'
-                        : 'text-gray-700 hover:bg-gray-100'
+                        ? 'bg-accent/10 text-accent'
+                        : 'text-foreground-muted hover:bg-border-subtle/80 hover:text-foreground'
                     }`}
                   >
                     {link.label}
@@ -563,24 +409,12 @@ export default function Layout({ children }: { children: React.ReactNode }) {
               )}
             </div>
           </nav>
-          <div className="border-t border-gray-200 bg-slate-50 p-3">
-            <div className="flex items-center gap-3 px-2 min-w-0">
-              <div className="w-8 h-8 rounded-full bg-slate-700 flex items-center justify-center text-xs font-semibold text-white uppercase shrink-0">
-                {user.name.trim().slice(0, 2).toUpperCase() || '?'}
-              </div>
-              <div className="min-w-0">
-                <p className="text-xs text-gray-700 font-medium truncate">{user.name}</p>
-                <p className="text-[11px] text-gray-500 truncate">
-                  {user.role === 'DEVELOPER'
-                    ? 'Platform Developer'
-                    : user.company_name || user.email}
-                </p>
-              </div>
-            </div>
-          </div>
         </div>
       </aside>
+        </>
+      )}
       <main className="max-w-7xl mx-auto w-full py-8 px-4 sm:px-6 lg:px-8">{children}</main>
     </div>
+    </DeveloperChromeProvider>
   )
 }

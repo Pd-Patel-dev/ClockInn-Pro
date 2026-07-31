@@ -127,6 +127,10 @@ export default function AdminSettingsPage() {
   const [geofenceGettingLocation, setGeofenceGettingLocation] = useState(false)
   const [gmailHealth, setGmailHealth] = useState<any>(null)
   const [checkingGmail, setCheckingGmail] = useState(false)
+  const [emailServiceDetails, setEmailServiceDetails] = useState<{
+    email_service?: any
+    configuration?: any
+  } | null>(null)
   const [kioskUrl, setKioskUrl] = useState<string>('')
   const [kioskNetworkRestrictionEnabled, setKioskNetworkRestrictionEnabled] = useState(false)
   const [kioskAllowedIpsText, setKioskAllowedIpsText] = useState('')
@@ -187,17 +191,16 @@ export default function AdminSettingsPage() {
       try {
         const currentUser = await getCurrentUser()
         setUser(currentUser)
-        if (currentUser.role !== 'ADMIN' && currentUser.role !== 'DEVELOPER') {
+        if (currentUser.role === 'DEVELOPER') {
+          router.replace('/settings/email')
+          return
+        }
+        if (currentUser.role !== 'ADMIN') {
           router.push('/dashboard')
           return
         }
         // Pass currentUser to fetchCompanyInfo to avoid stale closure
         fetchCompanyInfo(currentUser)
-        // Set default tab for developers (email service only)
-        if (currentUser.role === 'DEVELOPER') {
-          setActiveTab('email')
-          checkGmailHealth()
-        }
       } catch (err: any) {
         logger.error('Authentication error', err as Error, { action: 'fetchCompanyInfo' })
         router.push('/login')
@@ -217,8 +220,17 @@ export default function AdminSettingsPage() {
   const checkGmailHealth = async () => {
     setCheckingGmail(true)
     try {
-      const response = await api.get('/admin/gmail/health')
-      setGmailHealth(response.data)
+      const [healthRes, statsRes] = await Promise.all([
+        api.get('/admin/gmail/health'),
+        api.get('/developer/stats').catch(() => null),
+      ])
+      setGmailHealth(healthRes.data)
+      if (statsRes?.data) {
+        setEmailServiceDetails({
+          email_service: statsRes.data.email_service,
+          configuration: statsRes.data.configuration,
+        })
+      }
     } catch (error: any) {
       logger.error('Failed to check Gmail health', error as Error)
       toast.error('Failed to check Gmail service status')
@@ -540,7 +552,9 @@ export default function AdminSettingsPage() {
   return (
     <Layout>
       <div className="px-4 py-6 sm:px-0">
-        <h1 className="text-2xl font-bold mb-6">Company Settings</h1>
+        <h1 className="text-2xl font-bold mb-6">
+          {user?.role === 'DEVELOPER' ? 'Email Service' : 'Company Settings'}
+        </h1>
 
         {/* Tabs */}
         <div className="border-b border-slate-200 mb-6">
@@ -598,21 +612,6 @@ export default function AdminSettingsPage() {
                   Kiosk Network
                 </button>
               </>
-            )}
-            {user?.role === 'DEVELOPER' && (
-              <button
-                onClick={() => {
-                  setActiveTab('email')
-                  checkGmailHealth()
-                }}
-                className={`py-4 px-1 border-b-2 font-medium text-sm ${
-                  activeTab === 'email'
-                    ? 'border-blue-500 text-blue-600'
-                    : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'
-                }`}
-              >
-                Email Service
-              </button>
             )}
           </nav>
         </div>
@@ -842,6 +841,98 @@ export default function AdminSettingsPage() {
                   </div>
                 )}
               </div>
+
+              {/* Detailed email service + config (moved from Developer Portal) */}
+              {(emailServiceDetails?.email_service || emailServiceDetails?.configuration) && (
+                <div className="mb-6 grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {emailServiceDetails.email_service && (
+                    <div className="border border-slate-200 rounded-lg p-4">
+                      <h3 className="text-sm font-semibold text-slate-900 mb-3">Email Service Status</h3>
+                      <div className="space-y-2 text-sm">
+                        <div className="flex justify-between gap-3">
+                          <span className="text-slate-600">Initialized</span>
+                          <span className="font-medium">{emailServiceDetails.email_service.initialized ? 'Yes' : 'No'}</span>
+                        </div>
+                        <div className="flex justify-between gap-3">
+                          <span className="text-slate-600">Has Credentials</span>
+                          <span className="font-medium">{emailServiceDetails.email_service.has_credentials ? 'Yes' : 'No'}</span>
+                        </div>
+                        <div className="flex justify-between gap-3">
+                          <span className="text-slate-600">Operational</span>
+                          <span className="font-medium">{emailServiceDetails.email_service.operational ? 'Yes' : 'No'}</span>
+                        </div>
+                        <div className="flex justify-between gap-3">
+                          <span className="text-slate-600">Sender Email</span>
+                          <span className="font-medium">{emailServiceDetails.email_service.sender_email || 'N/A'}</span>
+                        </div>
+                        {emailServiceDetails.email_service.token_valid !== undefined && (
+                          <div className="flex justify-between gap-3">
+                            <span className="text-slate-600">Token Valid</span>
+                            <span className="font-medium">{emailServiceDetails.email_service.token_valid ? 'Yes' : 'No'}</span>
+                          </div>
+                        )}
+                        {emailServiceDetails.email_service.token_expired !== undefined && (
+                          <div className="flex justify-between gap-3">
+                            <span className="text-slate-600">Token Expired</span>
+                            <span className="font-medium">{emailServiceDetails.email_service.token_expired ? 'Yes' : 'No'}</span>
+                          </div>
+                        )}
+                        {emailServiceDetails.email_service.has_refresh_token !== undefined && (
+                          <div className="flex justify-between gap-3">
+                            <span className="text-slate-600">Has Refresh Token</span>
+                            <span className="font-medium">{emailServiceDetails.email_service.has_refresh_token ? 'Yes' : 'No'}</span>
+                          </div>
+                        )}
+                        {emailServiceDetails.email_service.token_expires_at && (
+                          <div className="flex justify-between gap-3">
+                            <span className="text-slate-600">Token Expires At</span>
+                            <span className="font-medium text-xs">{new Date(emailServiceDetails.email_service.token_expires_at).toLocaleString()}</span>
+                          </div>
+                        )}
+                        {emailServiceDetails.email_service.token_expires_in_hours !== undefined && (
+                          <div className="flex justify-between gap-3">
+                            <span className="text-slate-600">Token Expires In</span>
+                            <span className="font-medium">{Number(emailServiceDetails.email_service.token_expires_in_hours).toFixed(1)} hours</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                  {emailServiceDetails.configuration && (
+                    <div className="border border-slate-200 rounded-lg p-4">
+                      <h3 className="text-sm font-semibold text-slate-900 mb-3">Gmail Configuration</h3>
+                      <div className="space-y-2 text-sm">
+                        <div className="flex justify-between gap-3">
+                          <span className="text-slate-600">Credentials Configured</span>
+                          <span className="font-medium">{emailServiceDetails.configuration.gmail_credentials_configured ? 'Yes' : 'No'}</span>
+                        </div>
+                        {emailServiceDetails.configuration.gmail_credentials_source && (
+                          <div className="flex justify-between gap-3">
+                            <span className="text-slate-500 text-xs">Credentials source</span>
+                            <span className="font-medium text-xs capitalize">{emailServiceDetails.configuration.gmail_credentials_source}</span>
+                          </div>
+                        )}
+                        <div className="flex justify-between gap-3">
+                          <span className="text-slate-600">Token Configured</span>
+                          <span className="font-medium">{emailServiceDetails.configuration.gmail_token_configured ? 'Yes' : 'No'}</span>
+                        </div>
+                        {emailServiceDetails.configuration.gmail_token_source && (
+                          <div className="flex justify-between gap-3">
+                            <span className="text-slate-500 text-xs">Token source</span>
+                            <span className="font-medium text-xs capitalize">{emailServiceDetails.configuration.gmail_token_source}</span>
+                          </div>
+                        )}
+                        {emailServiceDetails.configuration.email_configured !== undefined && (
+                          <div className="flex justify-between gap-3">
+                            <span className="text-slate-600">Email Configured</span>
+                            <span className="font-medium">{emailServiceDetails.configuration.email_configured ? 'Yes' : 'No'}</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* Token Update Form */}
               <div className="border-t pt-6">

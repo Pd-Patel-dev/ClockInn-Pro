@@ -171,6 +171,16 @@ async def login(
             detail="Invalid email or password",
         )
 
+    # Pending password-setup invite: block login until the email link is used
+    if user.password_setup_token_hash:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={
+                "error": "PASSWORD_SETUP_REQUIRED",
+                "message": "Please set your password using the secure link sent to your email before logging in.",
+            },
+        )
+
     # Success: clear rate-limit state for this email
     await clear_attempts(normalized_email, client_ip=ip)
 
@@ -200,17 +210,21 @@ async def login(
         "session_start": int(now_ts.timestamp()),
     })
     from passlib.context import CryptContext
+    from app.core.device_label import device_label_from_ua
     token_context = CryptContext(schemes=["argon2"], deprecated="auto")
     refresh_token_hash = token_context.hash(refresh_token)
     
+    now = datetime.utcnow()
     session = Session(
         id=uuid.uuid4(),
         user_id=user.id,
         company_id=user.company_id,
         refresh_token_hash=refresh_token_hash,
-        expires_at=datetime.utcnow() + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS),
+        expires_at=now + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS),
         ip=ip,
         user_agent=user_agent,
+        device_label=device_label_from_ua(user_agent),
+        last_used_at=now,
     )
     db.add(session)
     
@@ -350,15 +364,19 @@ async def refresh_access_token(
         "session_start": session_start,
     })
     new_refresh_token_hash = token_context.hash(new_refresh_token)
-    
+
+    from app.core.device_label import device_label_from_ua
+    now = datetime.utcnow()
     new_session = Session(
         id=uuid.uuid4(),
         user_id=user.id,
         company_id=user.company_id,
         refresh_token_hash=new_refresh_token_hash,
-        expires_at=datetime.utcnow() + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS),
-        ip=ip,
-        user_agent=user_agent,
+        expires_at=now + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS),
+        ip=ip or matching_session.ip,
+        user_agent=user_agent or matching_session.user_agent,
+        device_label=device_label_from_ua(user_agent or matching_session.user_agent),
+        last_used_at=now,
     )
     db.add(new_session)
     

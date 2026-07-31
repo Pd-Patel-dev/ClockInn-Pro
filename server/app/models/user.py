@@ -76,6 +76,20 @@ class User(Base):
     password_reset_attempts = Column(Integer, nullable=False, default=0)
     last_password_reset_sent_at = Column(DateTime(timezone=True), nullable=True)
 
+    # One-time password setup invite (company/admin onboarding, employee invite)
+    password_setup_token_hash = Column(String(255), nullable=True)
+    password_setup_expires_at = Column(DateTime(timezone=True), nullable=True)
+
+    # Profile / preferences
+    avatar_url = Column(String(1024), nullable=True)
+    preferred_name = Column(String(100), nullable=True)
+    phone = Column(String(30), nullable=True)
+    timezone = Column(String(64), nullable=True, default="America/Chicago")
+    date_format = Column(String(16), nullable=False, default="MM/DD/YYYY", server_default="MM/DD/YYYY")
+    time_format = Column(String(8), nullable=False, default="12h", server_default="12h")
+    first_day_of_week = Column(Integer, nullable=False, default=0, server_default="0")
+    theme_preference = Column(String(16), nullable=False, default="system", server_default="system")
+
     # Relationships
     company = relationship("Company", backref="users")
     time_entries = relationship("TimeEntry", back_populates="employee", foreign_keys="TimeEntry.employee_id")
@@ -85,6 +99,22 @@ class User(Base):
         CheckConstraint(
             "(role = 'DEVELOPER' AND company_id IS NULL) OR (role <> 'DEVELOPER' AND company_id IS NOT NULL)",
             name="ck_user_company_by_role",
+        ),
+        CheckConstraint(
+            "date_format IN ('MM/DD/YYYY', 'DD/MM/YYYY', 'YYYY-MM-DD')",
+            name="ck_users_date_format",
+        ),
+        CheckConstraint(
+            "time_format IN ('12h', '24h')",
+            name="ck_users_time_format",
+        ),
+        CheckConstraint(
+            "first_day_of_week IN (0, 1)",
+            name="ck_users_first_day_of_week",
+        ),
+        CheckConstraint(
+            "theme_preference IN ('light', 'dark', 'system')",
+            name="ck_users_theme_preference",
         ),
         Index("uq_user_email", text("LOWER(email)"), unique=True),
         Index("idx_users_company_status", "company_id", "status"),

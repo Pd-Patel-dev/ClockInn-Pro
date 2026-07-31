@@ -31,6 +31,17 @@ export interface User {
   email_verified: boolean
   verification_required: boolean
   permissions: string[]
+  preferred_name?: string | null
+  phone?: string | null
+  avatar_url?: string | null
+  timezone?: string | null
+  date_format?: string
+  time_format?: string
+  first_day_of_week?: number
+  theme_preference?: 'light' | 'dark' | 'system' | string
+  created_at?: string | null
+  last_verified_at?: string | null
+  has_pin?: boolean
 }
 
 export interface JwtPayload {

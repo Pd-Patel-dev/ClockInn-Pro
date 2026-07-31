@@ -100,37 +100,48 @@ app = FastAPI(
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
     start_time = time.time()
-    
+    path = request.url.path or "/"
+
+    # Avoid flooding the live log viewer with its own poll/stream traffic
+    skip_access = path.startswith("/api/v1/developer/logs")
+
     try:
-        # Process request
         response = await call_next(request)
-        
-        # Calculate duration
         process_time = time.time() - start_time
-        
-        # Log request
-        access_logger.info(
-            f"{request.method} {request.url.path} - "
-            f"Status: {response.status_code} - "
-            f"Duration: {process_time:.3f}s - "
-            f"Client: {request.client.host if request.client else 'unknown'}"
-        )
-        
+        duration_ms = int(process_time * 1000)
+
+        if not skip_access:
+            actor = None
+            auth = request.headers.get("authorization") or ""
+            if auth.lower().startswith("bearer "):
+                try:
+                    from app.core.security import decode_token
+
+                    payload = decode_token(auth.split(" ", 1)[1].strip())
+                    if isinstance(payload, dict):
+                        actor = payload.get("email") or payload.get("sub")
+                except Exception:
+                    actor = None
+
+            parts = [
+                f"{request.method} {path}",
+                f"status={response.status_code}",
+                f"duration_ms={duration_ms}",
+            ]
+            if actor:
+                parts.append(f"actor={actor}")
+            if request.client:
+                parts.append(f"client={request.client.host}")
+            access_logger.info(" ".join(parts))
+
         return response
-    except Exception as e:
-        # Log unhandled exceptions to error log
+    except Exception:
         process_time = time.time() - start_time
+        duration_ms = int(process_time * 1000)
         logger.error(
-            f"Unhandled exception in {request.method} {request.url.path}",
+            f"Unhandled exception in {request.method} {path} duration_ms={duration_ms}",
             exc_info=True,
-            extra={
-                "method": request.method,
-                "path": str(request.url.path),
-                "client": request.client.host if request.client else 'unknown',
-                "duration": f"{process_time:.3f}s"
-            }
         )
-        # Re-raise to let FastAPI handle it
         raise
 
 

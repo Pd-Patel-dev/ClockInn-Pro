@@ -3,12 +3,28 @@
 import { useState, useEffect } from 'react'
 import { useRouter, useParams } from 'next/navigation'
 import Link from 'next/link'
-import Layout from '@/components/Layout'
-import api from '@/lib/api'
+import api, { createUserInCompany } from '@/lib/api'
 import { getCurrentUser } from '@/lib/auth'
 import logger from '@/lib/logger'
 import BackButton from '@/components/BackButton'
 import { useToast } from '@/components/Toast'
+import {
+  Avatar,
+  Badge,
+  Button,
+  Card,
+  CardBody,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+  Menu,
+  MenuContent,
+  MenuItem,
+  MenuRoot,
+  MenuTrigger,
+  TabPanel,
+  Tabs,
+} from '@/components/ui'
 
 interface CompanySettings {
   timezone: string
@@ -80,6 +96,141 @@ export default function DeveloperCompanyPage() {
   const [deletingCompany, setDeletingCompany] = useState(false)
   const toast = useToast()
   const systemDefaultCompanyId = '00000000-0000-0000-0000-000000000000'
+  const [companyTab, setCompanyTab] = useState('overview')
+  const [addUserOpen, setAddUserOpen] = useState(false)
+  const [addUserSubmitting, setAddUserSubmitting] = useState(false)
+  const [addUserEmailError, setAddUserEmailError] = useState<string | null>(null)
+  const [addUserFormError, setAddUserFormError] = useState<string | null>(null)
+  const [addUserForm, setAddUserForm] = useState({
+    name: '',
+    email: '',
+    role: 'FRONTDESK',
+    password: '',
+    pin: '',
+    pay_rate: '',
+    email_verified: true,
+  })
+  const [tempCredsModal, setTempCredsModal] = useState<{
+    email: string
+    password: string
+    name: string
+  } | null>(null)
+
+  const tenantRoles = [
+    'ADMIN',
+    'MANAGER',
+    'MAINTENANCE',
+    'FRONTDESK',
+    'HOUSEKEEPING',
+    'RESTAURANT',
+    'SECURITY',
+  ]
+
+  const COMPANY_TABS = [
+    { id: 'overview', label: 'Overview' },
+    { id: 'users', label: 'Users' },
+    { id: 'settings', label: 'Settings' },
+    { id: 'activity', label: 'Activity' },
+    { id: 'danger', label: 'Danger Zone' },
+  ]
+
+  const handleDeleteCompany = async () => {
+    if (!company || company.id === systemDefaultCompanyId) return
+    if (
+      !window.confirm(
+        `Permanently delete “${company.name}” and all tenant data? This cannot be undone.`,
+      )
+    ) {
+      return
+    }
+    setDeletingCompany(true)
+    try {
+      await api.delete(`/developer/companies/${company.id}`)
+      toast.success('Company deleted.')
+      router.push('/developer/companies')
+    } catch (e: unknown) {
+      const err = e as { response?: { data?: { detail?: string } } }
+      const msg = err.response?.data?.detail
+      toast.error(typeof msg === 'string' ? msg : 'Failed to delete company')
+      logger.error('Developer delete company failed', e as Error, { companyId: company.id })
+    } finally {
+      setDeletingCompany(false)
+    }
+  }
+
+  const reloadUsers = async () => {
+    const usersRes = await api.get(`/developer/companies/${companyId}/users`)
+    setUsers(
+      (Array.isArray(usersRes.data) ? usersRes.data : []).filter(
+        (u: CompanyUser) => u.role !== 'DEVELOPER',
+      ),
+    )
+  }
+
+  const closeAddUserModal = (force = false) => {
+    if (addUserSubmitting && !force) return
+    setAddUserOpen(false)
+    setAddUserEmailError(null)
+    setAddUserFormError(null)
+    setAddUserForm({
+      name: '',
+      email: '',
+      role: 'FRONTDESK',
+      password: '',
+      pin: '',
+      pay_rate: '',
+      email_verified: true,
+    })
+  }
+
+  const handleAddUserSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setAddUserEmailError(null)
+    setAddUserFormError(null)
+    if (addUserForm.password && addUserForm.password.length < 8) {
+      setAddUserFormError('Password must be at least 8 characters')
+      return
+    }
+    if (addUserForm.pin && !/^\d{4}$/.test(addUserForm.pin)) {
+      setAddUserFormError('PIN must be exactly 4 digits')
+      return
+    }
+    setAddUserSubmitting(true)
+    try {
+      const result = await createUserInCompany(companyId, {
+        name: addUserForm.name.trim(),
+        email: addUserForm.email.trim(),
+        role: addUserForm.role,
+        password: addUserForm.password.trim() || null,
+        pin: addUserForm.pin.trim() || null,
+        pay_rate: addUserForm.pay_rate.trim() ? Number(addUserForm.pay_rate) : null,
+        email_verified: addUserForm.email_verified,
+      })
+      toast.success(`User ${result.user.email} created.`)
+      const temp = result.temp_password
+      const created = result.user
+      closeAddUserModal(true)
+      await reloadUsers()
+      if (temp) {
+        setTempCredsModal({
+          email: created.email,
+          password: temp,
+          name: created.name,
+        })
+      }
+    } catch (err: any) {
+      const statusCode = err.response?.status
+      const msg = err.response?.data?.detail || err.message || 'Failed to create user'
+      if (statusCode === 409) {
+        setAddUserEmailError('This email is already in use on the platform.')
+      } else {
+        setAddUserFormError(typeof msg === 'string' ? msg : 'Failed to create user')
+      }
+      logger.error('Developer add company user failed', err as Error, { companyId })
+    } finally {
+      setAddUserSubmitting(false)
+    }
+  }
 
   useEffect(() => {
     const run = async () => {
@@ -122,40 +273,78 @@ export default function DeveloperCompanyPage() {
 
   if (loading) {
     return (
-      <Layout>
-        <div className="min-h-screen flex items-center justify-center">
+        <div className="min-h-[40vh] flex items-center justify-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600" />
         </div>
-      </Layout>
     )
   }
 
   if (!company) {
     return (
-      <Layout>
-        <div className="px-4 py-8">
+        <div className="py-4">
           <p className="text-slate-600">Company not found.</p>
-          <Link href="/developer" className="text-blue-600 hover:underline mt-2 inline-block">Back to Developer Portal</Link>
+          <Link href="/developer/companies" className="text-blue-600 hover:underline mt-2 inline-block">Back to companies</Link>
         </div>
-      </Layout>
     )
   }
 
   const s = company.settings
 
   return (
-    <Layout>
-      <div className="px-4 py-6 sm:px-0">
-        <BackButton fallbackHref="/developer" className="text-sm text-blue-600 hover:text-blue-700 mb-4">
-          Back to Developer Portal
+      <div>
+        <BackButton fallbackHref="/developer/companies" className="text-sm text-accent hover:underline mb-4">
+          Back to companies
         </BackButton>
 
-        <h1 className="text-2xl font-bold text-slate-900 mb-1">{company.name}</h1>
-        <p className="text-sm text-slate-600 mb-6">Company details and users (developer only)</p>
+        <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+          <div className="flex items-start gap-4">
+            <Avatar name={company.name} size="lg" square />
+            <div>
+              <h1 className="text-2xl font-bold text-foreground">{company.name}</h1>
+              <div className="mt-2 flex flex-wrap gap-2">
+                <Badge variant="neutral">{company.slug}</Badge>
+                <Badge variant={company.kiosk_enabled ? 'success' : 'neutral'} dot>
+                  Kiosk {company.kiosk_enabled ? 'enabled' : 'disabled'}
+                </Badge>
+              </div>
+            </div>
+          </div>
+          <MenuRoot>
+            <Menu>
+              <MenuTrigger>
+                <Button variant="secondary" size="sm">
+                  Actions
+                </Button>
+              </MenuTrigger>
+              <MenuContent align="end">
+                <MenuItem
+                  onClick={() => {
+                    setAddUserEmailError(null)
+                    setAddUserFormError(null)
+                    setAddUserOpen(true)
+                  }}
+                >
+                  Add User
+                </MenuItem>
+                {company.id !== systemDefaultCompanyId && (
+                  <MenuItem destructive onClick={handleDeleteCompany}>
+                    Delete company
+                  </MenuItem>
+                )}
+              </MenuContent>
+            </Menu>
+          </MenuRoot>
+        </div>
 
-        {/* Company info */}
-        <div className="bg-white rounded-lg shadow p-6 mb-6">
-          <h2 className="text-lg font-semibold text-slate-900 mb-4">Company Info</h2>
+        <Tabs tabs={COMPANY_TABS} value={companyTab} onChange={setCompanyTab} className="mb-2" />
+
+        <TabPanel id="overview" value={companyTab}>
+        <Card className="mb-6">
+          <CardHeader>
+            <CardTitle>Company info</CardTitle>
+            <CardDescription>Identifiers and primary admin</CardDescription>
+          </CardHeader>
+          <CardBody>
           <dl className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <dt className="text-sm text-slate-600">ID</dt>
@@ -186,50 +375,16 @@ export default function DeveloperCompanyPage() {
               </>
             )}
           </dl>
+          </CardBody>
+        </Card>
+        </TabPanel>
 
-          {company.id !== systemDefaultCompanyId && (
-              <div className="mt-8 pt-6 border-t border-red-100">
-                <h3 className="text-sm font-semibold text-red-800">Danger zone</h3>
-                <p className="text-xs text-slate-600 mt-1 max-w-xl">
-                  Permanently delete this company, all users, time entries, payroll, schedules, and related data. This cannot be undone.
-                </p>
-                <button
-                  type="button"
-                  disabled={deletingCompany}
-                  onClick={async () => {
-                    if (
-                      !window.confirm(
-                        `Permanently delete “${company.name}” and all tenant data? This cannot be undone.`,
-                      )
-                    ) {
-                      return
-                    }
-                    setDeletingCompany(true)
-                    try {
-                      await api.delete(`/developer/companies/${company.id}`)
-                      toast.success('Company deleted.')
-                      router.push('/developer')
-                    } catch (e: unknown) {
-                      const err = e as { response?: { data?: { detail?: string } } }
-                      const msg = err.response?.data?.detail
-                      toast.error(typeof msg === 'string' ? msg : 'Failed to delete company')
-                      logger.error('Developer delete company failed', e as Error, { companyId: company.id })
-                    } finally {
-                      setDeletingCompany(false)
-                    }
-                  }}
-                  className="mt-3 px-3 py-2 text-sm font-medium text-white bg-red-600 rounded-md hover:bg-red-700 disabled:opacity-50"
-                >
-                  {deletingCompany ? 'Deleting…' : 'Delete company'}
-                </button>
-              </div>
-            )}
-        </div>
-
-        {/* Settings */}
-        <div className="bg-white rounded-lg shadow p-6 mb-6">
-          <h2 className="text-lg font-semibold text-slate-900 mb-4">Settings</h2>
-
+        <TabPanel id="settings" value={companyTab}>
+        <Card className="mb-6">
+          <CardHeader>
+            <CardTitle>Settings</CardTitle>
+          </CardHeader>
+          <CardBody>
           {/* Email verification (developer can disable per company) */}
           <div className="mb-6 pb-6 border-b border-slate-200">
             <div className="flex items-center justify-between gap-4">
@@ -502,13 +657,65 @@ export default function DeveloperCompanyPage() {
               <div><dt className="text-slate-600">Shift notes</dt><dd className="font-medium">{s.shift_notes_enabled ? 'Yes' : 'No'}</dd></div>
             )}
           </dl>
-        </div>
+          </CardBody>
+        </Card>
+        </TabPanel>
 
-        {/* Users */}
-        <div className="bg-white rounded-lg shadow overflow-hidden">
-          <div className="px-6 py-4 border-b border-slate-200">
-            <h2 className="text-lg font-semibold text-slate-900">Users</h2>
-            <p className="text-sm text-slate-600">Click a user to edit (including verification).</p>
+        <TabPanel id="activity" value={companyTab}>
+          <Card className="mb-6">
+            <CardHeader>
+              <CardTitle>Activity</CardTitle>
+              <CardDescription>Company-scoped audit trail (coming soon)</CardDescription>
+            </CardHeader>
+            <CardBody>
+              <p className="text-sm text-foreground-muted">
+                Recent punches, settings changes, and user events for this tenant will appear here.
+              </p>
+            </CardBody>
+          </Card>
+        </TabPanel>
+
+        <TabPanel id="danger" value={companyTab}>
+          {company.id !== systemDefaultCompanyId ? (
+            <Card className="border-red-500/30">
+              <CardHeader>
+                <CardTitle className="text-danger">Danger zone</CardTitle>
+                <CardDescription>
+                  Permanently delete this company, all users, time entries, payroll, schedules, and related data.
+                </CardDescription>
+              </CardHeader>
+              <CardBody>
+                <Button variant="danger" loading={deletingCompany} onClick={handleDeleteCompany}>
+                  Delete company
+                </Button>
+              </CardBody>
+            </Card>
+          ) : (
+            <Card>
+              <CardBody>
+                <p className="text-sm text-foreground-muted">The system default company cannot be deleted.</p>
+              </CardBody>
+            </Card>
+          )}
+        </TabPanel>
+
+        <TabPanel id="users" value={companyTab}>
+        <Card className="overflow-hidden">
+          <div className="px-6 py-4 border-b border-border flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h2 className="text-lg font-semibold text-foreground">Users</h2>
+              <p className="text-sm text-foreground-muted">Click a user to edit (including verification).</p>
+            </div>
+            <Button
+              size="sm"
+              onClick={() => {
+                setAddUserEmailError(null)
+                setAddUserFormError(null)
+                setAddUserOpen(true)
+              }}
+            >
+              Add User
+            </Button>
           </div>
           <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-slate-200">
@@ -566,8 +773,194 @@ export default function DeveloperCompanyPage() {
               </tbody>
             </table>
           </div>
-        </div>
+        </Card>
+        </TabPanel>
+
+        {addUserOpen && (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm"
+            role="presentation"
+            onClick={() => closeAddUserModal()}
+          >
+            <div
+              className="relative w-full max-w-lg rounded-2xl border border-slate-200 bg-white shadow-xl p-6 max-h-[90vh] overflow-y-auto"
+              role="dialog"
+              aria-modal="true"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-start justify-between mb-2">
+                <h3 className="text-lg font-semibold text-slate-900">Add User</h3>
+                <button
+                  type="button"
+                  onClick={() => closeAddUserModal()}
+                  disabled={addUserSubmitting}
+                  className="text-slate-400 hover:text-slate-600 text-xl leading-none px-1 disabled:opacity-50"
+                  aria-label="Close"
+                >
+                  ×
+                </button>
+              </div>
+              <p className="text-sm text-slate-600 mb-4">
+                Create a tenant user in this company. Developers cannot be created here.
+              </p>
+              {addUserFormError && (
+                <div className="mb-3 p-3 rounded-lg bg-red-50 border border-red-200 text-red-800 text-sm">
+                  {addUserFormError}
+                </div>
+              )}
+              <form onSubmit={handleAddUserSubmit} className="space-y-3">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Name *</label>
+                  <input
+                    required
+                    minLength={2}
+                    value={addUserForm.name}
+                    onChange={(e) => setAddUserForm((f) => ({ ...f, name: e.target.value }))}
+                    className="block w-full px-3 py-2 border border-slate-300 rounded-md text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Email *</label>
+                  <input
+                    type="email"
+                    required
+                    value={addUserForm.email}
+                    onChange={(e) => {
+                      setAddUserEmailError(null)
+                      setAddUserForm((f) => ({ ...f, email: e.target.value }))
+                    }}
+                    className={`block w-full px-3 py-2 border rounded-md text-sm ${
+                      addUserEmailError ? 'border-red-400' : 'border-slate-300'
+                    }`}
+                  />
+                  {addUserEmailError && (
+                    <p className="mt-1 text-xs text-red-600">{addUserEmailError}</p>
+                  )}
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Role *</label>
+                  <select
+                    value={addUserForm.role}
+                    onChange={(e) => setAddUserForm((f) => ({ ...f, role: e.target.value }))}
+                    className="block w-full px-3 py-2 border border-slate-300 rounded-md text-sm"
+                  >
+                    {tenantRoles.map((r) => (
+                      <option key={r} value={r}>{r}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Password</label>
+                  <input
+                    type="password"
+                    minLength={8}
+                    value={addUserForm.password}
+                    onChange={(e) => setAddUserForm((f) => ({ ...f, password: e.target.value }))}
+                    className="block w-full px-3 py-2 border border-slate-300 rounded-md text-sm"
+                    placeholder="Optional"
+                  />
+                  <p className="mt-1 text-xs text-slate-500">
+                    Leave blank and a temporary password will be generated and shown after creation.
+                  </p>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">PIN</label>
+                  <input
+                    inputMode="numeric"
+                    maxLength={4}
+                    value={addUserForm.pin}
+                    onChange={(e) =>
+                      setAddUserForm((f) => ({
+                        ...f,
+                        pin: e.target.value.replace(/\D/g, '').slice(0, 4),
+                      }))
+                    }
+                    placeholder="Optional, 4 digits"
+                    className="block w-full px-3 py-2 border border-slate-300 rounded-md text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Pay rate ($/hr)</label>
+                  <input
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    value={addUserForm.pay_rate}
+                    onChange={(e) => setAddUserForm((f) => ({ ...f, pay_rate: e.target.value }))}
+                    className="block w-full px-3 py-2 border border-slate-300 rounded-md text-sm"
+                    placeholder="Optional"
+                  />
+                </div>
+                <label className="flex items-center gap-2 text-sm text-slate-700">
+                  <input
+                    type="checkbox"
+                    checked={addUserForm.email_verified}
+                    onChange={(e) => setAddUserForm((f) => ({ ...f, email_verified: e.target.checked }))}
+                    className="rounded border-slate-300 text-blue-600"
+                  />
+                  Email verified
+                </label>
+                <div className="flex gap-3 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => closeAddUserModal()}
+                    disabled={addUserSubmitting}
+                    className="flex-1 px-4 py-2 border border-slate-300 rounded-md text-sm font-medium disabled:opacity-50"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={addUserSubmitting}
+                    className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-md text-sm font-medium hover:bg-blue-700 disabled:opacity-50"
+                  >
+                    {addUserSubmitting ? 'Creating…' : 'Create User'}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {tempCredsModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
+            <div className="relative w-full max-w-md rounded-2xl border border-slate-200 bg-white shadow-xl p-6" role="dialog" aria-modal="true">
+              <h3 className="text-lg font-semibold text-slate-900 mb-2">Temporary password</h3>
+              <p className="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-md p-3 mb-4">
+                This password will not be shown again. Save it or share with the user securely.
+              </p>
+              <div className="space-y-2 text-sm mb-4">
+                <p><span className="text-slate-500">Name:</span> <span className="font-medium">{tempCredsModal.name}</span></p>
+                <p><span className="text-slate-500">Email:</span> <span className="font-medium">{tempCredsModal.email}</span></p>
+                <p><span className="text-slate-500">Password:</span> <span className="font-mono font-medium">{tempCredsModal.password}</span></p>
+              </div>
+              <div className="flex gap-3">
+                <button
+                  type="button"
+                  onClick={async () => {
+                    const text = `Email: ${tempCredsModal.email}\nPassword: ${tempCredsModal.password}`
+                    try {
+                      await navigator.clipboard.writeText(text)
+                      toast.success('Credentials copied')
+                    } catch {
+                      toast.error('Could not copy to clipboard')
+                    }
+                  }}
+                  className="flex-1 px-4 py-2 border border-slate-300 rounded-md text-sm font-medium hover:bg-slate-50"
+                >
+                  Copy to clipboard
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setTempCredsModal(null)}
+                  className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-md text-sm font-medium hover:bg-blue-700"
+                >
+                  Done
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
-    </Layout>
   )
 }

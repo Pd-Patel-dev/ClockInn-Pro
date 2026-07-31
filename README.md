@@ -79,6 +79,14 @@ Defined in **`server/app/models/user.py`**.
 - **Tenant isolation:** non-developer users have a required **`company_id`**. **DEVELOPER** accounts are platform-level with **`company_id = NULL`** (above the company hierarchy).
 - **Email uniqueness:** emails are **globally unique** (case-insensitive) across the entire platform (`uq_user_email` on `LOWER(email)`), not per company.
 
+### Developer capabilities — company onboarding
+
+Platform developers can onboard tenants from the Developer Portal without using admin employee APIs:
+
+- **Create company + first admin** — `POST /api/v1/developer/companies` creates the company and its initial `ADMIN` in a **single DB transaction**. The developer does **not** set the admin password; the admin receives a **secure one-time set-password email** (48h expiry). Login is blocked until the password is set. UI: **Companies** tab → **Create company** dialog.
+- **Add users to any company** — `POST /api/v1/developer/companies/{company_id}/users` creates tenant users (any role except `DEVELOPER`) in an existing company. Optional password; if omitted, a one-time temp password is returned. UI: company detail → **Add User**.
+- **Create developers** remains `POST /api/v1/developer/accounts` only (cannot create `DEVELOPER` via the tenant-user endpoint).
+
 Full field list and relationships: see the `User` class in that file.
 
 ## Getting it running
