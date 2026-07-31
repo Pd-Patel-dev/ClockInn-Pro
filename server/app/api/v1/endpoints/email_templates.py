@@ -190,6 +190,7 @@ async def send_test_email_template(
 ):
     try:
         ets.check_test_send_rate_limit(current_user.id)
+        template = await ets.get_template_or_404(db, template_id)
         preview = await ets.preview_template(
             db,
             template_id,
@@ -216,6 +217,8 @@ async def send_test_email_template(
         subject=subject,
         body_html=body_html,
         body_text=body_text,
+        template_key=template.key,
+        kind="test",
     )
     status_str = "sent" if ok else "failed"
     logger.info(

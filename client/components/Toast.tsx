@@ -1,6 +1,6 @@
 'use client'
 
-import React, { createContext, useContext, useState, useCallback } from 'react'
+import React, { createContext, useContext, useState, useCallback, useMemo } from 'react'
 import { ToastNotification, type ToastVisualVariant } from '@/components/ui/Toast'
 
 export type ToastType = ToastVisualVariant
@@ -69,8 +69,15 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     showToast(message, 'warning', duration)
   }, [showToast])
 
+  // Keep context identity stable when toast list updates — otherwise every
+  // toast.error() recreates consumers' useCallback deps and can refetch loops.
+  const value = useMemo(
+    () => ({ showToast, success, error, info, warning }),
+    [showToast, success, error, info, warning]
+  )
+
   return (
-    <ToastContext.Provider value={{ showToast, success, error, info, warning }}>
+    <ToastContext.Provider value={value}>
       {children}
       <ToastContainer toasts={toasts} onRemove={removeToast} />
     </ToastContext.Provider>

@@ -486,13 +486,32 @@ class EmailService:
         subject: str,
         body_html: Optional[str] = None,
         body_text: Optional[str] = None,
+        *,
+        template_key: Optional[str] = None,
+        kind: str = "test",
     ) -> bool:
         """Send an arbitrary email (used by template test-send). Prefers HTML when provided."""
         if not self._refresh_token_if_needed():
             logger.error("Gmail service not initialized or token refresh failed. Cannot send email.")
+            await self._record_delivery(
+                to_email=to_email,
+                subject=subject,
+                template_key=template_key,
+                kind=kind,
+                status="failed",
+                error_message="Gmail not initialized or token refresh failed",
+            )
             return False
         if not self.service:
             logger.error("Gmail service not initialized. Cannot send email.")
+            await self._record_delivery(
+                to_email=to_email,
+                subject=subject,
+                template_key=template_key,
+                kind=kind,
+                status="failed",
+                error_message="Gmail service not initialized",
+            )
             return False
         try:
             if body_html:
@@ -501,9 +520,25 @@ class EmailService:
                 message = self._create_message(to_email, subject, body_text or "", subtype="plain")
             result = self.service.users().messages().send(userId="me", body=message).execute()
             logger.info("Raw email sent to %s. Message ID: %s", to_email, result.get("id"))
+            await self._record_delivery(
+                to_email=to_email,
+                subject=subject,
+                template_key=template_key,
+                kind=kind,
+                status="sent",
+                provider_message_id=result.get("id"),
+            )
             return True
         except Exception as e:
             logger.error("Failed to send raw email to %s: %s", to_email, e)
+            await self._record_delivery(
+                to_email=to_email,
+                subject=subject,
+                template_key=template_key,
+                kind=kind,
+                status="failed",
+                error_message=str(e),
+            )
             return False
 
     async def render_template(self, key: str, variables: Dict[str, Any]) -> Dict[str, str]:
@@ -577,18 +612,31 @@ class EmailService:
         # Refresh token before sending
         if not self._refresh_token_if_needed():
             logger.error("Gmail service not initialized or token refresh failed. Cannot send email.")
+            await self._record_delivery(
+                to_email=admin_email,
+                subject=f"New Leave Request from {employee_name}  —  ClockIn Pro",
+                template_key="leave_request_notification",
+                kind="notification",
+                status="failed",
+                error_message="Gmail not initialized or token refresh failed",
+            )
             return False
         
         if not self.service:
             logger.error("Gmail service not initialized. Cannot send email.")
+            await self._record_delivery(
+                to_email=admin_email,
+                subject=f"New Leave Request from {employee_name}  —  ClockIn Pro",
+                template_key="leave_request_notification",
+                kind="notification",
+                status="failed",
+                error_message="Gmail service not initialized",
+            )
             return False
         
-        try:
-            subject = f"New Leave Request from {employee_name}  —  ClockIn Pro"
-            
-            reason_text = f"\nReason: {reason}" if reason else ""
-            
-            body = f"""A new leave request has been submitted and requires your review.
+        subject = f"New Leave Request from {employee_name}  —  ClockIn Pro"
+        reason_text = f"\nReason: {reason}" if reason else ""
+        body = f"""A new leave request has been submitted and requires your review.
 
 Employee: {employee_name}
 Leave Type: {leave_type.title()}
@@ -598,42 +646,17 @@ End Date: {end_date}{reason_text}
 Please review and respond to this leave request in your admin dashboard.
 
 ClockIn Pro"""
-            
-            message = self._create_message(admin_email, subject, body)
-            
-            result = self.service.users().messages().send(
-                userId='me',
-                body=message
-            ).execute()
-            
-            logger.info(f"Leave request notification sent to {admin_email}. Message ID: {result.get('id')}")
-            return True
-            
-        except HttpError as error:
-            error_details = error.error_details if hasattr(error, 'error_details') else str(error)
-            
-            if error.resp.status == 401:
-                logger.error("Gmail API authentication failed. Token may have expired.")
-                if self._refresh_token_if_needed():
-                    try:
-                        result = self.service.users().messages().send(
-                            userId='me',
-                            body=message
-                        ).execute()
-                        logger.info(f"Leave request notification sent to {admin_email} after token refresh. Message ID: {result.get('id')}")
-                        return True
-                    except Exception as retry_error:
-                        logger.error(f"Failed to send leave notification after token refresh: {retry_error}")
-                        return False
-                else:
-                    logger.error("Gmail refresh token has expired. Re-authorization required.")
-                    return False
-            
-            logger.error(f"Gmail API error while sending leave notification: {error_details}")
-            return False
-        except Exception as e:
-            logger.error(f"Unexpected error sending leave notification: {e}")
-            return False
+        ok = await self._dispatch_gmail(
+            admin_email,
+            subject,
+            body,
+            subtype="plain",
+            template_key="leave_request_notification",
+            kind="notification",
+        )
+        if ok:
+            logger.info("Leave request notification sent to %s", admin_email)
+        return ok
     
     async def send_leave_request_response(
         self,
@@ -664,76 +687,114 @@ ClockIn Pro"""
         Returns:
             True if email sent successfully, False otherwise
         """
-        # Refresh token before sending
+        status_text = "Approved" if status.lower() == "approved" else "Rejected"
+        subject = f"Leave Request {status_text}  —  ClockIn Pro"
+
         if not self._refresh_token_if_needed():
             logger.error("Gmail service not initialized or token refresh failed. Cannot send email.")
+            await self._record_delivery(
+                to_email=employee_email,
+                subject=subject,
+                template_key="leave_request_response",
+                kind="notification",
+                status="failed",
+                error_message="Gmail not initialized or token refresh failed",
+            )
             return False
         
         if not self.service:
             logger.error("Gmail service not initialized. Cannot send email.")
+            await self._record_delivery(
+                to_email=employee_email,
+                subject=subject,
+                template_key="leave_request_response",
+                kind="notification",
+                status="failed",
+                error_message="Gmail service not initialized",
+            )
             return False
         
-        try:
-            status_text = "Approved" if status.lower() == "approved" else "Rejected"
-            subject = f"Leave Request {status_text}  —  ClockIn Pro"
-            
-            reason_text = f"\n- Reason: {reason}" if reason else ""
-            reviewer_text = f"\n- Reviewed by: {reviewer_name}" if reviewer_name else ""
-            comment_text = f"\n\nReview Comment:\n{review_comment}" if review_comment else ""
-            
-            body = f"""Your leave request has been {status_text.lower()}.
+        reason_text = f"\n- Reason: {reason}" if reason else ""
+        reviewer_text = f"\n- Reviewed by: {reviewer_name}" if reviewer_name else ""
+        comment_text = f"\n\nReview Comment:\n{review_comment}" if review_comment else ""
+        
+        body = f"""Your leave request has been {status_text.lower()}.
 
-Leave Details:
-- Type: {leave_type.title()}
+Details:
+- Leave Type: {leave_type.title()}
 - Start Date: {start_date}
 - End Date: {end_date}{reason_text}{reviewer_text}{comment_text}
 
-You can view all your leave requests in your dashboard.
-
 ClockIn Pro"""
-            
-            message = self._create_message(employee_email, subject, body)
-            
-            result = self.service.users().messages().send(
-                userId='me',
-                body=message
-            ).execute()
-            
-            logger.info(f"Leave request response sent to {employee_email}. Message ID: {result.get('id')}")
-            return True
-            
-        except HttpError as error:
-            error_details = error.error_details if hasattr(error, 'error_details') else str(error)
-            
-            if error.resp.status == 401:
-                logger.error("Gmail API authentication failed. Token may have expired.")
-                if self._refresh_token_if_needed():
-                    try:
-                        result = self.service.users().messages().send(
-                            userId='me',
-                            body=message
-                        ).execute()
-                        logger.info(f"Leave request response sent to {employee_email} after token refresh. Message ID: {result.get('id')}")
-                        return True
-                    except Exception as retry_error:
-                        logger.error(f"Failed to send leave response after token refresh: {retry_error}")
-                        return False
-                else:
-                    logger.error("Gmail refresh token has expired. Re-authorization required.")
-                    return False
-            
-            logger.error(f"Gmail API error while sending leave response: {error_details}")
-            return False
-        except Exception as e:
-            logger.error(f"Unexpected error sending leave response: {e}")
+        ok = await self._dispatch_gmail(
+            employee_email,
+            subject,
+            body,
+            subtype="plain",
+            template_key="leave_request_response",
+            kind="notification",
+        )
+        if ok:
+            logger.info("Leave request response sent to %s", employee_email)
+        return ok
+
+    async def _record_delivery(
+        self,
+        *,
+        to_email: str,
+        status: str,
+        subject: Optional[str] = None,
+        template_key: Optional[str] = None,
+        kind: str = "transactional",
+        provider_message_id: Optional[str] = None,
+        error_message: Optional[str] = None,
+    ) -> None:
+        from app.services.email_delivery_log_service import record_email_delivery
+
+        await record_email_delivery(
+            to_email=to_email,
+            status=status,
+            subject=subject,
+            template_key=template_key,
+            kind=kind,
+            provider_message_id=provider_message_id,
+            error_message=error_message,
+        )
+
+    async def _dispatch_gmail(
+        self,
+        to_email: str,
+        subject: str,
+        body: str,
+        subtype: str = "plain",
+        *,
+        template_key: Optional[str] = None,
+        kind: str = "transactional",
+    ) -> bool:
+        """Send via Gmail with one auth-refresh retry. Records delivery log."""
+        if not self.service:
+            await self._record_delivery(
+                to_email=to_email,
+                subject=subject,
+                template_key=template_key,
+                kind=kind,
+                status="failed",
+                error_message="Gmail service not initialized",
+            )
             return False
 
-    async def _dispatch_gmail(self, to_email: str, subject: str, body: str, subtype: str = "plain") -> bool:
-        """Send via Gmail with one auth-refresh retry."""
         message = self._create_message(to_email, subject, body, subtype=subtype)
         try:
             result = self.service.users().messages().send(userId="me", body=message).execute()
             logger.info("Email sent to %s. Message ID: %s", to_email, result.get("id"))
+            await self._record_delivery(
+                to_email=to_email,
+                subject=subject,
+                template_key=template_key,
+                kind=kind,
+                status="sent",
+                provider_message_id=result.get("id"),
+            )
             return True
         except HttpError as error:
             error_details = error.error_details if hasattr(error, "error_details") else str(error)
@@ -745,14 +806,46 @@ ClockIn Pro"""
                         to_email,
                         result.get("id"),
                     )
+                    await self._record_delivery(
+                        to_email=to_email,
+                        subject=subject,
+                        template_key=template_key,
+                        kind=kind,
+                        status="sent",
+                        provider_message_id=result.get("id"),
+                    )
                     return True
                 except Exception as retry_error:
                     logger.error("Failed to send email after token refresh: %s", retry_error)
+                    await self._record_delivery(
+                        to_email=to_email,
+                        subject=subject,
+                        template_key=template_key,
+                        kind=kind,
+                        status="failed",
+                        error_message=str(retry_error),
+                    )
                     return False
             logger.error("Gmail API error while sending email: %s", error_details)
+            await self._record_delivery(
+                to_email=to_email,
+                subject=subject,
+                template_key=template_key,
+                kind=kind,
+                status="failed",
+                error_message=str(error_details),
+            )
             return False
         except Exception as e:
             logger.error("Unexpected error sending email: %s", e)
+            await self._record_delivery(
+                to_email=to_email,
+                subject=subject,
+                template_key=template_key,
+                kind=kind,
+                status="failed",
+                error_message=str(e),
+            )
             return False
 
     async def send_password_setup_email(self, to_email: str, employee_name: str, setup_link: str) -> bool:
@@ -809,29 +902,78 @@ ClockIn Pro"""
     ) -> bool:
         if not self._refresh_token_if_needed():
             logger.error("Gmail service not initialized or token refresh failed. Cannot send email.")
+            await self._record_delivery(
+                to_email=to_email,
+                subject=fallback_subject,
+                template_key=key,
+                kind="transactional",
+                status="failed",
+                error_message="Gmail not initialized or token refresh failed",
+            )
             return False
         if not self.service:
             logger.error("Gmail service not initialized. Cannot send email.")
+            await self._record_delivery(
+                to_email=to_email,
+                subject=fallback_subject,
+                template_key=key,
+                kind="transactional",
+                status="failed",
+                error_message="Gmail service not initialized",
+            )
             return False
         try:
             rendered = await self._render_key(key, variables)
             if rendered is None:
+                await self._record_delivery(
+                    to_email=to_email,
+                    subject=fallback_subject,
+                    template_key=key,
+                    kind="transactional",
+                    status="skipped",
+                    error_message="Template disabled or unavailable",
+                )
                 return False
             if rendered.get("__fallback__"):
-                ok = await self._dispatch_gmail(to_email, fallback_subject, fallback_text, subtype="plain")
+                ok = await self._dispatch_gmail(
+                    to_email,
+                    fallback_subject,
+                    fallback_text,
+                    subtype="plain",
+                    template_key=key,
+                    kind="transactional",
+                )
             elif rendered.get("body_html"):
                 ok = await self._dispatch_gmail(
-                    to_email, rendered["subject"], rendered["body_html"], subtype="html"
+                    to_email,
+                    rendered["subject"],
+                    rendered["body_html"],
+                    subtype="html",
+                    template_key=key,
+                    kind="transactional",
                 )
             else:
                 ok = await self._dispatch_gmail(
-                    to_email, rendered["subject"], rendered.get("body_text") or "", subtype="plain"
+                    to_email,
+                    rendered["subject"],
+                    rendered.get("body_text") or "",
+                    subtype="plain",
+                    template_key=key,
+                    kind="transactional",
                 )
             if ok:
                 logger.info("%s email sent to %s", log_label, to_email)
             return ok
         except Exception as e:
             logger.error("Unexpected error sending %s email: %s", log_label, e)
+            await self._record_delivery(
+                to_email=to_email,
+                subject=fallback_subject,
+                template_key=key,
+                kind="transactional",
+                status="failed",
+                error_message=str(e),
+            )
             return False
 
     async def send_password_reset_otp(self, to_email: str, otp: str) -> bool:
@@ -878,49 +1020,51 @@ ClockIn Pro"""
 
         logger.info("Sending schedule notification to %s (%d shift(s))", employee_email, len(shifts))
 
+        if week_start_date is not None:
+            subject = "Your Week Schedule  —  ClockIn Pro"
+        else:
+            subject = "Your Schedule  —  ClockIn Pro"
+
         if not self._refresh_token_if_needed():
             logger.error("Schedule email NOT sent to %s: Gmail not initialized or token refresh failed. Set GMAIL_CREDENTIALS_JSON and GMAIL_TOKEN_JSON.", employee_email)
+            await self._record_delivery(
+                to_email=employee_email,
+                subject=subject,
+                template_key="schedule_notification",
+                kind="notification",
+                status="failed",
+                error_message="Gmail not initialized or token refresh failed",
+            )
             return False
 
         if not self.service:
             logger.error("Schedule email NOT sent to %s: Gmail service not initialized. Configure Gmail API (see server logs at startup).", employee_email)
-            return False
-
-        try:
-            if week_start_date is not None:
-                subject = "Your Week Schedule  —  ClockIn Pro"
-            else:
-                subject = "Your Schedule  —  ClockIn Pro"
-            body = _build_schedule_email_html(
-                employee_name=employee_name or "Employee",
-                week_start_date=week_start_date,
-                shifts=shifts,
+            await self._record_delivery(
+                to_email=employee_email,
+                subject=subject,
+                template_key="schedule_notification",
+                kind="notification",
+                status="failed",
+                error_message="Gmail service not initialized",
             )
-            message = self._create_message(employee_email, subject, body, subtype="html")
-
-            result = self.service.users().messages().send(
-                userId='me',
-                body=message
-            ).execute()
-
-            logger.info(f"Schedule notification sent to {employee_email}. Message ID: {result.get('id')}")
-            return True
-
-        except HttpError as error:
-            error_details = error.error_details if hasattr(error, 'error_details') else str(error)
-            if error.resp.status == 401 and self._refresh_token_if_needed():
-                try:
-                    result = self.service.users().messages().send(userId='me', body=message).execute()
-                    logger.info(f"Schedule notification sent to {employee_email} after token refresh.")
-                    return True
-                except Exception as retry_error:
-                    logger.error(f"Failed to send schedule notification after token refresh: {retry_error}")
-                    return False
-            logger.error(f"Gmail API error while sending schedule notification: {error_details}")
             return False
-        except Exception as e:
-            logger.error(f"Unexpected error sending schedule notification: {e}")
-            return False
+
+        body = _build_schedule_email_html(
+            employee_name=employee_name or "Employee",
+            week_start_date=week_start_date,
+            shifts=shifts,
+        )
+        ok = await self._dispatch_gmail(
+            employee_email,
+            subject,
+            body,
+            subtype="html",
+            template_key="schedule_notification",
+            kind="notification",
+        )
+        if ok:
+            logger.info("Schedule notification sent to %s", employee_email)
+        return ok
 
     async def send_punch_violation_warning(
         self,
@@ -958,6 +1102,16 @@ ClockIn Pro"""
             return True
         if not self._refresh_token_if_needed() or not self.service:
             logger.warning("Gmail not configured or unavailable; skipping punch violation warning email. Configure GMAIL_CREDENTIALS_JSON and GMAIL_TOKEN_JSON.")
+            for to_email in to_emails:
+                if to_email and to_email.strip():
+                    await self._record_delivery(
+                        to_email=to_email.strip(),
+                        subject="ClockIn Pro — Punch blocked",
+                        template_key="punch_violation_warning",
+                        kind="notification",
+                        status="failed",
+                        error_message="Gmail not configured or unavailable",
+                    )
             return False
         logger.info("Sending punch violation warning (%s) to %d admin(s)", violation_type, len(to_emails))
 
@@ -999,13 +1153,17 @@ ClockIn Pro"""
         for to_email in to_emails:
             if not to_email or not to_email.strip():
                 continue
-            try:
-                message = self._create_message(to_email.strip(), subject, body, subtype="plain")
-                result = self.service.users().messages().send(userId="me", body=message).execute()
-                logger.info("Punch violation warning sent to %s (message id: %s)", to_email, result.get("id"))
+            ok = await self._dispatch_gmail(
+                to_email.strip(),
+                subject,
+                body,
+                subtype="plain",
+                template_key="punch_violation_warning",
+                kind="notification",
+            )
+            if ok:
+                logger.info("Punch violation warning sent to %s", to_email)
                 sent = True
-            except Exception as e:
-                logger.warning("Failed to send punch violation warning to %s: %s", to_email, e)
         return sent
 
 

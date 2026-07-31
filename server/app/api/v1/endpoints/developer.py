@@ -255,6 +255,30 @@ async def get_system_info(
     }
 
 
+@router.get("/email-delivery-logs")
+@handle_endpoint_errors(operation_name="list_email_delivery_logs")
+async def list_email_delivery_logs(
+    current_user: User = Depends(get_current_developer),
+    db: AsyncSession = Depends(get_db),
+    limit: int = Query(100, ge=1, le=500),
+    offset: int = Query(0, ge=0),
+    status: Optional[str] = Query(None, description="sent | failed | skipped"),
+    q: Optional[str] = Query(None, description="Search recipient or subject"),
+    template_key: Optional[str] = Query(None),
+):
+    """List outbound email delivery attempts for the Email Service UI."""
+    from app.services.email_delivery_log_service import list_email_delivery_logs as _list
+
+    return await _list(
+        db,
+        limit=limit,
+        offset=offset,
+        status=status,
+        q=q,
+        template_key=template_key,
+    )
+
+
 @router.get("/recent-activity")
 @handle_endpoint_errors(operation_name="get_recent_activity")
 async def get_recent_activity(

@@ -19,28 +19,43 @@ import {
   TabPanel,
   Tabs,
   Textarea,
+  Select,
 } from '@/components/ui'
 
-type EmailTab = 'overview' | 'templates' | 'delivery' | 'configuration' | 'suppressions'
+type EmailTab = 'overview' | 'templates' | 'delivery' | 'configuration'
 
 const EMAIL_TABS = [
   { id: 'overview', label: 'Overview' },
   { id: 'templates', label: 'Templates' },
   { id: 'delivery', label: 'Delivery Log' },
   { id: 'configuration', label: 'Configuration' },
-  { id: 'suppressions', label: 'Suppressions' },
 ]
 
-const STUB_DELIVERY = [
-  { id: '1', to: 'user@example.com', template: 'Email Verification', status: 'delivered', at: '2026-07-30T12:00:00Z' },
-  { id: '2', to: 'admin@example.com', template: 'Welcome', status: 'delivered', at: '2026-07-29T09:15:00Z' },
-  { id: '3', to: 'bounce@invalid.test', template: 'Password Reset', status: 'bounced', at: '2026-07-28T16:42:00Z' },
-]
+type DeliveryLogItem = {
+  id: string
+  to_email: string
+  subject: string | null
+  template_key: string | null
+  kind: string
+  status: string
+  provider_message_id: string | null
+  error_message: string | null
+  created_at: string | null
+}
 
-const STUB_SUPPRESSIONS = [
-  { email: 'bounce@invalid.test', reason: 'Hard bounce', since: '2026-07-28' },
-  { email: 'unsub@example.com', reason: 'Complaint', since: '2026-07-15' },
-]
+type DeliveryStats24h = {
+  sent: number
+  failed: number
+  skipped: number
+  total: number
+}
+
+function statusBadgeVariant(status: string): 'success' | 'danger' | 'warning' | 'neutral' {
+  if (status === 'sent') return 'success'
+  if (status === 'failed') return 'danger'
+  if (status === 'skipped') return 'warning'
+  return 'neutral'
+}
 
 export default function EmailSettingsPage() {
   const router = useRouter()
@@ -59,6 +74,12 @@ export default function EmailSettingsPage() {
   const [checkingGmail, setCheckingGmail] = useState(false)
   const [testEmail, setTestEmail] = useState('')
   const [sendingTest, setSendingTest] = useState(false)
+  const [deliveryLogs, setDeliveryLogs] = useState<DeliveryLogItem[]>([])
+  const [deliveryTotal, setDeliveryTotal] = useState(0)
+  const [deliveryStats, setDeliveryStats] = useState<DeliveryStats24h | null>(null)
+  const [deliveryLoading, setDeliveryLoading] = useState(false)
+  const [deliveryStatusFilter, setDeliveryStatusFilter] = useState('')
+  const [deliveryQuery, setDeliveryQuery] = useState('')
 
   const checkGmailHealth = useCallback(async () => {
     setCheckingGmail(true)
@@ -81,7 +102,28 @@ export default function EmailSettingsPage() {
     } finally {
       setCheckingGmail(false)
     }
-  }, [toast])
+  }, [toast.error])
+
+  const loadDeliveryLogs = useCallback(async () => {
+    setDeliveryLoading(true)
+    try {
+      const res = await api.get('/developer/email-delivery-logs', {
+        params: {
+          limit: 200,
+          status: deliveryStatusFilter || undefined,
+          q: deliveryQuery.trim() || undefined,
+        },
+      })
+      setDeliveryLogs(Array.isArray(res.data?.items) ? res.data.items : [])
+      setDeliveryTotal(Number(res.data?.total || 0))
+      setDeliveryStats(res.data?.stats_24h || null)
+    } catch (error) {
+      logger.error('Failed to load email delivery logs', error as Error)
+      toast.error('Failed to load delivery logs')
+    } finally {
+      setDeliveryLoading(false)
+    }
+  }, [deliveryStatusFilter, deliveryQuery, toast.error])
 
   useEffect(() => {
     let cancelled = false
@@ -91,7 +133,7 @@ export default function EmailSettingsPage() {
         if (cancelled) return
         if (currentUser.role === 'DEVELOPER') {
           setAuthReady(true)
-          checkGmailHealth()
+          void checkGmailHealth()
           return
         }
         if (currentUser.role === 'ADMIN') {
@@ -108,6 +150,16 @@ export default function EmailSettingsPage() {
       cancelled = true
     }
   }, [router, checkGmailHealth])
+
+  useEffect(() => {
+    if (!authReady) return
+    if (tab !== 'delivery' && tab !== 'overview') return
+    const debounceMs = tab === 'delivery' && deliveryQuery ? 250 : 0
+    const t = setTimeout(() => {
+      void loadDeliveryLogs()
+    }, debounceMs)
+    return () => clearTimeout(t)
+  }, [authReady, tab, loadDeliveryLogs])
 
   const handleUpdateGmailToken = async (tokenJson: string) => {
     try {
@@ -131,6 +183,7 @@ export default function EmailSettingsPage() {
     try {
       await api.post(`/admin/gmail/test-send?test_email=${encodeURIComponent(target)}`)
       toast.success(`Test email sent to ${target}`)
+      void loadDeliveryLogs()
     } catch (error: unknown) {
       const err = error as { response?: { data?: { detail?: string } } }
       logger.error('Failed to send test email', error as Error)
@@ -178,22 +231,34 @@ export default function EmailSettingsPage() {
             <Card>
               <CardBody className="space-y-1">
                 <p className="text-xs font-medium uppercase text-foreground-muted">Delivered (24h)</p>
-                <p className="text-2xl font-semibold text-foreground">—</p>
-                <p className="text-xs text-foreground-subtle">Stub metric</p>
+                <p className="text-2xl font-semibold text-foreground">
+                  {deliveryStats ? deliveryStats.sent : '—'}
+                </p>
+                <p className="text-xs text-foreground-subtle">
+                  {deliveryStats ? `${deliveryStats.total} attempts` : 'Loading…'}
+                </p>
               </CardBody>
             </Card>
             <Card>
               <CardBody className="space-y-1">
-                <p className="text-xs font-medium uppercase text-foreground-muted">Bounce rate</p>
-                <p className="text-2xl font-semibold text-foreground">—</p>
-                <p className="text-xs text-foreground-subtle">Stub metric</p>
+                <p className="text-xs font-medium uppercase text-foreground-muted">Failed (24h)</p>
+                <p className="text-2xl font-semibold text-foreground">
+                  {deliveryStats ? deliveryStats.failed : '—'}
+                </p>
+                <p className="text-xs text-foreground-subtle">
+                  {deliveryStats && deliveryStats.total > 0
+                    ? `${Math.round((deliveryStats.failed / deliveryStats.total) * 100)}% of attempts`
+                    : 'No attempts yet'}
+                </p>
               </CardBody>
             </Card>
             <Card>
               <CardBody className="space-y-1">
-                <p className="text-xs font-medium uppercase text-foreground-muted">Queue depth</p>
-                <p className="text-2xl font-semibold text-foreground">0</p>
-                <p className="text-xs text-foreground-subtle">Stub metric</p>
+                <p className="text-xs font-medium uppercase text-foreground-muted">Skipped (24h)</p>
+                <p className="text-2xl font-semibold text-foreground">
+                  {deliveryStats ? deliveryStats.skipped : '—'}
+                </p>
+                <p className="text-xs text-foreground-subtle">Disabled templates / blocked</p>
               </CardBody>
             </Card>
           </div>
@@ -278,32 +343,86 @@ export default function EmailSettingsPage() {
         <TabPanel id="delivery" value={tab}>
           <Card>
             <CardHeader>
-              <CardTitle>Delivery log</CardTitle>
-              <CardDescription>Sample entries — full log API not wired yet</CardDescription>
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <CardTitle>Delivery log</CardTitle>
+                  <CardDescription>
+                    All outbound email attempts ({deliveryTotal} total)
+                  </CardDescription>
+                </div>
+                <Button variant="secondary" size="sm" loading={deliveryLoading} onClick={loadDeliveryLogs}>
+                  Refresh
+                </Button>
+              </div>
             </CardHeader>
-            <CardBody className="overflow-x-auto p-0">
-              <table className="w-full text-sm">
-                <thead className="border-b border-border bg-border-subtle/50">
-                  <tr>
-                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-foreground-muted">Time</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-foreground-muted">To</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-foreground-muted">Template</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-foreground-muted">Status</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-border-subtle">
-                  {STUB_DELIVERY.map((row) => (
-                    <tr key={row.id} className="hover:bg-border-subtle/40">
-                      <td className="px-4 py-3 text-foreground-muted">{new Date(row.at).toLocaleString()}</td>
-                      <td className="px-4 py-3">{row.to}</td>
-                      <td className="px-4 py-3">{row.template}</td>
-                      <td className="px-4 py-3">
-                        <Badge variant={row.status === 'delivered' ? 'success' : 'danger'}>{row.status}</Badge>
-                      </td>
+            <CardBody className="space-y-4">
+              <div className="flex flex-wrap items-center gap-3">
+                <div className="min-w-[200px] flex-1">
+                  <Input
+                    placeholder="Search recipient or subject…"
+                    value={deliveryQuery}
+                    onChange={(e) => setDeliveryQuery(e.target.value)}
+                  />
+                </div>
+                <Select
+                  className="w-40"
+                  value={deliveryStatusFilter}
+                  onChange={(e) => setDeliveryStatusFilter(e.target.value)}
+                  aria-label="Status filter"
+                >
+                  <option value="">All statuses</option>
+                  <option value="sent">Sent</option>
+                  <option value="failed">Failed</option>
+                  <option value="skipped">Skipped</option>
+                </Select>
+              </div>
+
+              <div className="overflow-x-auto rounded-control border border-border">
+                <table className="w-full text-sm">
+                  <thead className="border-b border-border bg-border-subtle/50">
+                    <tr>
+                      <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-foreground-muted">Time</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-foreground-muted">To</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-foreground-muted">Subject</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-foreground-muted">Template</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-foreground-muted">Kind</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-foreground-muted">Status</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody className="divide-y divide-border-subtle">
+                    {deliveryLoading && deliveryLogs.length === 0 ? (
+                      <tr>
+                        <td colSpan={6} className="px-4 py-10 text-center text-foreground-muted">
+                          Loading delivery logs…
+                        </td>
+                      </tr>
+                    ) : deliveryLogs.length === 0 ? (
+                      <tr>
+                        <td colSpan={6} className="px-4 py-10 text-center text-foreground-muted">
+                          No delivery logs yet. Sends will appear here after the next email goes out.
+                        </td>
+                      </tr>
+                    ) : (
+                      deliveryLogs.map((row) => (
+                        <tr key={row.id} className="hover:bg-border-subtle/40" title={row.error_message || undefined}>
+                          <td className="whitespace-nowrap px-4 py-3 text-foreground-muted">
+                            {row.created_at ? new Date(row.created_at).toLocaleString() : '—'}
+                          </td>
+                          <td className="px-4 py-3 font-medium text-foreground">{row.to_email}</td>
+                          <td className="max-w-[220px] truncate px-4 py-3 text-foreground-muted">
+                            {row.subject || '—'}
+                          </td>
+                          <td className="px-4 py-3 text-foreground-muted">{row.template_key || '—'}</td>
+                          <td className="px-4 py-3 text-foreground-muted">{row.kind}</td>
+                          <td className="px-4 py-3">
+                            <Badge variant={statusBadgeVariant(row.status)}>{row.status}</Badge>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
             </CardBody>
           </Card>
         </TabPanel>
@@ -432,29 +551,6 @@ export default function EmailSettingsPage() {
               </CardBody>
             </Card>
           </div>
-        </TabPanel>
-
-        <TabPanel id="suppressions" value={tab}>
-          <Card>
-            <CardHeader>
-              <CardTitle>Suppressions</CardTitle>
-              <CardDescription>Addresses blocked from delivery (stub list)</CardDescription>
-            </CardHeader>
-            <CardBody className="space-y-3">
-              {STUB_SUPPRESSIONS.map((s) => (
-                <div
-                  key={s.email}
-                  className="flex flex-wrap items-center justify-between gap-2 rounded-control border border-border px-4 py-3"
-                >
-                  <div>
-                    <p className="font-medium text-foreground">{s.email}</p>
-                    <p className="text-xs text-foreground-muted">{s.reason} · since {s.since}</p>
-                  </div>
-                  <Badge variant="danger">Suppressed</Badge>
-                </div>
-              ))}
-            </CardBody>
-          </Card>
         </TabPanel>
       </div>
     </>

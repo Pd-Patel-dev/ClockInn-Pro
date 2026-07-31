@@ -9,6 +9,7 @@ from app.models.shift import Shift, ShiftTemplate, ScheduleSwap
 from app.models.cash_drawer import CashDrawerSession, CashDrawerAudit
 from app.models.shift_note import ShiftNote, ShiftNoteComment
 from app.models.email_template import EmailTemplate, EmailTemplateVersion, EmailTemplateCategory
+from app.models.email_delivery_log import EmailDeliveryLog, EmailDeliveryStatus
 
 __all__ = [
     "Company",
