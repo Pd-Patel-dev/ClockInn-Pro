@@ -2,18 +2,18 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
-import { ArrowLeft, LayoutGrid, List, Search } from 'lucide-react'
+import { ArrowLeft, Inbox, LayoutGrid, List, Search } from 'lucide-react'
 import { useDeveloperAuth, DeveloperAuthLoading } from '@/components/developer/useDeveloperAuth'
 import { useToast } from '@/components/Toast'
 import {
   Button,
   Input,
   Select,
-  SkeletonCard,
   Modal,
 } from '@/components/ui'
 import {
   TemplateCard,
+  TemplateCardSkeleton,
   ResetFactoryModal,
   SendTestModal,
   PreviewPane,
@@ -126,7 +126,13 @@ export default function EmailTemplatesListPage() {
     }
   }
 
+  const hasFilters = Boolean(q.trim() || category)
   const filteredEmpty = !loading && templates.length === 0
+
+  const clearFilters = () => {
+    setQ('')
+    setCategory('')
+  }
 
   const header = useMemo(
     () => (
@@ -200,35 +206,42 @@ export default function EmailTemplatesListPage() {
       </div>
 
       {loading && (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          <SkeletonCard />
-          <SkeletonCard />
-          <SkeletonCard />
-          <SkeletonCard />
-          <SkeletonCard />
-          <SkeletonCard />
+        <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <TemplateCardSkeleton key={i} />
+          ))}
         </div>
       )}
 
       {filteredEmpty && (
-        <p className="rounded-control border border-dashed border-border px-6 py-12 text-center text-sm text-foreground-muted">
-          No templates match your filters.
-        </p>
+        <div className="flex flex-col items-center justify-center rounded-[10px] border border-dashed border-border px-6 py-16 text-center">
+          <Inbox className="h-10 w-10 text-foreground-subtle" strokeWidth={1.5} aria-hidden />
+          <p className="mt-4 text-sm font-medium text-foreground">No templates match your filters.</p>
+          <p className="mt-1 max-w-sm text-sm text-foreground-muted">
+            Try a different search or category, or clear filters to see all templates.
+          </p>
+          {hasFilters && (
+            <Button className="mt-5" variant="secondary" onClick={clearFilters}>
+              Clear filters
+            </Button>
+          )}
+        </div>
       )}
 
       {!loading && templates.length > 0 && (
         <div
           className={
             view === 'cards'
-              ? 'grid gap-4 sm:grid-cols-2 lg:grid-cols-3'
+              ? 'grid gap-5 sm:grid-cols-2 lg:grid-cols-3'
               : 'flex flex-col gap-2'
           }
         >
-          {templates.map((t) => (
+          {templates.map((t, i) => (
             <TemplateCard
               key={t.id}
               template={t}
               view={view}
+              index={i}
               onPreview={openPreview}
               onSendTest={setSendTestTarget}
               onToggleEnabled={handleToggleEnabled}

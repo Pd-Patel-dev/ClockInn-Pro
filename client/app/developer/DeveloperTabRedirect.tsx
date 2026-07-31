@@ -8,8 +8,8 @@ const TAB_ROUTES: Record<string, string> = {
   companies: '/developer/companies',
   developers: '/developer/developers',
   users: '/developer/users',
-  system: '/developer/system',
-  stats: '/developer/system',
+  system: '/developer',
+  stats: '/developer',
 }
 
 export default function DeveloperTabRedirect() {

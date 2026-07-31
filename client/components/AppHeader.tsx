@@ -36,7 +36,6 @@ function developerBreadcrumbs(pathname: string): BreadcrumbItem[] {
     users: 'Users',
     developers: 'Developers',
     logs: 'Activity Logs',
-    system: 'System Health',
   }
 
   for (let i = 1; i < segments.length; i++) {

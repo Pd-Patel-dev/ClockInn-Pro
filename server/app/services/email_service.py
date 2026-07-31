@@ -516,160 +516,41 @@ class EmailService:
     
     async def send_verification_email(self, to_email: str, verification_pin: str) -> bool:
         """
-        Send email verification PIN via Gmail API.
-        
-        Args:
-            to_email: Recipient email address
-            verification_pin: 6-digit verification PIN
-            
-        Returns:
-            True if email sent successfully, False otherwise
+        Send email verification PIN (DB template `verify_email` — Email Verification).
         """
-        # Refresh token before sending (handles hourly expiration)
-        if not self._refresh_token_if_needed():
-            logger.error("Gmail service not initialized or token refresh failed. Cannot send email.")
-            return False
-        
-        if not self.service:
-            logger.error("Gmail service not initialized. Cannot send email.")
-            return False
-        
-        try:
-            rendered = await self._render_key("verify_email", {"verification_pin": verification_pin})
-            if rendered is None:
-                return False  # disabled
-            if rendered.get("__fallback__"):
-                subject = "Verify your email  —  ClockIn Pro"
-                body = f"""Your 6-digit verification code is:
+        return await self._send_templated_email(
+            key="verify_email",
+            to_email=to_email,
+            variables={"verification_pin": verification_pin},
+            fallback_subject="Verify your email  —  ClockIn Pro",
+            fallback_text=(
+                "Your 6-digit verification code is:\n\n"
+                f"{verification_pin}\n\n"
+                "This code expires in 15 minutes.\n\n"
+                "For security reasons, email verification is required every 30 days.\n\n"
+                "If you didn't request this code, please ignore this email.\n"
+            ),
+            log_label="Email verification",
+        )
 
-{verification_pin}
-
-This code expires in 15 minutes.
-
-For security reasons, email verification is required every 30 days.
-
-If you didn't request this code, please ignore this email.
-"""
-                message = self._create_message(to_email, subject, body)
-            else:
-                subject = rendered["subject"]
-                body = rendered.get("body_text") or rendered.get("body_html") or ""
-                subtype = "html" if rendered.get("body_html") and not rendered.get("body_text") else "plain"
-                if rendered.get("body_html"):
-                    message = self._create_message(to_email, subject, rendered["body_html"], subtype="html")
-                else:
-                    message = self._create_message(to_email, subject, body, subtype="plain")
-            
-            # Send message
-            result = self.service.users().messages().send(
-                userId='me',
-                body=message
-            ).execute()
-            
-            logger.info(f"Verification email sent to {to_email}. Message ID: {result.get('id')}")
-            return True
-            
-        except HttpError as error:
-            # Handle specific Gmail API errors
-            error_details = error.error_details if hasattr(error, 'error_details') else str(error)
-            
-            # Check if it's an authentication error (401)
-            if error.resp.status == 401:
-                logger.error("Gmail API authentication failed. Token may have expired.")
-                # Try to refresh token once more
-                if self._refresh_token_if_needed():
-                    # Retry sending email once
-                    try:
-                        result = self.service.users().messages().send(
-                            userId='me',
-                            body=message
-                        ).execute()
-                        logger.info(f"Verification email sent to {to_email} after token refresh. Message ID: {result.get('id')}")
-                        return True
-                    except Exception as retry_error:
-                        logger.error(f"Failed to send email after token refresh: {retry_error}")
-                        return False
-                else:
-                    logger.error("Gmail refresh token has expired. Re-authorization required.")
-                    return False
-            
-            logger.error(f"Gmail API error while sending email: {error_details}")
-            return False
-        except Exception as e:
-            logger.error(f"Unexpected error sending email: {e}")
-            return False
-    
     async def send_verification_reminder(self, to_email: str) -> bool:
         """
-        Send reminder email that verification expires soon.
-        
-        Args:
-            to_email: Recipient email address
-            
-        Returns:
-            True if email sent successfully, False otherwise
+        Send reminder that verification expires soon (DB template `verification_reminder`).
         """
-        # Refresh token before sending (handles hourly expiration)
-        if not self._refresh_token_if_needed():
-            logger.error("Gmail service not initialized or token refresh failed. Cannot send email.")
-            return False
-        
-        if not self.service:
-            logger.error("Gmail service not initialized. Cannot send email.")
-            return False
-        
-        try:
-            subject = "Email Verification Expiring Soon  —  ClockIn Pro"
-            body = f"""Your email verification expires in 3 days.
+        return await self._send_templated_email(
+            key="verification_reminder",
+            to_email=to_email,
+            variables={},
+            fallback_subject="Email Verification Expiring Soon  —  ClockIn Pro",
+            fallback_text=(
+                "Your email verification expires in 3 days.\n\n"
+                "Please verify your email to continue using ClockIn Pro without interruption.\n\n"
+                "You can verify your email by logging in to your account.\n\n"
+                "If you have any questions, please contact support.\n"
+            ),
+            log_label="Verification reminder",
+        )
 
-Please verify your email to continue using ClockIn Pro without interruption.
-
-You can verify your email by logging in to your account.
-
-If you have any questions, please contact support.
-"""
-            
-            message = self._create_message(to_email, subject, body)
-            
-            # Send message
-            result = self.service.users().messages().send(
-                userId='me',
-                body=message
-            ).execute()
-            
-            logger.info(f"Verification reminder sent to {to_email}. Message ID: {result.get('id')}")
-            return True
-            
-        except HttpError as error:
-            # Handle specific Gmail API errors
-            error_details = error.error_details if hasattr(error, 'error_details') else str(error)
-            
-            # Check if it's an authentication error (401)
-            if error.resp.status == 401:
-                logger.error("Gmail API authentication failed. Token may have expired.")
-                # Try to refresh token once more
-                if self._refresh_token_if_needed():
-                    # Retry sending email once
-                    try:
-                        result = self.service.users().messages().send(
-                            userId='me',
-                            body=message
-                        ).execute()
-                        logger.info(f"Verification reminder sent to {to_email} after token refresh. Message ID: {result.get('id')}")
-                        return True
-                    except Exception as retry_error:
-                        logger.error(f"Failed to send reminder after token refresh: {retry_error}")
-                        return False
-                else:
-                    logger.error("Gmail refresh token has expired. Re-authorization required.")
-                    return False
-            
-            logger.error(f"Gmail API error while sending reminder: {error_details}")
-            return False
-        except Exception as e:
-            logger.error(f"Unexpected error sending reminder: {e}")
-            return False
-    
     async def send_leave_request_notification(
         self,
         admin_email: str,

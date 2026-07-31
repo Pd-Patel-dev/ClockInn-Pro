@@ -1,6 +1,6 @@
 export { CategoryBadge } from './CategoryBadge'
 export { SubjectPreview } from './SubjectPreview'
-export { TemplateCard } from './TemplateCard'
+export { TemplateCard, TemplateCardSkeleton } from './TemplateCard'
 export { ResetFactoryModal } from './ResetFactoryModal'
 export { SendTestModal } from './SendTestModal'
 export { PublishDiffModal } from './PublishDiffModal'

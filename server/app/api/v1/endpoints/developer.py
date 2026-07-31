@@ -215,8 +215,8 @@ async def get_system_info(
     db: AsyncSession = Depends(get_db),
 ):
     """
-    Get minimal system information for developers.
-    Only high-level status booleans; no secret names, token details, or paths.
+    Get runtime system information for developers.
+    No secret names, token details, or filesystem paths.
     """
     import platform
     import sys
@@ -237,8 +237,14 @@ async def get_system_info(
         except Exception:
             pass
 
-    info = {
+    # Flat runtime fields match the developer System Health UI.
+    return {
         "api_version": "1.0.0",
+        "python_version": sys.version.split()[0],
+        "platform": platform.platform(),
+        "system": platform.system(),
+        "processor": platform.processor() or "N/A",
+        "server_time": datetime.now(timezone.utc).isoformat(),
         "environment": {
             "database_configured": bool(settings.DATABASE_URL),
             "auth_configured": bool(settings.SECRET_KEY),
@@ -246,13 +252,7 @@ async def get_system_info(
             "email_operational": email_operational,
             "cors_configured": bool(settings.CORS_ORIGINS),
         },
-        "runtime": {
-            "python_version": sys.version.split()[0],
-            "platform": platform.system(),
-        },
     }
-
-    return info
 
 
 @router.get("/recent-activity")

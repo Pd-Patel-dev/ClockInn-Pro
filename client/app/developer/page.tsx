@@ -1,139 +1,287 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import Link from 'next/link'
 import api from '@/lib/api'
 import logger from '@/lib/logger'
 import { DeveloperAuthLoading, useDeveloperAuth } from '@/components/developer/useDeveloperAuth'
-import { Card, CardBody } from '@/components/ui/Card'
+import { Button } from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Badge'
+import { Card, CardBody, CardHeader, CardTitle } from '@/components/ui/Card'
 
 interface SystemStats {
   total_users: number
   active_users: number
+  admin_users: number
+  employee_users: number
+  developer_users: number
+  verified_users: number
   total_companies: number
   active_sessions: number
+  total_time_entries: number
   today_time_entries: number
-  verified_users: number
+  database_status: string
+  database_error?: string
+  configuration: Record<string, unknown>
 }
 
-type CompanyRow = {
-  id: string
-  name: string
-  slug: string
-  created_at: string | null
-  user_count: number
+interface SystemInfo {
+  python_version: string
+  platform: string
+  system: string
+  processor: string
+  server_time: string
 }
 
-function greetingForHour(hour: number) {
-  if (hour < 12) return 'Good morning'
-  if (hour < 17) return 'Good afternoon'
-  return 'Good evening'
+interface HealthStatus {
+  status: string
+  service: {
+    version: string
+    uptime: { formatted: string }
+  }
+  database: { status?: string; version?: { major: number; minor: number } }
+}
+
+function formatTimestamp(timestamp: string) {
+  if (!timestamp) return 'N/A'
+  try {
+    return new Date(timestamp).toLocaleString()
+  } catch {
+    return timestamp
+  }
 }
 
 export default function DeveloperOverviewPage() {
   const { user, loading: authLoading } = useDeveloperAuth()
   const [stats, setStats] = useState<SystemStats | null>(null)
-  const [companies, setCompanies] = useState<CompanyRow[]>([])
-  const [loadingData, setLoadingData] = useState(true)
+  const [systemInfo, setSystemInfo] = useState<SystemInfo | null>(null)
+  const [health, setHealth] = useState<HealthStatus | null>(null)
+  const [refreshing, setRefreshing] = useState(false)
+
+  const load = async () => {
+    setRefreshing(true)
+    try {
+      const [statsRes, systemRes, healthRes] = await Promise.all([
+        api.get('/developer/stats').catch(() => null),
+        api.get('/developer/system-info').catch(() => null),
+        api.get('/health').catch(() => null),
+      ])
+      if (statsRes) setStats(statsRes.data)
+      if (systemRes) setSystemInfo(systemRes.data)
+      if (healthRes) setHealth(healthRes.data)
+    } catch (e) {
+      logger.error('Failed to fetch system data', e as Error)
+    } finally {
+      setRefreshing(false)
+    }
+  }
 
   useEffect(() => {
     if (authLoading || !user) return
-    let cancelled = false
-    ;(async () => {
-      setLoadingData(true)
-      try {
-        const [statsRes, companiesRes] = await Promise.all([
-          api.get('/developer/stats').catch(() => null),
-          api.get('/developer/companies').catch(() => null),
-        ])
-        if (cancelled) return
-        if (statsRes?.data) setStats(statsRes.data)
-        const allCompanies = Array.isArray(companiesRes?.data) ? companiesRes.data : []
-        setCompanies(allCompanies.slice(0, 5))
-      } catch (e) {
-        logger.error('Failed to load developer overview', e as Error)
-      } finally {
-        if (!cancelled) setLoadingData(false)
-      }
-    })()
-    return () => {
-      cancelled = true
-    }
+    load()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authLoading, user])
 
   if (authLoading) return <DeveloperAuthLoading />
 
-  const hour = new Date().getHours()
-  const firstName = user?.name?.split(/\s+/)[0] ?? 'Developer'
-
-  const kpis = stats
-    ? [
-        { label: 'Companies', value: stats.total_companies },
-        { label: 'Total users', value: stats.total_users },
-        { label: 'Active users', value: stats.active_users },
-        { label: 'Active sessions', value: stats.active_sessions },
-      ]
-    : []
-
   return (
-    <div className="mx-auto max-w-6xl space-y-8">
-      <h1 className="text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
-        {greetingForHour(hour)}, {firstName}
-      </h1>
+    <div className="mx-auto max-w-6xl space-y-6">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold text-foreground">Overview</h1>
+          <p className="text-sm text-foreground-muted">Service status, platform stats, and configuration</p>
+        </div>
+        <Button variant="secondary" loading={refreshing} onClick={load}>
+          Refresh
+        </Button>
+      </div>
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        {loadingData && !stats
-          ? Array.from({ length: 4 }).map((_, i) => (
-              <Card key={i} className="animate-pulse">
+      {health && (
+        <div className="grid gap-4 md:grid-cols-3">
+          <Card>
+            <CardHeader>
+              <CardTitle>Service</CardTitle>
+            </CardHeader>
+            <CardBody className="space-y-2">
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-foreground-muted">Status</span>
+                <Badge variant={health.status === 'healthy' ? 'success' : 'danger'} dot>
+                  {health.status.toUpperCase()}
+                </Badge>
+              </div>
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-foreground-muted">Uptime</span>
+                <span className="font-medium">{health.service?.uptime?.formatted || 'N/A'}</span>
+              </div>
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-foreground-muted">Version</span>
+                <span className="font-medium">{health.service?.version || 'N/A'}</span>
+              </div>
+            </CardBody>
+          </Card>
+          <Card>
+            <CardHeader>
+              <CardTitle>Database</CardTitle>
+            </CardHeader>
+            <CardBody className="space-y-2">
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-foreground-muted">Connection</span>
+                <Badge variant={health.database?.status === 'connected' ? 'success' : 'danger'} dot>
+                  {(health.database?.status || 'unknown').toUpperCase()}
+                </Badge>
+              </div>
+              {health.database?.version && (
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-foreground-muted">Version</span>
+                  <span className="font-medium">
+                    {health.database.version.major}.{health.database.version.minor}
+                  </span>
+                </div>
+              )}
+            </CardBody>
+          </Card>
+          {stats && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Quick stats</CardTitle>
+              </CardHeader>
+              <CardBody className="space-y-2 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-foreground-muted">Users</span>
+                  <span className="font-medium">{stats.total_users}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-foreground-muted">Companies</span>
+                  <span className="font-medium">{stats.total_companies}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-foreground-muted">Sessions</span>
+                  <span className="font-medium">{stats.active_sessions}</span>
+                </div>
+              </CardBody>
+            </Card>
+          )}
+        </div>
+      )}
+
+      {stats && (
+        <>
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            {[
+              { label: 'Total users', value: stats.total_users, sub: `${stats.active_users} active` },
+              { label: 'Companies', value: stats.total_companies, sub: '' },
+              { label: 'Time entries', value: stats.total_time_entries, sub: `${stats.today_time_entries} today` },
+              { label: 'Active sessions', value: stats.active_sessions, sub: '' },
+            ].map((item) => (
+              <Card key={item.label}>
                 <CardBody>
-                  <div className="h-4 w-24 rounded bg-border-subtle" />
-                  <div className="mt-3 h-8 w-16 rounded bg-border-subtle" />
-                </CardBody>
-              </Card>
-            ))
-          : kpis.map((kpi) => (
-              <Card key={kpi.label}>
-                <CardBody>
-                  <p className="text-sm font-medium text-foreground-muted">{kpi.label}</p>
-                  <p className="mt-2 text-3xl font-bold text-foreground">{kpi.value}</p>
+                  <p className="text-sm text-foreground-muted">{item.label}</p>
+                  <p className="mt-1 text-3xl font-bold text-foreground">{item.value}</p>
+                  {item.sub && <p className="mt-1 text-xs text-foreground-subtle">{item.sub}</p>}
                 </CardBody>
               </Card>
             ))}
-      </div>
+          </div>
 
-      <Card>
-        <div className="flex items-center justify-between gap-3 border-b border-border px-6 py-3">
-          <h2 className="text-sm font-semibold text-foreground">Recent companies</h2>
-          <Link
-            href="/developer/companies"
-            className="text-xs font-medium text-foreground-muted hover:text-foreground"
-          >
-            View all
-          </Link>
-        </div>
-        <CardBody>
-          {loadingData ? (
-            <p className="text-sm text-foreground-muted">Loading…</p>
-          ) : companies.length === 0 ? (
-            <p className="text-sm text-foreground-muted">No companies yet.</p>
-          ) : (
-            <ul className="divide-y divide-border-subtle">
-              {companies.map((c) => (
-                <li key={c.id} className="flex items-center justify-between gap-3 py-3 first:pt-0 last:pb-0">
-                  <div>
-                    <Link href={`/developer/companies/${c.id}`} className="font-medium text-accent hover:underline">
-                      {c.name}
-                    </Link>
-                    <p className="text-xs text-foreground-subtle">{c.slug}</p>
+          <Card>
+            <CardHeader>
+              <CardTitle>User breakdown</CardTitle>
+            </CardHeader>
+            <CardBody>
+              <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+                {[
+                  ['Admins', stats.admin_users],
+                  ['Employees', stats.employee_users],
+                  ['Developers', stats.developer_users],
+                  ['Verified', stats.verified_users],
+                ].map(([label, value]) => (
+                  <div key={label as string}>
+                    <p className="text-sm text-foreground-muted">{label}</p>
+                    <p className="text-2xl font-bold text-foreground">{value}</p>
                   </div>
-                  <Badge variant="neutral">{c.user_count} users</Badge>
-                </li>
+                ))}
+              </div>
+            </CardBody>
+          </Card>
+        </>
+      )}
+
+      {systemInfo && health && (
+        <Card>
+          <CardHeader>
+            <CardTitle>System information</CardTitle>
+          </CardHeader>
+          <CardBody>
+            <dl className="grid gap-4 md:grid-cols-2">
+              {[
+                ['Platform', systemInfo.platform || 'N/A'],
+                ['System', systemInfo.system || 'N/A'],
+                ['Processor', systemInfo.processor || 'N/A'],
+                ['Python', systemInfo.python_version || 'N/A'],
+                ['Server time', formatTimestamp(systemInfo.server_time)],
+                ['Uptime', health.service?.uptime?.formatted || 'N/A'],
+              ].map(([label, value]) => (
+                <div key={label as string}>
+                  <dt className="text-sm font-medium text-foreground-muted">{label}</dt>
+                  <dd className="mt-1 break-words text-sm text-foreground">{value}</dd>
+                </div>
               ))}
-            </ul>
-          )}
-        </CardBody>
-      </Card>
+            </dl>
+          </CardBody>
+        </Card>
+      )}
+
+      {stats && (
+        <>
+          <Card>
+            <CardHeader>
+              <CardTitle>Database information</CardTitle>
+            </CardHeader>
+            <CardBody className="space-y-3">
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-foreground-muted">Connection status</span>
+                <Badge variant={stats.database_status === 'connected' ? 'success' : 'danger'} dot>
+                  {(stats.database_status || 'unknown').toUpperCase()}
+                </Badge>
+              </div>
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-foreground-muted">Configured</span>
+                <Badge variant={stats.configuration?.database_configured ? 'success' : 'danger'}>
+                  {stats.configuration?.database_configured ? 'Yes' : 'No'}
+                </Badge>
+              </div>
+              {stats.database_error && (
+                <p className="text-xs text-red-600 dark:text-red-400">Error: {stats.database_error}</p>
+              )}
+            </CardBody>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Configuration status</CardTitle>
+            </CardHeader>
+            <CardBody className="space-y-3">
+              {Object.entries(stats.configuration || {}).map(([key, value]) => {
+                if (
+                  key === 'database_info' ||
+                  key.startsWith('gmail_') ||
+                  key === 'email_configured' ||
+                  key === 'email_service'
+                ) {
+                  return null
+                }
+                return (
+                  <div key={key} className="flex items-center justify-between text-sm">
+                    <span className="capitalize text-foreground-muted">{key.replace(/_/g, ' ')}</span>
+                    <Badge variant={value ? 'success' : 'danger'}>
+                      {typeof value === 'boolean' ? (value ? 'Configured' : 'Not configured') : String(value)}
+                    </Badge>
+                  </div>
+                )
+              })}
+            </CardBody>
+          </Card>
+        </>
+      )}
     </div>
   )
 }
