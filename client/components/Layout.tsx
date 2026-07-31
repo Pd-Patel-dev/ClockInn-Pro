@@ -9,6 +9,7 @@ import { usePermissions } from '@/hooks/usePermissions'
 import { ROUTE_PERMISSIONS } from '@/config/navigation'
 import { AppHeader } from '@/components/AppHeader'
 import { DeveloperChromeProvider } from '@/components/DeveloperChromeContext'
+import { cn } from '@/lib/cn'
 
 export default function Layout({ children }: { children: React.ReactNode }) {
   const router = useRouter()
@@ -413,7 +414,16 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       </aside>
         </>
       )}
-      <main className="max-w-7xl mx-auto w-full py-8 px-4 sm:px-6 lg:px-8">{children}</main>
+      <main
+        className={cn(
+          'w-full',
+          /^\/settings\/email\/templates\/[^/]+/.test(pathname)
+            ? 'max-w-none px-0 py-0'
+            : 'mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8'
+        )}
+      >
+        {children}
+      </main>
     </div>
     </DeveloperChromeProvider>
   )

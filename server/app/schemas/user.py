@@ -227,9 +227,10 @@ class DeveloperUserResponse(BaseModel):
 
 
 class TenantUserCreateResponse(BaseModel):
-    """Created tenant user plus one-time temp password when caller omitted password."""
+    """Created tenant user. When password omitted, a set-password email is sent."""
     user: DeveloperUserResponse
     temp_password: Optional[str] = None
+    password_setup_email_sent: bool = False
 
 
 class DeveloperUserUpdate(BaseModel):

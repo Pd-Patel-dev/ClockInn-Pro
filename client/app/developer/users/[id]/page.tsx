@@ -19,6 +19,7 @@ import {
   CardBody,
   CardHeader,
   CardTitle,
+  ConfirmModal,
   TabPanel,
   Tabs,
 } from '@/components/ui'
@@ -69,6 +70,8 @@ export default function DeveloperUserPage() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [userTab, setUserTab] = useState('profile')
+  const [resetConfirmOpen, setResetConfirmOpen] = useState(false)
+  const [resetSending, setResetSending] = useState(false)
 
   const form = useForm<DeveloperUserForm>({
     resolver: zodResolver(developerUserSchema),
@@ -155,6 +158,26 @@ export default function DeveloperUserPage() {
       toast.error(err.response?.data?.detail || 'Failed to update user')
     } finally {
       setSaving(false)
+    }
+  }
+
+  const handleSendPasswordReset = async () => {
+    if (!userId || !user) return
+    setResetSending(true)
+    try {
+      const res = await api.post(`/developer/users/${userId}/send-password-reset`)
+      toast.success(res.data?.message || `Password reset link sent to ${user.email}`)
+      setResetConfirmOpen(false)
+    } catch (e: unknown) {
+      const err = e as { response?: { data?: { detail?: string } } }
+      logger.error('Developer password reset failed', e as Error, { userId })
+      toast.error(
+        typeof err.response?.data?.detail === 'string'
+          ? err.response.data.detail
+          : 'Failed to send password reset email',
+      )
+    } finally {
+      setResetSending(false)
     }
   }
 
@@ -319,10 +342,34 @@ export default function DeveloperUserPage() {
                 <CardHeader>
                   <CardTitle>Security</CardTitle>
                 </CardHeader>
-                <CardBody>
-                  <p className="text-sm text-foreground-muted">
-                    Force logout for all active sessions will be available when session management is exposed on the developer API.
-                  </p>
+                <CardBody className="space-y-6">
+                  <div>
+                    <h3 className="text-sm font-semibold text-foreground">Password reset</h3>
+                    <p className="mt-1 text-sm text-foreground-muted">
+                      Email a secure reset link to <span className="font-medium text-foreground">{user.email}</span>
+                      using the <span className="font-medium text-foreground">Password Reset</span> template.
+                      The link expires in 48 hours. Login with the current password is blocked until they set a new one.
+                    </p>
+                    <Button
+                      type="button"
+                      className="mt-3"
+                      variant="secondary"
+                      disabled={user.status !== 'active'}
+                      onClick={() => setResetConfirmOpen(true)}
+                    >
+                      Send password reset email
+                    </Button>
+                    {user.status !== 'active' && (
+                      <p className="mt-2 text-xs text-amber-700 dark:text-amber-300">
+                        Reactivate the user before sending a password reset.
+                      </p>
+                    )}
+                  </div>
+                  <div className="border-t border-border pt-4">
+                    <p className="text-sm text-foreground-muted">
+                      Force logout for all active sessions will be available when session management is exposed on the developer API.
+                    </p>
+                  </div>
                 </CardBody>
               </Card>
             </TabPanel>
@@ -341,6 +388,17 @@ export default function DeveloperUserPage() {
             </TabPanel>
           </div>
         </div>
+
+        <ConfirmModal
+          open={resetConfirmOpen}
+          onClose={() => !resetSending && setResetConfirmOpen(false)}
+          onConfirm={handleSendPasswordReset}
+          title="Send password reset email?"
+          message={`A set-password link will be emailed to ${user.email}. They will not be able to log in with their current password until they complete the link.`}
+          confirmLabel="Send reset email"
+          cancelLabel="Cancel"
+          loading={resetSending}
+        />
       </div>
   )
 }

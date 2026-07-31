@@ -8,6 +8,7 @@ from app.models.payroll import PayrollRun, PayrollLineItem, PayrollAdjustment
 from app.models.shift import Shift, ShiftTemplate, ScheduleSwap
 from app.models.cash_drawer import CashDrawerSession, CashDrawerAudit
 from app.models.shift_note import ShiftNote, ShiftNoteComment
+from app.models.email_template import EmailTemplate, EmailTemplateVersion, EmailTemplateCategory
 
 __all__ = [
     "Company",

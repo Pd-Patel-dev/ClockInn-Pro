@@ -29,7 +29,7 @@ from app.services.company_service import (
     delete_company_as_developer,
     create_company_with_admin,
 )
-from app.services.user_service import get_user_by_id_any, update_user_developer, create_tenant_user_as_developer
+from app.services.user_service import get_user_by_id_any, update_user_developer, create_tenant_user_as_developer, send_password_reset_link_as_developer
 from app.schemas.company import (
     CompanyInfoResponse,
     CompanySettingsResponse,
@@ -589,7 +589,7 @@ async def create_company_user_developer(
             detail="Use POST /api/v1/developer/accounts to create developers.",
         )
     cid = parse_uuid(company_id, "Company ID")
-    user, temp_password = await create_tenant_user_as_developer(
+    user, temp_password, setup_email_sent = await create_tenant_user_as_developer(
         db, cid, data, current_user.id
     )
     company_name = ""
@@ -613,6 +613,7 @@ async def create_company_user_developer(
             pay_rate=float(user.pay_rate) if user.pay_rate is not None else None,
         ),
         temp_password=temp_password,
+        password_setup_email_sent=setup_email_sent,
     )
 
 
@@ -884,3 +885,18 @@ async def update_user_developer_endpoint(
         has_pin=user.pin_hash is not None,
         pay_rate=float(user.pay_rate) if user.pay_rate is not None else None,
     )
+
+
+@router.post("/users/{user_id}/send-password-reset")
+@handle_endpoint_errors(operation_name="send_password_reset_developer")
+async def send_password_reset_developer(
+    user_id: str,
+    current_user: User = Depends(get_current_developer),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Email a password-reset link to the user (password_reset template).
+    Blocks login with the old password until they complete the link.
+    """
+    uid = parse_uuid(user_id, "User ID")
+    return await send_password_reset_link_as_developer(db, uid, actor_user_id=current_user.id)

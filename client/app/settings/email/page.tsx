@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import api from '@/lib/api'
 import { getCurrentUser } from '@/lib/auth'
@@ -15,7 +16,6 @@ import {
   CardHeader,
   CardTitle,
   Input,
-  Modal,
   TabPanel,
   Tabs,
   Textarea,
@@ -29,14 +29,6 @@ const EMAIL_TABS = [
   { id: 'delivery', label: 'Delivery Log' },
   { id: 'configuration', label: 'Configuration' },
   { id: 'suppressions', label: 'Suppressions' },
-]
-
-const STUB_TEMPLATES = [
-  { id: 'welcome', name: 'Welcome', subject: 'Welcome to ClockInn Pro', status: 'active' as const },
-  { id: 'password-reset', name: 'Password Reset', subject: 'Reset your password', status: 'active' as const },
-  { id: 'verify-email', name: 'Email Verification', subject: 'Verify your email address', status: 'active' as const },
-  { id: 'leave-approved', name: 'Leave Approved', subject: 'Your leave request was approved', status: 'draft' as const },
-  { id: 'payroll-ready', name: 'Payroll Ready', subject: 'Payroll is ready for review', status: 'draft' as const },
 ]
 
 const STUB_DELIVERY = [
@@ -67,7 +59,6 @@ export default function EmailSettingsPage() {
   const [checkingGmail, setCheckingGmail] = useState(false)
   const [testEmail, setTestEmail] = useState('')
   const [sendingTest, setSendingTest] = useState(false)
-  const [templateModal, setTemplateModal] = useState<{ name: string; mode: 'edit' | 'preview' } | null>(null)
 
   const checkGmailHealth = useCallback(async () => {
     setCheckingGmail(true)
@@ -265,35 +256,23 @@ export default function EmailSettingsPage() {
         </TabPanel>
 
         <TabPanel id="templates" value={tab}>
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {STUB_TEMPLATES.map((t) => (
-              <Card key={t.id}>
-                <CardHeader>
-                  <div className="flex items-start justify-between gap-2">
-                    <CardTitle>{t.name}</CardTitle>
-                    <Badge variant={t.status === 'active' ? 'success' : 'neutral'}>{t.status}</Badge>
-                  </div>
-                  <CardDescription>{t.subject}</CardDescription>
-                </CardHeader>
-                <CardBody className="flex gap-2">
-                  <Button
-                    size="sm"
-                    variant="secondary"
-                    onClick={() => setTemplateModal({ name: t.name, mode: 'edit' })}
-                  >
-                    Edit
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => setTemplateModal({ name: t.name, mode: 'preview' })}
-                  >
-                    Preview
-                  </Button>
-                </CardBody>
-              </Card>
-            ))}
-          </div>
+          <Card>
+            <CardHeader>
+              <CardTitle>Template manager</CardTitle>
+              <CardDescription>
+                Edit Jinja HTML/text templates, live-preview with sample data, send test emails, and
+                publish versioned drafts. System templates can be reset to factory defaults.
+              </CardDescription>
+            </CardHeader>
+            <CardBody className="flex flex-wrap items-center gap-3">
+              <Link href="/settings/email/templates">
+                <Button>Open template manager</Button>
+              </Link>
+              <p className="text-sm text-foreground-muted">
+                Full-screen Monaco editor with draft autosave, version history, and publish diffs.
+              </p>
+            </CardBody>
+          </Card>
         </TabPanel>
 
         <TabPanel id="delivery" value={tab}>
@@ -478,22 +457,6 @@ export default function EmailSettingsPage() {
           </Card>
         </TabPanel>
       </div>
-
-      <Modal
-        open={!!templateModal}
-        onClose={() => setTemplateModal(null)}
-        title={templateModal ? `${templateModal.mode === 'edit' ? 'Edit' : 'Preview'}: ${templateModal.name}` : ''}
-        description="Template editor is not connected to the backend yet."
-        footer={
-          <Button variant="secondary" onClick={() => setTemplateModal(null)}>
-            Close
-          </Button>
-        }
-      >
-        <p className="text-sm text-foreground-muted">
-          HTML body and variables will appear here when the templates API is available.
-        </p>
-      </Modal>
     </>
   )
 }

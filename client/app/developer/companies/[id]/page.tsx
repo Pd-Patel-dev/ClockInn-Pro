@@ -206,7 +206,15 @@ export default function DeveloperCompanyPage() {
         pay_rate: addUserForm.pay_rate.trim() ? Number(addUserForm.pay_rate) : null,
         email_verified: addUserForm.email_verified,
       })
-      toast.success(`User ${result.user.email} created.`)
+      toast.success(
+        result.password_setup_email_sent
+          ? `User ${result.user.email} created. Password setup email sent.`
+          : result.temp_password
+            ? `User ${result.user.email} created.`
+            : addUserForm.password.trim()
+              ? `User ${result.user.email} created.`
+              : `User ${result.user.email} created. Password setup email could not be sent — check Email Service.`,
+      )
       const temp = result.temp_password
       const created = result.user
       closeAddUserModal(true)
@@ -860,7 +868,7 @@ export default function DeveloperCompanyPage() {
                     placeholder="Optional"
                   />
                   <p className="mt-1 text-xs text-slate-500">
-                    Leave blank and a temporary password will be generated and shown after creation.
+                    Leave blank to email a set-password link (uses the Password Setup Invite template).
                   </p>
                 </div>
                 <div>

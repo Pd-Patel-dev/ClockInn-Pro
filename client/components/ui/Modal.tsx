@@ -11,7 +11,7 @@ export interface ModalProps {
   description?: string
   children?: React.ReactNode
   footer?: React.ReactNode
-  size?: 'sm' | 'md' | 'lg'
+  size?: 'sm' | 'md' | 'lg' | 'xl' | '2xl'
   hideClose?: boolean
 }
 
@@ -19,6 +19,8 @@ const sizeClasses = {
   sm: 'max-w-sm',
   md: 'max-w-md',
   lg: 'max-w-lg',
+  xl: 'max-w-3xl',
+  '2xl': 'max-w-5xl',
 }
 
 export function Modal({
@@ -34,12 +36,16 @@ export function Modal({
   const titleId = useId()
   const descId = useId()
   const panelRef = useRef<HTMLDivElement>(null)
+  const onCloseRef = useRef(onClose)
+  onCloseRef.current = onClose
 
+  // Focus the panel only when the modal opens — not when onClose identity changes
+  // (inline onClose handlers would otherwise steal focus from inputs on every keystroke).
   useEffect(() => {
     if (!open) return
     const prev = document.activeElement as HTMLElement | null
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose()
+      if (e.key === 'Escape') onCloseRef.current()
     }
     document.addEventListener('keydown', onKey)
     document.body.style.overflow = 'hidden'
@@ -49,7 +55,7 @@ export function Modal({
       document.body.style.overflow = ''
       prev?.focus()
     }
-  }, [open, onClose])
+  }, [open])
 
   if (!open) return null
 

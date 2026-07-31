@@ -168,7 +168,16 @@ export default function DeveloperShell({ children }: { children: React.ReactNode
           </button>
           <span className="text-sm font-semibold text-foreground">Developer Portal</span>
         </div>
-        <main className="flex-1 px-4 py-6 sm:px-6 lg:px-8">{children}</main>
+        <main
+          className={cn(
+            'flex-1',
+            /^\/settings\/email\/templates\/[^/]+/.test(pathname)
+              ? 'flex min-h-0 flex-col p-0'
+              : 'px-4 py-6 sm:px-6 lg:px-8'
+          )}
+        >
+          {children}
+        </main>
       </div>
     </div>
   )

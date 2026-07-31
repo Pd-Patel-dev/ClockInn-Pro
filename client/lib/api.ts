@@ -102,46 +102,65 @@ export const getRefreshToken = (): string | null => {
 }
 
 /**
+ * Single-flight refresh. Refresh tokens rotate server-side — concurrent refresh calls race and
+ * the loser gets 401, which previously cleared the session and redirected to login.
+ */
+let refreshPromise: Promise<string> | null = null
+
+async function performTokenRefresh(): Promise<string> {
+  if (refreshPromise) return refreshPromise
+
+  refreshPromise = (async () => {
+    try {
+      const response = await axios.post(
+        `${API_URL}/api/v1/auth/refresh`,
+        {},
+        {
+          headers: { 'Content-Type': 'application/json' },
+          withCredentials: true,
+        }
+      )
+
+      const { access_token } = response.data
+      if (!access_token || !isValidJWTFormat(access_token)) {
+        throw new Error('Invalid refresh response')
+      }
+
+      accessToken = access_token
+      setTokens(access_token)
+      refreshWarningShown = false
+      return access_token
+    } finally {
+      refreshPromise = null
+    }
+  })()
+
+  return refreshPromise
+}
+
+function redirectToLogin(expired: boolean) {
+  if (typeof window === 'undefined') return
+  const path = expired ? '/login?expired=true' : '/login'
+  if (window.location.pathname.startsWith('/login')) return
+  window.location.href = path
+}
+
+/**
  * Proactively refresh access token if it's expiring soon.
- * Refresh token is sent via HttpOnly cookie (credentials: 'include').
+ * Does NOT redirect on failure — only the 401 response interceptor should end the session,
+ * so a flaky background refresh cannot log the user out mid-page.
  */
 async function refreshTokenIfNeeded(): Promise<boolean> {
   const currentAccessToken = getAccessToken()
 
-  // If we have a valid access token that's not expiring soon, nothing to do
   if (currentAccessToken && !isTokenExpiringSoon(currentAccessToken, 2)) {
     return true
   }
 
-  // Try to refresh using the HttpOnly cookie (no body)
   try {
-    const response = await axios.post(
-      `${API_URL}/api/v1/auth/refresh`,
-      {},
-      {
-        headers: { 'Content-Type': 'application/json' },
-        withCredentials: true,
-      }
-    )
-
-    const { access_token } = response.data
-    if (!access_token || !isValidJWTFormat(access_token)) {
-      clearTokens()
-      if (typeof window !== 'undefined') {
-        window.location.href = '/login?expired=true'
-      }
-      return false
-    }
-
-    accessToken = access_token
-    setTokens(access_token)
-    refreshWarningShown = false
+    await performTokenRefresh()
     return true
   } catch {
-    clearTokens()
-    if (typeof window !== 'undefined') {
-      window.location.href = '/login?expired=true'
-    }
     return false
   }
 }
@@ -156,17 +175,14 @@ function checkRefreshTokenExpiration(): void {
   const currentAccessToken = getAccessToken()
   if (!currentAccessToken) return
 
-  // If access token is expired, refresh will be attempted by refreshTokenIfNeeded
   if (isTokenExpired(currentAccessToken)) {
-    // Let the next refresh attempt handle redirect
     return
   }
 
-  // Optionally warn when access token is getting close to expiry (session still valid until refresh cookie expires)
   if (isTokenExpiringSoon(currentAccessToken, 5)) {
     const timeUntilExpiry = getTokenExpirationTime(currentAccessToken)
     if (timeUntilExpiry && timeUntilExpiry <= 300 && !refreshWarningShown) {
-      console.warn('Your session will refresh shortly. If you are redirected to login, your refresh session may have expired.')
+      // Soft warning only — session is still valid until refresh cookie expires
       refreshWarningShown = true
     }
   }
@@ -178,18 +194,15 @@ function checkRefreshTokenExpiration(): void {
 export function startTokenRefreshInterval(): void {
   if (typeof window === 'undefined') return
   
-  // Clear existing interval if any
   if (tokenRefreshInterval) {
     clearInterval(tokenRefreshInterval)
   }
 
-  // Check and refresh token every 5 minutes
   tokenRefreshInterval = setInterval(() => {
     refreshTokenIfNeeded()
     checkRefreshTokenExpiration()
-  }, 5 * 60 * 1000) // 5 minutes
+  }, 5 * 60 * 1000)
 
-  // Also check immediately
   refreshTokenIfNeeded()
   checkRefreshTokenExpiration()
 }
@@ -234,10 +247,10 @@ api.interceptors.request.use(
     // Token refresh happens proactively in the background via interval
     // If token is expired, the response interceptor will handle it
     
-    // Always sync token from localStorage before making request
-    if (typeof window !== 'undefined' && !accessToken) {
+    // Always sync token from localStorage before making request (covers HMR / multi-tab)
+    if (typeof window !== 'undefined') {
       const stored = localStorage.getItem('access_token')
-      if (stored && isValidJWTFormat(stored)) {
+      if (stored && isValidJWTFormat(stored) && stored !== accessToken) {
         accessToken = stored
       }
     }
@@ -285,7 +298,6 @@ api.interceptors.request.use(
 
 // Response interceptor to handle token refresh
 let isRefreshing = false
-let refreshPromise: Promise<string> | null = null
 let failedQueue: Array<{
   resolve: (value?: any) => void
   reject: (reason?: any) => void
@@ -297,11 +309,9 @@ const processQueue = (error: AxiosError | null, token: string | null = null) => 
     if (error) {
       reject(error)
     } else if (token) {
-      // Update the request with the new token and resolve with a retry promise
       if (request.headers) {
         request.headers.Authorization = `Bearer ${token}`
       }
-      // Resolve with the retry promise so the original request is retried
       resolve(api(request))
     } else {
       reject(new Error('No token available'))
@@ -312,7 +322,6 @@ const processQueue = (error: AxiosError | null, token: string | null = null) => 
 
 api.interceptors.response.use(
   (response) => {
-    // Log successful responses for debugging (only in development, and only important ones)
     if (process.env.NODE_ENV === 'development' && response.config.url?.includes('/auth/refresh')) {
       console.log('=== TOKEN REFRESH SUCCESS ===')
     }
@@ -338,7 +347,12 @@ api.interceptors.response.use(
     
     // Log error responses for debugging (limit to prevent spam)
     // Skip logging expected 401s from /users/me (normal when not logged in)
+    // Also skip 401s that will be retried after refresh — they look like failures but aren't.
     const isExpected401 = error.response?.status === 401 && originalRequest.url?.includes('/users/me')
+    const willRetryAuth =
+      error.response?.status === 401 &&
+      !originalRequest._retry &&
+      !originalRequest.url?.includes('/auth/refresh')
     // Shift notes return 403 when company disables the feature — not an app error
     const isShiftNotesDisabled403 =
       error.response?.status === 403 &&
@@ -354,10 +368,10 @@ api.interceptors.response.use(
       error.response &&
       !error.config?.url?.includes('/auth/refresh') &&
       !isExpected401 &&
+      !willRetryAuth &&
       !isShiftNotesDisabled403 &&
       !isShiftNoteByTimeEntry404
     ) {
-      // Only log first few errors to prevent spam
       if (!(window as any).__errorLogCount) {
         (window as any).__errorLogCount = 0
       }
@@ -370,7 +384,6 @@ api.interceptors.response.use(
     }
 
     // Handle email verification required (403 with specific error)
-    // FastAPI returns detail as an object with error, message, and email fields
     if (error.response?.status === 403) {
       const responseData = error.response?.data as any
       const detail = responseData?.detail
@@ -385,7 +398,6 @@ api.interceptors.response.use(
         bodyString.includes('EMAIL_VERIFICATION_REQUIRED')
 
       if (isVerificationRequired) {
-        // Store verification info in a custom property so login/other pages can redirect
         const customError = error as any
         customError.isVerificationRequired = true
         customError.verificationEmail = (typeof detail === 'object' && detail !== null && 'email' in detail)
@@ -398,8 +410,6 @@ api.interceptors.response.use(
       }
     }
     
-    // Only handle 401 for non-auth endpoints (prevent infinite loop on refresh endpoint)
-    // Do NOT run refresh/redirect for login or register - let the page show the error
     const isAuthEndpoint = originalRequest.url?.includes('/auth/login') ||
       originalRequest.url?.includes('/auth/register')
     if (
@@ -408,101 +418,41 @@ api.interceptors.response.use(
       !originalRequest.url?.includes('/auth/refresh') &&
       !isAuthEndpoint
     ) {
-      if (process.env.NODE_ENV === 'development' && originalRequest.url?.includes('/shifts')) {
-        console.log('=== HANDLING 401 FOR SHIFT CREATE ===')
-        console.log('Already Refreshing:', isRefreshing)
-        console.log('Has Refresh Promise:', !!refreshPromise)
-        console.log('Token Before Refresh:', !!getAccessToken())
-      }
-      
-      // If already refreshing, queue this request
-      if (isRefreshing && refreshPromise) {
-        if (process.env.NODE_ENV === 'development' && originalRequest.url?.includes('/shifts')) {
-          console.log('=== QUEUING SHIFT CREATE REQUEST (REFRESH IN PROGRESS) ===')
-        }
+      if (isRefreshing) {
         return new Promise((resolve, reject) => {
           failedQueue.push({ resolve, reject, request: originalRequest })
         }).catch((err) => Promise.reject(err))
       }
 
-      // Mark request as retried to prevent loops
       originalRequest._retry = true
       isRefreshing = true
 
-      // Refresh token is in HttpOnly cookie; no body needed
-      if (!refreshPromise) {
-        refreshPromise = (async () => {
-          try {
-            const response = await axios.post(
-              `${API_URL}/api/v1/auth/refresh`,
-              {},
-              {
-                headers: { 'Content-Type': 'application/json' },
-                withCredentials: true,
-              }
-            )
-
-            const { access_token } = response.data
-            if (!access_token || !isValidJWTFormat(access_token)) {
-              clearTokens()
-              processQueue(null, null)
-              stopTokenRefreshInterval()
-              if (typeof window !== 'undefined') {
-                window.location.href = '/login?expired=true'
-              }
-              throw new Error('Invalid refresh response')
-            }
-
-            accessToken = access_token
-            setTokens(access_token)
-            refreshWarningShown = false
-            return access_token
-          } catch (refreshError: any) {
-            const isExpired =
-              refreshError.response?.status === 401 ||
-              refreshError.response?.data?.detail?.includes('expired') ||
-              refreshError.response?.data?.detail?.includes('Invalid')
-
-            clearTokens()
-            processQueue(refreshError as AxiosError, null)
-            stopTokenRefreshInterval()
-
-            if (typeof window !== 'undefined') {
-              window.location.href = isExpired ? '/login?expired=true' : '/login'
-            }
-
-            throw refreshError
-          } finally {
-            isRefreshing = false
-            refreshPromise = null
-          }
-        })()
-      }
-
       try {
-        const access_token = await refreshPromise
+        const access_token = await performTokenRefresh()
 
-        // Update the original request with new token
         if (originalRequest.headers) {
           originalRequest.headers.Authorization = `Bearer ${access_token}`
         }
 
-        // Process queued requests
         processQueue(null, access_token)
-
-        // Retry the original request
-        if (process.env.NODE_ENV === 'development' && originalRequest.url?.includes('/shifts')) {
-          console.log('=== RETRYING SHIFT CREATE AFTER TOKEN REFRESH ===')
-          console.log('New Token Available:', !!access_token)
-        }
         return api(originalRequest)
-      } catch (refreshError) {
-        // Refresh failed - already handled in promise
+      } catch (refreshError: any) {
+        const isExpired =
+          refreshError?.response?.status === 401 ||
+          refreshError?.response?.data?.detail?.includes?.('expired') ||
+          refreshError?.response?.data?.detail?.includes?.('Invalid') ||
+          refreshError?.message === 'Invalid refresh response'
+
+        clearTokens()
+        processQueue(refreshError as AxiosError, null)
+        stopTokenRefreshInterval()
+        redirectToLogin(!!isExpired)
         return Promise.reject(refreshError)
+      } finally {
+        isRefreshing = false
       }
     }
 
-    // For 401 on auth endpoints or other errors, just reject
     return Promise.reject(error)
   }
 )
@@ -545,7 +495,11 @@ export async function createCompanyWithAdmin(
 export async function createUserInCompany(
   companyId: string,
   payload: TenantUserCreatePayload,
-): Promise<{ user: { id: string; name: string; email: string; role: string; company_id: string | null }; temp_password: string | null }> {
+): Promise<{
+  user: { id: string; name: string; email: string; role: string; company_id: string | null }
+  temp_password: string | null
+  password_setup_email_sent: boolean
+}> {
   const res = await api.post(`/developer/companies/${companyId}/users`, payload)
   return res.data
 }

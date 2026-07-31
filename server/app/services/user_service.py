@@ -289,11 +289,20 @@ async def create_tenant_user_as_developer(
     company_id: UUID,
     data: TenantUserCreate,
     actor_user_id: UUID,
-) -> tuple[User, Optional[str]]:
+) -> tuple[User, Optional[str], bool]:
     """
     Create a tenant user in any company (developer portal).
-    Returns (user, temp_password_or_none). Temp password is only set when caller omitted password.
+
+    When password is omitted, issues a set-password email (template `password_setup`)
+    instead of returning a temp password.
+
+    Returns (user, temp_password_or_none, password_setup_email_sent).
     """
+    import secrets
+    from app.core.config import settings
+    from app.core.security import create_password_setup_token, hash_password_setup_jti
+    from app.services.email_service import email_service
+
     if data.role == UserRole.DEVELOPER:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -305,6 +314,7 @@ async def create_tenant_user_as_developer(
     if not company:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Company not found.")
 
+    send_setup_email = not bool(data.password)
     temp_password: Optional[str] = None
     if data.password:
         is_valid, error_msg = validate_password_strength(data.password)
@@ -312,8 +322,8 @@ async def create_tenant_user_as_developer(
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=error_msg)
         password_hash = get_password_hash(data.password)
     else:
-        temp_password = generate_temp_password(16)
-        password_hash = get_password_hash(temp_password)
+        # Unusable random hash; user must set password via emailed link
+        password_hash = get_password_hash(secrets.token_urlsafe(32))
 
     normalized_email = normalize_email(data.email)
     existing = await db.execute(select(User).where(User.email == normalized_email))
@@ -367,6 +377,7 @@ async def create_tenant_user_as_developer(
         last_verified_at=now if email_verified else None,
     )
 
+    setup_email_sent = False
     try:
         db.add(user)
         db.add(
@@ -380,19 +391,50 @@ async def create_tenant_user_as_developer(
                 metadata_json={
                     "email": normalized_email,
                     "role": data.role.value,
-                    "temp_password_issued": temp_password is not None,
+                    "password_setup_email": send_setup_email,
                 },
             )
         )
         await db.commit()
         await db.refresh(user)
+
+        if send_setup_email:
+            try:
+                setup_token, jti, expires_at = create_password_setup_token(
+                    str(user.id), normalized_email, hours=48
+                )
+                user.password_setup_token_hash = hash_password_setup_jti(jti)
+                user.password_setup_expires_at = expires_at
+                await db.commit()
+                await db.refresh(user)
+                setup_link = f"{settings.FRONTEND_URL}/set-password?token={setup_token}"
+                setup_email_sent = await email_service.send_password_setup_email(
+                    normalized_email,
+                    user.name,
+                    setup_link,
+                )
+                if not setup_email_sent:
+                    logger.warning(
+                        "Tenant user %s created but password setup email failed for %s",
+                        user.id,
+                        normalized_email,
+                    )
+            except Exception as e:
+                logger.error(
+                    "Failed to send password setup email for tenant user %s: %s",
+                    normalized_email,
+                    e,
+                    exc_info=True,
+                )
+
         logger.info(
-            "Developer created tenant user %s (%s) in company %s",
+            "Developer created tenant user %s (%s) in company %s (setup_email_sent=%s)",
             user.id,
             normalized_email,
             company_id,
+            setup_email_sent,
         )
-        return user, temp_password
+        return user, temp_password, setup_email_sent
     except Exception as e:
         await db.rollback()
         error_str = str(e).lower()
@@ -670,6 +712,81 @@ async def update_user_developer(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to update user",
         )
+
+
+async def send_password_reset_link_as_developer(
+    db: AsyncSession,
+    user_id: UUID,
+    actor_user_id: UUID,
+) -> dict:
+    """
+    Issue a password-reset link email (template `password_reset`).
+    Login is blocked until the link is used.
+    """
+    from app.core.config import settings
+    from app.core.security import create_password_setup_token, hash_password_setup_jti
+    from app.services.email_service import email_service
+    from datetime import datetime, timezone
+
+    user = await get_user_by_id_any(db, user_id)
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
+    if user.status != UserStatus.ACTIVE:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Cannot send password reset to an inactive user.",
+        )
+
+    setup_token, jti, expires_at = create_password_setup_token(
+        str(user.id), user.email, hours=48
+    )
+    user.password_setup_token_hash = hash_password_setup_jti(jti)
+    user.password_setup_expires_at = expires_at
+
+    if user.company_id is not None:
+        db.add(
+            AuditLog(
+                id=uuid.uuid4(),
+                company_id=user.company_id,
+                actor_user_id=actor_user_id,
+                action="PASSWORD_RESET_LINK_SENT_BY_DEVELOPER",
+                entity_type="user",
+                entity_id=user.id,
+                metadata_json={"email": user.email, "template": "password_reset"},
+            )
+        )
+    await db.commit()
+    await db.refresh(user)
+
+    reset_link = f"{settings.FRONTEND_URL}/set-password?token={setup_token}"
+    email_sent = await email_service.send_password_reset_email(
+        user.email,
+        user.name,
+        reset_link,
+    )
+    if not email_sent:
+        logger.warning(
+            "Password reset link created for %s but email failed to send",
+            user.email,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Failed to send password reset email. Check Email Service / Gmail configuration.",
+        )
+
+    logger.info(
+        "Developer %s sent password reset link to user %s (%s)",
+        actor_user_id,
+        user.id,
+        user.email,
+    )
+    return {
+        "ok": True,
+        "email": user.email,
+        "expires_at": expires_at.isoformat() if isinstance(expires_at, datetime) else str(expires_at),
+        "message": f"Password reset link sent to {user.email}",
+    }
 
 
 async def reset_password(

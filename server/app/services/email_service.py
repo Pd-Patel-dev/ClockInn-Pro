@@ -460,6 +460,59 @@ class EmailService:
         
         raw_message = base64.urlsafe_b64encode(message.as_bytes()).decode('utf-8')
         return {'raw': raw_message}
+
+    async def _render_key(self, key: str, variables: Dict[str, Any]) -> Optional[Dict[str, str]]:
+        """
+        Load and render a published DB template by key.
+        Returns None if disabled, missing, or on error (caller should use factory/hardcoded fallback).
+        """
+        try:
+            from app.core.database import AsyncSessionLocal
+            from app.services.email_template_service import render_template as _render
+
+            async with AsyncSessionLocal() as db:
+                return await _render(db, key, variables)
+        except RuntimeError as e:
+            # Disabled template
+            logger.warning("Skipping email send: %s", e)
+            return None
+        except Exception as e:
+            logger.warning("Template render failed for key=%s, using fallback: %s", key, e)
+            return {"__fallback__": "1"}  # signal to use hardcoded
+
+    async def send_raw_email(
+        self,
+        to_email: str,
+        subject: str,
+        body_html: Optional[str] = None,
+        body_text: Optional[str] = None,
+    ) -> bool:
+        """Send an arbitrary email (used by template test-send). Prefers HTML when provided."""
+        if not self._refresh_token_if_needed():
+            logger.error("Gmail service not initialized or token refresh failed. Cannot send email.")
+            return False
+        if not self.service:
+            logger.error("Gmail service not initialized. Cannot send email.")
+            return False
+        try:
+            if body_html:
+                message = self._create_message(to_email, subject, body_html, subtype="html")
+            else:
+                message = self._create_message(to_email, subject, body_text or "", subtype="plain")
+            result = self.service.users().messages().send(userId="me", body=message).execute()
+            logger.info("Raw email sent to %s. Message ID: %s", to_email, result.get("id"))
+            return True
+        except Exception as e:
+            logger.error("Failed to send raw email to %s: %s", to_email, e)
+            return False
+
+    async def render_template(self, key: str, variables: Dict[str, Any]) -> Dict[str, str]:
+        """Public helper: render published template by key. Raises on unknown/disabled."""
+        from app.core.database import AsyncSessionLocal
+        from app.services.email_template_service import render_template as _render
+
+        async with AsyncSessionLocal() as db:
+            return await _render(db, key, variables)
     
     async def send_verification_email(self, to_email: str, verification_pin: str) -> bool:
         """
@@ -482,8 +535,12 @@ class EmailService:
             return False
         
         try:
-            subject = "Verify your email  —  ClockIn Pro"
-            body = f"""Your 6-digit verification code is:
+            rendered = await self._render_key("verify_email", {"verification_pin": verification_pin})
+            if rendered is None:
+                return False  # disabled
+            if rendered.get("__fallback__"):
+                subject = "Verify your email  —  ClockIn Pro"
+                body = f"""Your 6-digit verification code is:
 
 {verification_pin}
 
@@ -493,8 +550,15 @@ For security reasons, email verification is required every 30 days.
 
 If you didn't request this code, please ignore this email.
 """
-            
-            message = self._create_message(to_email, subject, body)
+                message = self._create_message(to_email, subject, body)
+            else:
+                subject = rendered["subject"]
+                body = rendered.get("body_text") or rendered.get("body_html") or ""
+                subtype = "html" if rendered.get("body_html") and not rendered.get("body_text") else "plain"
+                if rendered.get("body_html"):
+                    message = self._create_message(to_email, subject, rendered["body_html"], subtype="html")
+                else:
+                    message = self._create_message(to_email, subject, body, subtype="plain")
             
             # Send message
             result = self.service.users().messages().send(
@@ -783,134 +847,130 @@ ClockIn Pro"""
             logger.error(f"Unexpected error sending leave response: {e}")
             return False
 
+    async def _dispatch_gmail(self, to_email: str, subject: str, body: str, subtype: str = "plain") -> bool:
+        """Send via Gmail with one auth-refresh retry."""
+        message = self._create_message(to_email, subject, body, subtype=subtype)
+        try:
+            result = self.service.users().messages().send(userId="me", body=message).execute()
+            logger.info("Email sent to %s. Message ID: %s", to_email, result.get("id"))
+            return True
+        except HttpError as error:
+            error_details = error.error_details if hasattr(error, "error_details") else str(error)
+            if error.resp.status == 401 and self._refresh_token_if_needed():
+                try:
+                    result = self.service.users().messages().send(userId="me", body=message).execute()
+                    logger.info(
+                        "Email sent to %s after token refresh. Message ID: %s",
+                        to_email,
+                        result.get("id"),
+                    )
+                    return True
+                except Exception as retry_error:
+                    logger.error("Failed to send email after token refresh: %s", retry_error)
+                    return False
+            logger.error("Gmail API error while sending email: %s", error_details)
+            return False
+        except Exception as e:
+            logger.error("Unexpected error sending email: %s", e)
+            return False
+
     async def send_password_setup_email(self, to_email: str, employee_name: str, setup_link: str) -> bool:
         """
-        Send password setup email to new employee.
-        
-        Args:
-            to_email: Employee email address
-            employee_name: Name of employee
-            setup_link: URL link to set password
-            
-        Returns:
-            True if email sent successfully, False otherwise
+        First-time password setup invite (DB template `password_setup`).
         """
-        # Refresh token before sending
+        return await self._send_templated_email(
+            key="password_setup",
+            to_email=to_email,
+            variables={"employee_name": employee_name, "setup_link": setup_link},
+            fallback_subject="Set Up Your Password  —  ClockIn Pro",
+            fallback_text=(
+                f"Hello {employee_name},\n\n"
+                "Welcome to ClockIn Pro! Your account has been created.\n\n"
+                "To get started, please set your password by clicking the link below:\n\n"
+                f"{setup_link}\n\n"
+                "This link will expire in 48 hours and can only be used once.\n\n"
+                "If you didn't expect this email, please ignore it.\n\n"
+                "ClockIn Pro"
+            ),
+            log_label="Password setup",
+        )
+
+    async def send_password_reset_email(self, to_email: str, employee_name: str, reset_link: str) -> bool:
+        """
+        Admin/developer password reset link (DB template `password_reset`).
+        """
+        return await self._send_templated_email(
+            key="password_reset",
+            to_email=to_email,
+            variables={"employee_name": employee_name, "reset_link": reset_link},
+            fallback_subject="Reset Your Password  —  ClockIn Pro",
+            fallback_text=(
+                f"Hello {employee_name},\n\n"
+                "A password reset was requested for your ClockIn Pro account.\n\n"
+                "Click the link below to choose a new password:\n\n"
+                f"{reset_link}\n\n"
+                "This link will expire in 48 hours and can only be used once.\n\n"
+                "If you did not request this, contact your administrator.\n\n"
+                "ClockIn Pro"
+            ),
+            log_label="Password reset",
+        )
+
+    async def _send_templated_email(
+        self,
+        *,
+        key: str,
+        to_email: str,
+        variables: Dict[str, Any],
+        fallback_subject: str,
+        fallback_text: str,
+        log_label: str,
+    ) -> bool:
         if not self._refresh_token_if_needed():
             logger.error("Gmail service not initialized or token refresh failed. Cannot send email.")
             return False
-        
         if not self.service:
             logger.error("Gmail service not initialized. Cannot send email.")
             return False
-        
         try:
-            subject = "Set Up Your Password  —  ClockIn Pro"
-            
-            body = f"""Hello {employee_name},
-
-Welcome to ClockIn Pro! Your account has been created.
-
-To get started, please set your password by clicking the link below:
-
-{setup_link}
-
-This link will expire in 48 hours and can only be used once.
-
-If you didn't expect this email, please ignore it.
-
-ClockIn Pro"""
-            
-            message = self._create_message(to_email, subject, body)
-            
-            result = self.service.users().messages().send(
-                userId='me',
-                body=message
-            ).execute()
-            
-            logger.info(f"Password setup email sent to {to_email}. Message ID: {result.get('id')}")
-            return True
-            
-        except HttpError as error:
-            error_details = error.error_details if hasattr(error, 'error_details') else str(error)
-            
-            if error.resp.status == 401:
-                logger.error("Gmail API authentication failed. Token may have expired.")
-                if self._refresh_token_if_needed():
-                    try:
-                        result = self.service.users().messages().send(
-                            userId='me',
-                            body=message
-                        ).execute()
-                        logger.info(f"Password setup email sent to {to_email} after token refresh. Message ID: {result.get('id')}")
-                        return True
-                    except Exception as retry_error:
-                        logger.error(f"Failed to send password setup email after token refresh: {retry_error}")
-                        return False
-                else:
-                    logger.error("Gmail refresh token has expired. Re-authorization required.")
-                    return False
-            
-            logger.error(f"Gmail API error while sending password setup email: {error_details}")
-            return False
+            rendered = await self._render_key(key, variables)
+            if rendered is None:
+                return False
+            if rendered.get("__fallback__"):
+                ok = await self._dispatch_gmail(to_email, fallback_subject, fallback_text, subtype="plain")
+            elif rendered.get("body_html"):
+                ok = await self._dispatch_gmail(
+                    to_email, rendered["subject"], rendered["body_html"], subtype="html"
+                )
+            else:
+                ok = await self._dispatch_gmail(
+                    to_email, rendered["subject"], rendered.get("body_text") or "", subtype="plain"
+                )
+            if ok:
+                logger.info("%s email sent to %s", log_label, to_email)
+            return ok
         except Exception as e:
-            logger.error(f"Unexpected error sending password setup email: {e}")
+            logger.error("Unexpected error sending %s email: %s", log_label, e)
             return False
 
     async def send_password_reset_otp(self, to_email: str, otp: str) -> bool:
         """
-        Send 6-digit OTP for password reset (forgot password flow).
-
-        Args:
-            to_email: Recipient email address
-            otp: 6-digit OTP code
-
-        Returns:
-            True if email sent successfully, False otherwise
+        Forgot-password OTP (DB template `password_reset_otp`).
         """
-        if not self._refresh_token_if_needed():
-            logger.error("Gmail service not initialized or token refresh failed. Cannot send email.")
-            return False
-
-        if not self.service:
-            logger.error("Gmail service not initialized. Cannot send email.")
-            return False
-
-        try:
-            subject = "Reset Your Password  —  ClockIn Pro"
-            body = f"""You requested to reset your password.
-
-Your 6-digit verification code is:
-
-{otp}
-
-This code expires in 15 minutes.
-
-If you didn't request a password reset, please ignore this email and your password will remain unchanged.
-
-ClockIn Pro"""
-            message = self._create_message(to_email, subject, body)
-            result = self.service.users().messages().send(
-                userId='me',
-                body=message
-            ).execute()
-            logger.info(f"Password reset OTP email sent to {to_email}. Message ID: {result.get('id')}")
-            return True
-        except HttpError as error:
-            if error.resp.status == 401 and self._refresh_token_if_needed():
-                try:
-                    msg = self._create_message(to_email, "Reset Your Password  —  ClockIn Pro",
-                        f"Your 6-digit code: {otp}. Expires in 15 minutes.")
-                    result = self.service.users().messages().send(userId='me', body=msg).execute()
-                    logger.info(f"Password reset OTP sent to {to_email} after token refresh.")
-                    return True
-                except Exception:
-                    return False
-            logger.error(f"Gmail API error sending password reset OTP: {error}")
-            return False
-        except Exception as e:
-            logger.error(f"Unexpected error sending password reset OTP: {e}")
-            return False
+        return await self._send_templated_email(
+            key="password_reset_otp",
+            to_email=to_email,
+            variables={"otp": otp},
+            fallback_subject="Reset Your Password  —  ClockIn Pro",
+            fallback_text=(
+                "You requested to reset your password.\n\n"
+                f"Your 6-digit verification code is:\n\n{otp}\n\n"
+                "This code expires in 15 minutes.\n\n"
+                "If you didn't request a password reset, please ignore this email.\n\n"
+                "ClockIn Pro"
+            ),
+            log_label="Password reset OTP",
+        )
 
     async def send_schedule_notification(
         self,
