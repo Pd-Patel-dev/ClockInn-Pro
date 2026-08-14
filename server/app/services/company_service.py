@@ -61,6 +61,26 @@ DEFAULT_GEOFENCE_RADIUS_METERS = 100
 # Kiosk: when True, kiosk only works from allowed IPs (office network)
 DEFAULT_KIOSK_NETWORK_RESTRICTION_ENABLED = False
 
+# Roles allowed to punch in/out (dashboard + punch APIs)
+DEFAULT_PUNCH_ALLOWED_ROLES = [
+    "MAINTENANCE",
+    "FRONTDESK",
+    "HOUSEKEEPING",
+    "RESTAURANT",
+    "SECURITY",
+    "MANAGER",
+]
+DEFAULT_MARKETPLACE_ITEMS: list = []
+
+
+def is_punch_allowed_for_role(settings: Dict, role) -> bool:
+    """Return True if this employee type may punch for the company."""
+    role_str = role.value if hasattr(role, "value") else str(role)
+    allowed = settings.get("punch_allowed_roles")
+    if allowed is None:
+        allowed = DEFAULT_PUNCH_ALLOWED_ROLES
+    return role_str in allowed
+
 
 def get_company_settings(company: Company) -> Dict:
     """Get company settings with defaults."""
@@ -96,6 +116,8 @@ def get_company_settings(company: Company) -> Dict:
         "geofence_radius_meters": settings.get("geofence_radius_meters", DEFAULT_GEOFENCE_RADIUS_METERS),
         "kiosk_network_restriction_enabled": settings.get("kiosk_network_restriction_enabled", DEFAULT_KIOSK_NETWORK_RESTRICTION_ENABLED),
         "kiosk_allowed_ips": settings.get("kiosk_allowed_ips") or [],
+        "punch_allowed_roles": settings.get("punch_allowed_roles", list(DEFAULT_PUNCH_ALLOWED_ROLES)),
+        "marketplace_items": settings.get("marketplace_items", list(DEFAULT_MARKETPLACE_ITEMS)),
     }
 
 
@@ -232,6 +254,13 @@ async def update_company_settings(
         current_settings["kiosk_network_restriction_enabled"] = data.kiosk_network_restriction_enabled
     if data.kiosk_allowed_ips is not None:
         current_settings["kiosk_allowed_ips"] = data.kiosk_allowed_ips
+    if data.punch_allowed_roles is not None:
+        current_settings["punch_allowed_roles"] = data.punch_allowed_roles
+    if data.marketplace_items is not None:
+        current_settings["marketplace_items"] = [
+            item.model_dump() if hasattr(item, "model_dump") else dict(item)
+            for item in data.marketplace_items
+        ]
 
     logger.info(f"Settings after update: {current_settings}")
     

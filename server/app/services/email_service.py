@@ -11,6 +11,7 @@ import json
 import logging
 from datetime import date, timedelta
 from email.mime.text import MIMEText
+from email.utils import formataddr
 from typing import Optional, List, Any, Dict
 import html as html_module
 from google.oauth2.credentials import Credentials
@@ -152,6 +153,146 @@ _STYLE = {
 }
 
 
+def _build_shift_summary_email_html(
+    *,
+    company_name: str,
+    employee_name: str,
+    employee_email: Optional[str],
+    employee_role: Optional[str],
+    clock_in_at: str,
+    clock_out_at: str,
+    duration_label: str,
+    source: Optional[str],
+    cash_drawer: Optional[Dict[str, Any]],
+    marketplace_sales: Optional[List[Dict[str, Any]]],
+    marketplace_total_label: Optional[str],
+) -> str:
+    """Simple HTML shift-end summary for company admins."""
+
+    def safe(value: Optional[Any], default: str = "—") -> str:
+        if value is None:
+            return default
+        text = str(value).strip()
+        return html_module.escape(text) if text else default
+
+    emp = safe(employee_name, "Employee")
+    cin = safe(clock_in_at)
+    cout = safe(clock_out_at)
+    dur = safe(duration_label)
+
+    cash_html = ""
+    if cash_drawer:
+        rows = [
+            ("Start", cash_drawer.get("start_cash")),
+            ("End", cash_drawer.get("end_cash")),
+            ("Collected", cash_drawer.get("collected_cash")),
+            ("Drop", cash_drawer.get("drop_amount")),
+            ("Variance", cash_drawer.get("delta")),
+        ]
+        cash_rows = "".join(
+            f"""
+            <tr>
+              <td style="padding:8px 0; color:#64748b; font-size:14px;">{safe(label)}</td>
+              <td style="padding:8px 0; text-align:right; color:#0f172a; font-size:14px; font-weight:600;">{safe(value)}</td>
+            </tr>
+            """
+            for label, value in rows
+        )
+        cash_html = f"""
+        <tr>
+          <td style="padding:20px 24px 0 24px;">
+            <p style="margin:0 0 8px 0; font-size:13px; font-weight:600; color:#0f172a;">Cash drawer</p>
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0">{cash_rows}</table>
+          </td>
+        </tr>
+        """
+
+    market_html = ""
+    if marketplace_sales is not None or marketplace_total_label:
+        if marketplace_sales:
+            item_rows = "".join(
+                f"""
+                <tr>
+                  <td style="padding:6px 0; color:#334155; font-size:14px;">{safe(row.get("label"), "Item")} × {int(row.get("qty") or 0)}</td>
+                  <td style="padding:6px 0; text-align:right; color:#0f172a; font-size:14px; font-weight:600;">{safe(row.get("line_total"), "$0.00")}</td>
+                </tr>
+                """
+                for row in marketplace_sales
+            )
+        else:
+            item_rows = '<tr><td colspan="2" style="padding:6px 0; color:#94a3b8; font-size:14px;">No items sold</td></tr>'
+        total_row = ""
+        if marketplace_total_label:
+            total_row = f"""
+            <tr>
+              <td style="padding:10px 0 0 0; color:#0f172a; font-size:14px; font-weight:600;">Total</td>
+              <td style="padding:10px 0 0 0; text-align:right; color:#0f172a; font-size:14px; font-weight:700;">{safe(marketplace_total_label)}</td>
+            </tr>
+            """
+        market_html = f"""
+        <tr>
+          <td style="padding:20px 24px 0 24px;">
+            <p style="margin:0 0 8px 0; font-size:13px; font-weight:600; color:#0f172a;">Marketplace sales</p>
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+              {item_rows}
+              {total_row}
+            </table>
+          </td>
+        </tr>
+        """
+
+    return f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Shift summary</title>
+</head>
+<body style="margin:0; padding:0; background-color:#f1f5f9; font-family:Arial,Helvetica,sans-serif;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#f1f5f9; padding:24px 12px;">
+    <tr>
+      <td align="center">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:520px; background:#ffffff; border:1px solid #e2e8f0; border-radius:8px;">
+          <tr>
+            <td style="padding:20px 24px; border-bottom:1px solid #e2e8f0;">
+              <p style="margin:0; font-size:12px; color:#64748b;">ClockInn Pro</p>
+              <h1 style="margin:6px 0 0 0; font-size:20px; color:#0f172a; font-weight:700;">Shift complete</h1>
+              <p style="margin:6px 0 0 0; font-size:14px; color:#475569;">{emp} clocked out</p>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:20px 24px;">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+                <tr>
+                  <td style="padding:8px 0; color:#64748b; font-size:14px;">Clock in</td>
+                  <td style="padding:8px 0; text-align:right; color:#0f172a; font-size:14px; font-weight:600;">{cin}</td>
+                </tr>
+                <tr>
+                  <td style="padding:8px 0; color:#64748b; font-size:14px; border-top:1px solid #f1f5f9;">Clock out</td>
+                  <td style="padding:8px 0; text-align:right; color:#0f172a; font-size:14px; font-weight:600; border-top:1px solid #f1f5f9;">{cout}</td>
+                </tr>
+                <tr>
+                  <td style="padding:8px 0; color:#64748b; font-size:14px; border-top:1px solid #f1f5f9;">Duration</td>
+                  <td style="padding:8px 0; text-align:right; color:#0f172a; font-size:14px; font-weight:600; border-top:1px solid #f1f5f9;">{dur}</td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+          {cash_html}
+          {market_html}
+          <tr>
+            <td style="padding:16px 24px 20px 24px; border-top:1px solid #e2e8f0;">
+              <p style="margin:0; font-size:12px; color:#94a3b8;">ClockInn Pro</p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>"""
+
+
 def _build_schedule_email_html(
     employee_name: str,
     week_start_date: Optional[date],
@@ -240,7 +381,7 @@ def _build_schedule_email_html(
   <div style="{_STYLE["container"]}">
     <div style="{_STYLE["card"]}">
       <div style="{_STYLE["header_bg"]}">
-        <p style="{_STYLE["header_title"]}">ClockIn Pro</p>
+        <p style="{_STYLE["header_title"]}">ClockInn Pro</p>
         <p style="{_STYLE["header_sub"]}">{header_title}</p>
       </div>
       <div style="{_STYLE["body_pad"]}">
@@ -251,7 +392,7 @@ def _build_schedule_email_html(
         {total_html}
       </div>
       <div style="{_STYLE["footer"]}">
-        View your full schedule in the ClockIn Pro dashboard.<br>
+        View your full schedule in the ClockInn Pro dashboard.<br>
         Questions? Contact your manager.
       </div>
     </div>
@@ -296,7 +437,30 @@ class EmailService:
     def __init__(self):
         self.service = None
         self.creds = None
+        self._sender_email_cache: Optional[str] = None
         self._initialize_service()
+
+    def get_sender_email(self) -> Optional[str]:
+        """
+        Actual From address used by Gmail (authenticated account).
+        Falls back to GMAIL_SENDER_EMAIL config when profile cannot be read.
+        """
+        if self._sender_email_cache:
+            return self._sender_email_cache
+
+        configured = (getattr(settings, "GMAIL_SENDER_EMAIL", None) or "").strip() or None
+
+        try:
+            if self.service and self._refresh_token_if_needed():
+                profile = self.service.users().getProfile(userId="me").execute()
+                address = (profile.get("emailAddress") or "").strip()
+                if address:
+                    self._sender_email_cache = address
+                    return address
+        except Exception as e:
+            logger.warning("Could not read Gmail profile sender email: %s", e)
+
+        return configured
     
     def _refresh_token_if_needed(self):
         """
@@ -455,30 +619,12 @@ class EmailService:
         """Create a message for an email. subtype: 'plain' or 'html'."""
         message = MIMEText(body, subtype, "utf-8")
         message['to'] = to
-        message['from'] = settings.GMAIL_SENDER_EMAIL
+        sender = self.get_sender_email() or settings.GMAIL_SENDER_EMAIL
+        message['from'] = formataddr(("ClockInn Pro", sender))
         message['subject'] = subject
         
         raw_message = base64.urlsafe_b64encode(message.as_bytes()).decode('utf-8')
         return {'raw': raw_message}
-
-    async def _render_key(self, key: str, variables: Dict[str, Any]) -> Optional[Dict[str, str]]:
-        """
-        Load and render a published DB template by key.
-        Returns None if disabled, missing, or on error (caller should use factory/hardcoded fallback).
-        """
-        try:
-            from app.core.database import AsyncSessionLocal
-            from app.services.email_template_service import render_template as _render
-
-            async with AsyncSessionLocal() as db:
-                return await _render(db, key, variables)
-        except RuntimeError as e:
-            # Disabled template
-            logger.warning("Skipping email send: %s", e)
-            return None
-        except Exception as e:
-            logger.warning("Template render failed for key=%s, using fallback: %s", key, e)
-            return {"__fallback__": "1"}  # signal to use hardcoded
 
     async def send_raw_email(
         self,
@@ -541,23 +687,15 @@ class EmailService:
             )
             return False
 
-    async def render_template(self, key: str, variables: Dict[str, Any]) -> Dict[str, str]:
-        """Public helper: render published template by key. Raises on unknown/disabled."""
-        from app.core.database import AsyncSessionLocal
-        from app.services.email_template_service import render_template as _render
-
-        async with AsyncSessionLocal() as db:
-            return await _render(db, key, variables)
-    
     async def send_verification_email(self, to_email: str, verification_pin: str) -> bool:
         """
-        Send email verification PIN (DB template `verify_email` — Email Verification).
+        Send email verification PIN.
         """
         return await self._send_templated_email(
             key="verify_email",
             to_email=to_email,
             variables={"verification_pin": verification_pin},
-            fallback_subject="Verify your email  —  ClockIn Pro",
+            fallback_subject="Verify your email  —  ClockInn Pro",
             fallback_text=(
                 "Your 6-digit verification code is:\n\n"
                 f"{verification_pin}\n\n"
@@ -570,16 +708,16 @@ class EmailService:
 
     async def send_verification_reminder(self, to_email: str) -> bool:
         """
-        Send reminder that verification expires soon (DB template `verification_reminder`).
+        Send reminder that verification expires soon.
         """
         return await self._send_templated_email(
             key="verification_reminder",
             to_email=to_email,
             variables={},
-            fallback_subject="Email Verification Expiring Soon  —  ClockIn Pro",
+            fallback_subject="Email Verification Expiring Soon  —  ClockInn Pro",
             fallback_text=(
                 "Your email verification expires in 3 days.\n\n"
-                "Please verify your email to continue using ClockIn Pro without interruption.\n\n"
+                "Please verify your email to continue using ClockInn Pro without interruption.\n\n"
                 "You can verify your email by logging in to your account.\n\n"
                 "If you have any questions, please contact support.\n"
             ),
@@ -614,7 +752,7 @@ class EmailService:
             logger.error("Gmail service not initialized or token refresh failed. Cannot send email.")
             await self._record_delivery(
                 to_email=admin_email,
-                subject=f"New Leave Request from {employee_name}  —  ClockIn Pro",
+                subject=f"New Leave Request from {employee_name}  —  ClockInn Pro",
                 template_key="leave_request_notification",
                 kind="notification",
                 status="failed",
@@ -626,7 +764,7 @@ class EmailService:
             logger.error("Gmail service not initialized. Cannot send email.")
             await self._record_delivery(
                 to_email=admin_email,
-                subject=f"New Leave Request from {employee_name}  —  ClockIn Pro",
+                subject=f"New Leave Request from {employee_name}  —  ClockInn Pro",
                 template_key="leave_request_notification",
                 kind="notification",
                 status="failed",
@@ -634,7 +772,7 @@ class EmailService:
             )
             return False
         
-        subject = f"New Leave Request from {employee_name}  —  ClockIn Pro"
+        subject = f"New Leave Request from {employee_name}  —  ClockInn Pro"
         reason_text = f"\nReason: {reason}" if reason else ""
         body = f"""A new leave request has been submitted and requires your review.
 
@@ -645,7 +783,7 @@ End Date: {end_date}{reason_text}
 
 Please review and respond to this leave request in your admin dashboard.
 
-ClockIn Pro"""
+ClockInn Pro"""
         ok = await self._dispatch_gmail(
             admin_email,
             subject,
@@ -688,7 +826,7 @@ ClockIn Pro"""
             True if email sent successfully, False otherwise
         """
         status_text = "Approved" if status.lower() == "approved" else "Rejected"
-        subject = f"Leave Request {status_text}  —  ClockIn Pro"
+        subject = f"Leave Request {status_text}  —  ClockInn Pro"
 
         if not self._refresh_token_if_needed():
             logger.error("Gmail service not initialized or token refresh failed. Cannot send email.")
@@ -725,7 +863,7 @@ Details:
 - Start Date: {start_date}
 - End Date: {end_date}{reason_text}{reviewer_text}{comment_text}
 
-ClockIn Pro"""
+ClockInn Pro"""
         ok = await self._dispatch_gmail(
             employee_email,
             subject,
@@ -748,6 +886,7 @@ ClockIn Pro"""
         kind: str = "transactional",
         provider_message_id: Optional[str] = None,
         error_message: Optional[str] = None,
+        from_email: Optional[str] = None,
     ) -> None:
         from app.services.email_delivery_log_service import record_email_delivery
 
@@ -759,6 +898,7 @@ ClockIn Pro"""
             kind=kind,
             provider_message_id=provider_message_id,
             error_message=error_message,
+            from_email=from_email if from_email is not None else self.get_sender_email(),
         )
 
     async def _dispatch_gmail(
@@ -849,43 +989,39 @@ ClockIn Pro"""
             return False
 
     async def send_password_setup_email(self, to_email: str, employee_name: str, setup_link: str) -> bool:
-        """
-        First-time password setup invite (DB template `password_setup`).
-        """
+        """First-time password setup invite."""
         return await self._send_templated_email(
             key="password_setup",
             to_email=to_email,
             variables={"employee_name": employee_name, "setup_link": setup_link},
-            fallback_subject="Set Up Your Password  —  ClockIn Pro",
+            fallback_subject="Set Up Your Password  —  ClockInn Pro",
             fallback_text=(
                 f"Hello {employee_name},\n\n"
-                "Welcome to ClockIn Pro! Your account has been created.\n\n"
+                "Welcome to ClockInn Pro! Your account has been created.\n\n"
                 "To get started, please set your password by clicking the link below:\n\n"
                 f"{setup_link}\n\n"
                 "This link will expire in 48 hours and can only be used once.\n\n"
                 "If you didn't expect this email, please ignore it.\n\n"
-                "ClockIn Pro"
+                "ClockInn Pro"
             ),
             log_label="Password setup",
         )
 
     async def send_password_reset_email(self, to_email: str, employee_name: str, reset_link: str) -> bool:
-        """
-        Admin/developer password reset link (DB template `password_reset`).
-        """
+        """Admin/developer password reset link."""
         return await self._send_templated_email(
             key="password_reset",
             to_email=to_email,
             variables={"employee_name": employee_name, "reset_link": reset_link},
-            fallback_subject="Reset Your Password  —  ClockIn Pro",
+            fallback_subject="Reset Your Password  —  ClockInn Pro",
             fallback_text=(
                 f"Hello {employee_name},\n\n"
-                "A password reset was requested for your ClockIn Pro account.\n\n"
+                "A password reset was requested for your ClockInn Pro account.\n\n"
                 "Click the link below to choose a new password:\n\n"
                 f"{reset_link}\n\n"
                 "This link will expire in 48 hours and can only be used once.\n\n"
                 "If you did not request this, contact your administrator.\n\n"
-                "ClockIn Pro"
+                "ClockInn Pro"
             ),
             log_label="Password reset",
         )
@@ -900,6 +1036,7 @@ ClockIn Pro"""
         fallback_text: str,
         log_label: str,
     ) -> bool:
+        """Send using hardcoded body/subject (DB/custom templates are not used)."""
         if not self._refresh_token_if_needed():
             logger.error("Gmail service not initialized or token refresh failed. Cannot send email.")
             await self._record_delivery(
@@ -923,44 +1060,14 @@ ClockIn Pro"""
             )
             return False
         try:
-            rendered = await self._render_key(key, variables)
-            if rendered is None:
-                await self._record_delivery(
-                    to_email=to_email,
-                    subject=fallback_subject,
-                    template_key=key,
-                    kind="transactional",
-                    status="skipped",
-                    error_message="Template disabled or unavailable",
-                )
-                return False
-            if rendered.get("__fallback__"):
-                ok = await self._dispatch_gmail(
-                    to_email,
-                    fallback_subject,
-                    fallback_text,
-                    subtype="plain",
-                    template_key=key,
-                    kind="transactional",
-                )
-            elif rendered.get("body_html"):
-                ok = await self._dispatch_gmail(
-                    to_email,
-                    rendered["subject"],
-                    rendered["body_html"],
-                    subtype="html",
-                    template_key=key,
-                    kind="transactional",
-                )
-            else:
-                ok = await self._dispatch_gmail(
-                    to_email,
-                    rendered["subject"],
-                    rendered.get("body_text") or "",
-                    subtype="plain",
-                    template_key=key,
-                    kind="transactional",
-                )
+            ok = await self._dispatch_gmail(
+                to_email,
+                fallback_subject,
+                fallback_text,
+                subtype="plain",
+                template_key=key,
+                kind="transactional",
+            )
             if ok:
                 logger.info("%s email sent to %s", log_label, to_email)
             return ok
@@ -978,19 +1085,19 @@ ClockIn Pro"""
 
     async def send_password_reset_otp(self, to_email: str, otp: str) -> bool:
         """
-        Forgot-password OTP (DB template `password_reset_otp`).
+        Forgot-password OTP.
         """
         return await self._send_templated_email(
             key="password_reset_otp",
             to_email=to_email,
             variables={"otp": otp},
-            fallback_subject="Reset Your Password  —  ClockIn Pro",
+            fallback_subject="Reset Your Password  —  ClockInn Pro",
             fallback_text=(
                 "You requested to reset your password.\n\n"
                 f"Your 6-digit verification code is:\n\n{otp}\n\n"
                 "This code expires in 15 minutes.\n\n"
                 "If you didn't request a password reset, please ignore this email.\n\n"
-                "ClockIn Pro"
+                "ClockInn Pro"
             ),
             log_label="Password reset OTP",
         )
@@ -1021,9 +1128,9 @@ ClockIn Pro"""
         logger.info("Sending schedule notification to %s (%d shift(s))", employee_email, len(shifts))
 
         if week_start_date is not None:
-            subject = "Your Week Schedule  —  ClockIn Pro"
+            subject = "Your Week Schedule  —  ClockInn Pro"
         else:
-            subject = "Your Schedule  —  ClockIn Pro"
+            subject = "Your Schedule  —  ClockInn Pro"
 
         if not self._refresh_token_if_needed():
             logger.error("Schedule email NOT sent to %s: Gmail not initialized or token refresh failed. Set GMAIL_CREDENTIALS_JSON and GMAIL_TOKEN_JSON.", employee_email)
@@ -1106,7 +1213,7 @@ ClockIn Pro"""
                 if to_email and to_email.strip():
                     await self._record_delivery(
                         to_email=to_email.strip(),
-                        subject="ClockIn Pro — Punch blocked",
+                        subject="ClockInn Pro — Punch blocked",
                         template_key="punch_violation_warning",
                         kind="notification",
                         status="failed",
@@ -1121,7 +1228,7 @@ ClockIn Pro"""
             return (str(s).strip()[:max_len]) or default
 
         if violation_type == "geofence":
-            subject = "ClockIn Pro — Punch blocked: attempt outside office area"
+            subject = "ClockInn Pro — Punch blocked: attempt outside office area"
             lines = [
                 "A clock-in/out attempt was blocked because the employee was outside the allowed office area.",
                 "",
@@ -1136,7 +1243,7 @@ ClockIn Pro"""
                 f"User-Agent: {_safe(user_agent, max_len=200)}",
             ]
         else:
-            subject = "ClockIn Pro — Punch blocked: kiosk access from unauthorized network"
+            subject = "ClockInn Pro — Punch blocked: kiosk access from unauthorized network"
             lines = [
                 "A kiosk access or punch attempt was blocked because the request came from a network that is not on the allowed list.",
                 "",
@@ -1163,6 +1270,78 @@ ClockIn Pro"""
             )
             if ok:
                 logger.info("Punch violation warning sent to %s", to_email)
+                sent = True
+        return sent
+
+    async def send_shift_summary_to_admins(
+        self,
+        to_emails: List[str],
+        *,
+        company_name: str,
+        employee_name: str,
+        employee_email: Optional[str] = None,
+        employee_role: Optional[str] = None,
+        clock_in_at: str,
+        clock_out_at: str,
+        duration_label: str,
+        source: Optional[str] = None,
+        cash_drawer: Optional[Dict[str, Any]] = None,
+        marketplace_sales: Optional[List[Dict[str, Any]]] = None,
+        marketplace_total_label: Optional[str] = None,
+    ) -> bool:
+        """
+        Notify company admins when an employee clocks out (HTML summary).
+        Always includes time info; cash drawer + marketplace sections are optional.
+        """
+        if not to_emails:
+            logger.debug("send_shift_summary_to_admins: no recipients, skipping")
+            return True
+
+        subject = f"Shift summary — {employee_name}  —  ClockInn Pro"
+        body = _build_shift_summary_email_html(
+            company_name=company_name,
+            employee_name=employee_name,
+            employee_email=employee_email,
+            employee_role=employee_role,
+            clock_in_at=clock_in_at,
+            clock_out_at=clock_out_at,
+            duration_label=duration_label,
+            source=source,
+            cash_drawer=cash_drawer,
+            marketplace_sales=marketplace_sales,
+            marketplace_total_label=marketplace_total_label,
+        )
+
+        if not self._refresh_token_if_needed() or not self.service:
+            logger.warning(
+                "Gmail not configured or unavailable; skipping shift summary email."
+            )
+            for to_email in to_emails:
+                if to_email and to_email.strip():
+                    await self._record_delivery(
+                        to_email=to_email.strip(),
+                        subject=subject,
+                        template_key="shift_summary",
+                        kind="notification",
+                        status="failed",
+                        error_message="Gmail not configured or unavailable",
+                    )
+            return False
+
+        sent = False
+        for to_email in to_emails:
+            if not to_email or not to_email.strip():
+                continue
+            ok = await self._dispatch_gmail(
+                to_email.strip(),
+                subject,
+                body,
+                subtype="html",
+                template_key="shift_summary",
+                kind="notification",
+            )
+            if ok:
+                logger.info("Shift summary sent to %s", to_email)
                 sent = True
         return sent
 

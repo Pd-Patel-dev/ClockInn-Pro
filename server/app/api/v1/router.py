@@ -1,5 +1,5 @@
 from fastapi import APIRouter
-from app.api.v1.endpoints import auth, users, time, leave, reports, payroll, company, health, shifts, kiosk, gmail, admin, developer, cash_drawer, permissions, shift_notes, app_stubs, me, email_templates
+from app.api.v1.endpoints import auth, users, time, leave, reports, payroll, company, health, shifts, kiosk, gmail, admin, developer, cash_drawer, permissions, shift_notes, app_stubs, me
 
 api_router = APIRouter()
 
@@ -18,12 +18,12 @@ api_router.include_router(payroll.router, prefix="", tags=["payroll"])
 api_router.include_router(company.router, prefix="", tags=["company"])
 api_router.include_router(kiosk.router, prefix="/kiosk", tags=["kiosk"])
 api_router.include_router(developer.router, prefix="/developer", tags=["developer"])
-api_router.include_router(
-    email_templates.router,
-    prefix="/developer/email-templates",
-    tags=["email-templates"],
-)
 api_router.include_router(cash_drawer.router, prefix="/admin/cash-drawers", tags=["cash-drawer"])
+api_router.include_router(
+    cash_drawer.employee_router,
+    prefix="/cash-drawer",
+    tags=["cash-drawer-employee"],
+)
 api_router.include_router(permissions.router, prefix="/admin", tags=["permissions"])
 api_router.include_router(app_stubs.notifications_router, prefix="/notifications", tags=["notifications"])
 api_router.include_router(app_stubs.feedback_router, prefix="/feedback", tags=["feedback"])

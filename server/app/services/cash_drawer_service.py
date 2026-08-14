@@ -38,6 +38,49 @@ def requires_cash_drawer(company_settings: Dict, employee_role: str) -> bool:
     return employee_role in required_roles
 
 
+async def get_open_company_cash_drawer(
+    db: AsyncSession,
+    company_id: UUID,
+) -> Optional[Dict]:
+    """
+    Return the company-wide active (OPEN) cash drawer session, if any.
+    Only one drawer should be active at a time across Front Desk staff.
+    """
+    result = await db.execute(
+        select(CashDrawerSession, User.name)
+        .outerjoin(User, User.id == CashDrawerSession.employee_id)
+        .where(
+            and_(
+                CashDrawerSession.company_id == company_id,
+                CashDrawerSession.status == CashDrawerStatus.OPEN,
+            )
+        )
+        .order_by(CashDrawerSession.created_at.desc())
+        .limit(1)
+    )
+    row = result.one_or_none()
+    if not row:
+        return None
+    session, employee_name = row
+    return {
+        "session_id": session.id,
+        "employee_id": session.employee_id,
+        "employee_name": employee_name or "Front Desk",
+        "time_entry_id": session.time_entry_id,
+        "start_cash_cents": int(session.start_cash_cents or 0),
+    }
+
+
+async def employee_has_open_cash_drawer(
+    db: AsyncSession,
+    company_id: UUID,
+    employee_id: UUID,
+) -> bool:
+    """True if this employee owns the company's open cash drawer session."""
+    active = await get_open_company_cash_drawer(db, company_id)
+    return bool(active and str(active["employee_id"]) == str(employee_id))
+
+
 async def create_cash_drawer_session(
     db: AsyncSession,
     company_id: UUID,
@@ -51,6 +94,17 @@ async def create_cash_drawer_session(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Start cash amount cannot be negative",
+        )
+
+    # Only one company-wide open drawer at a time
+    active = await get_open_company_cash_drawer(db, company_id)
+    if active:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                f"Cash drawer is already activated by {active['employee_name']}. "
+                "Clock in without starting a new drawer."
+            ),
         )
     
     # Check if session already exists for this time entry
@@ -114,7 +168,7 @@ async def close_cash_drawer_session(
     beverages_cash_cents: Optional[int] = None,
 ) -> CashDrawerSession:
     """Close a cash drawer session for clock-out.
-    Balance (expected) = start_cash + collected_cash - drop_amount. Beverages sold are not included in balance.
+    Balance (expected) = start_cash + collected_cash - drop_amount. Marketplace sales are not included in balance.
     """
     if end_cash_cents < 0:
         raise HTTPException(
@@ -156,7 +210,7 @@ async def close_cash_drawer_session(
     session.end_counted_at = datetime.utcnow()
     session.end_count_source = source
     
-    # Store collected cash and beverages cash if provided
+    # Store collected cash if provided
     if collected_cash_cents is not None:
         if collected_cash_cents < 0:
             raise HTTPException(
@@ -164,12 +218,26 @@ async def close_cash_drawer_session(
                 detail="Collected cash amount cannot be negative",
             )
         session.collected_cash_cents = collected_cash_cents
-    
-    if beverages_cash_cents is not None:
+
+    # Marketplace sales total: from recorded counts when items configured; else optional client amount
+    from app.services.marketplace_service import marketplace_total_cents, normalize_sales
+    from sqlalchemy.orm.attributes import flag_modified
+
+    sales = normalize_sales(getattr(session, "marketplace_sales_json", None))
+    company = (
+        await db.execute(select(Company).where(Company.id == company_id))
+    ).scalar_one_or_none()
+    catalog = get_company_settings(company).get("marketplace_items") or [] if company else []
+
+    if catalog or sales:
+        session.marketplace_sales_json = sales
+        flag_modified(session, "marketplace_sales_json")
+        session.beverages_cash_cents = marketplace_total_cents(sales)
+    elif beverages_cash_cents is not None:
         if beverages_cash_cents < 0:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Beverages sold amount cannot be negative",
+                detail="Marketplace sales amount cannot be negative",
             )
         session.beverages_cash_cents = beverages_cash_cents
     

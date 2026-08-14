@@ -19,6 +19,7 @@ class EmailDeliveryLog(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     to_email = Column(String(320), nullable=False, index=True)
+    from_email = Column(String(320), nullable=True)
     subject = Column(String(500), nullable=True)
     template_key = Column(String(100), nullable=True, index=True)
     kind = Column(String(40), nullable=False, default="transactional", server_default="transactional")

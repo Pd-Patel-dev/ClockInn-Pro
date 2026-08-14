@@ -19,8 +19,9 @@ export default function MyPunchPage() {
   const [cashAmount, setCashAmount] = useState('')
   const [collectedCash, setCollectedCash] = useState('')
   const [dropAmount, setDropAmount] = useState('')
-  const [beveragesCash, setBeveragesCash] = useState('')
   const [cashError, setCashError] = useState<string | null>(null)
+  const [includeCashOnPunch, setIncludeCashOnPunch] = useState(false)
+  const [drawerActiveNote, setDrawerActiveNote] = useState<string | null>(null)
   const [showCashDialog, setShowCashDialog] = useState(false)
   const [showPunchConfirm, setShowPunchConfirm] = useState(false)
   const [punchConfirmAfterCash, setPunchConfirmAfterCash] = useState(false)
@@ -120,19 +121,48 @@ export default function MyPunchPage() {
     setPinDisplay('')
   }
 
-  const handlePunch = () => {
+  const handlePunch = async () => {
     if (pinDisplay.length !== 4) {
       setMessage('Please enter a 4-digit PIN')
       return
     }
     if (loading || showPunchConfirm || showCashDialog) return
+    setDrawerActiveNote(null)
+    setIncludeCashOnPunch(false)
     if (cashDrawerRequired) {
+      let needsCashEntry = true
+      let activeByOther: string | null = null
+      try {
+        const res = await api.get('/cash-drawer/active')
+        const active = res.data?.active_drawer
+        const owns = Boolean(res.data?.owns_active_drawer)
+        if (currentStatus === 'out') {
+          if (active && !active.is_mine) {
+            needsCashEntry = false
+            activeByOther = active.employee_name || 'another employee'
+          }
+        } else {
+          needsCashEntry = owns
+        }
+      } catch {
+        needsCashEntry = true
+      }
+
+      if (!needsCashEntry) {
+        setPendingPunch(true)
+        setIncludeCashOnPunch(false)
+        if (activeByOther) setDrawerActiveNote(activeByOther)
+        setPunchConfirmAfterCash(false)
+        setShowPunchConfirm(true)
+        return
+      }
+
       setPendingPunch(true)
+      setIncludeCashOnPunch(true)
       setShowCashDialog(true)
       setCashAmount('')
       setCollectedCash('')
       setDropAmount('')
-      setBeveragesCash('')
       setCashError(null)
       return
     }
@@ -152,6 +182,10 @@ export default function MyPunchPage() {
       setPunchConfirmAfterCash(false)
       setPendingPunch(true)
       setShowCashDialog(true)
+    } else {
+      setPendingPunch(false)
+      setIncludeCashOnPunch(false)
+      setDrawerActiveNote(null)
     }
   }
 
@@ -192,21 +226,22 @@ export default function MyPunchPage() {
         }
       }
 
-      const cashStartCents = cashDrawerRequired && currentStatus === 'out'
-        ? Math.round(parseFloat(cashAmount) * 100)
-        : undefined
-      const cashEndCents = cashDrawerRequired && currentStatus === 'in'
-        ? Math.round(parseFloat(cashAmount) * 100)
-        : undefined
-      const collectedCashCents = cashDrawerRequired && currentStatus === 'in'
-        ? Math.round(parseFloat(collectedCash || '0') * 100)
-        : undefined
-      const dropAmountCents = cashDrawerRequired && currentStatus === 'in'
-        ? Math.round(parseFloat(dropAmount || '0') * 100)
-        : undefined
-      const beveragesCashCents = cashDrawerRequired && currentStatus === 'in'
-        ? Math.round(parseFloat(beveragesCash || '0') * 100)
-        : undefined
+      const cashStartCents =
+        includeCashOnPunch && cashDrawerRequired && currentStatus === 'out'
+          ? Math.round(parseFloat(cashAmount) * 100)
+          : undefined
+      const cashEndCents =
+        includeCashOnPunch && cashDrawerRequired && currentStatus === 'in'
+          ? Math.round(parseFloat(cashAmount) * 100)
+          : undefined
+      const collectedCashCents =
+        includeCashOnPunch && cashDrawerRequired && currentStatus === 'in'
+          ? Math.round(parseFloat(collectedCash || '0') * 100)
+          : undefined
+      const dropAmountCents =
+        includeCashOnPunch && cashDrawerRequired && currentStatus === 'in'
+          ? Math.round(parseFloat(dropAmount || '0') * 100)
+          : undefined
 
       console.log('Punching with location:', currentLocation)
 
@@ -216,7 +251,6 @@ export default function MyPunchPage() {
         cash_end_cents: cashEndCents,
         collected_cash_cents: collectedCashCents,
         drop_amount_cents: dropAmountCents,
-        beverages_cash_cents: beveragesCashCents,
         latitude: currentLocation?.latitude,
         longitude: currentLocation?.longitude,
       })
@@ -226,16 +260,20 @@ export default function MyPunchPage() {
         setMessage(`✓ Clocked out at ${new Date(entry.clock_out_at).toLocaleString()}`)
         setCurrentStatus('out')
       } else {
-        setMessage(`✓ Clocked in at ${new Date(entry.clock_in_at).toLocaleString()}`)
+        const joinNote = drawerActiveNote
+          ? ` Cash drawer is already activated by ${drawerActiveNote}.`
+          : ''
+        setMessage(`✓ Clocked in at ${new Date(entry.clock_in_at).toLocaleString()}.${joinNote}`)
         setCurrentStatus('in')
       }
       clearPin()
       setCashAmount('')
       setCollectedCash('')
       setDropAmount('')
-      setBeveragesCash('')
       setCashError(null)
       setPendingPunch(false)
+      setIncludeCashOnPunch(false)
+      setDrawerActiveNote(null)
       setTimeout(() => setMessage(null), 5000)
     } catch (err: any) {
       const errorDetail = err.response?.data?.detail
@@ -261,7 +299,6 @@ export default function MyPunchPage() {
         setCashAmount('')
         setCollectedCash('')
         setDropAmount('')
-        setBeveragesCash('')
         setCashError(null)
         setMessage(null) // Clear error message since we're showing dialog
       } else {
@@ -281,11 +318,10 @@ export default function MyPunchPage() {
       setCashError('Please enter a valid cash amount')
       return
     }
-    // On clock-out, also validate collected, drop, beverages
+    // On clock-out, also validate collected and drop
     if (currentStatus === 'in') {
       const collectedValue = parseFloat(collectedCash)
       const dropValue = parseFloat(dropAmount)
-      const beveragesValue = parseFloat(beveragesCash)
       if (isNaN(collectedValue) || collectedValue < 0) {
         setCashError('Please enter a valid collected cash amount')
         return
@@ -294,13 +330,10 @@ export default function MyPunchPage() {
         setCashError('Please enter a valid drop amount')
         return
       }
-      if (isNaN(beveragesValue) || beveragesValue < 0) {
-        setCashError('Please enter a valid beverages sold amount')
-        return
-      }
     }
     setCashError(null)
     setShowCashDialog(false)
+    setIncludeCashOnPunch(true)
     setPunchConfirmAfterCash(true)
     setShowPunchConfirm(true)
   }
@@ -312,7 +345,6 @@ export default function MyPunchPage() {
     setCashAmount('')
     setCollectedCash('')
     setDropAmount('')
-    setBeveragesCash('')
     setCashError(null)
     clearPin()
   }
@@ -468,13 +500,15 @@ export default function MyPunchPage() {
             isOpen={showPunchConfirm}
             title={currentStatus === 'in' ? 'Clock out?' : 'Clock in?'}
             message={
-              punchConfirmAfterCash
-                ? currentStatus === 'in'
-                  ? 'Submit clock out with the cash amounts you entered?'
-                  : 'Submit clock in with the starting cash you entered?'
-                : currentStatus === 'in'
-                  ? 'Confirm you want to clock out with your PIN.'
-                  : 'Confirm you want to clock in with your PIN.'
+              drawerActiveNote && currentStatus === 'out'
+                ? `Cash drawer is already activated by ${drawerActiveNote}. You can clock in without entering cash.`
+                : punchConfirmAfterCash
+                  ? currentStatus === 'in'
+                    ? 'Submit clock out with the cash amounts you entered?'
+                    : 'Submit clock in with the starting cash you entered?'
+                  : currentStatus === 'in'
+                    ? 'Confirm you want to clock out with your PIN.'
+                    : 'Confirm you want to clock in with your PIN.'
             }
             confirmText={currentStatus === 'in' ? 'Clock out' : 'Clock in'}
             cancelText="Cancel"
@@ -542,7 +576,7 @@ export default function MyPunchPage() {
                       </p>
                     </div>
                   ) : (
-                    /* Clock-out: collected, drop, beverages, cash in drawer */
+                    /* Clock-out: collected, drop, cash in drawer */
                     <div className="space-y-4 mb-8">
                       <div>
                         <label className="block text-sm font-semibold text-slate-700 mb-2">Collected Cash <span className="text-red-500">*</span></label>
@@ -570,22 +604,6 @@ export default function MyPunchPage() {
                             min="0"
                             value={dropAmount}
                             onChange={(e) => { setDropAmount(e.target.value); setCashError(null) }}
-                            className={`block w-full rounded-xl border py-3 pl-8 pr-4 text-sm text-slate-900 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500 ${cashError ? 'border-red-300 bg-red-50' : 'border-slate-200 bg-white'}`}
-                            placeholder="0.00"
-                            disabled={loading}
-                          />
-                        </div>
-                      </div>
-                      <div>
-                        <label className="block text-sm font-semibold text-slate-700 mb-2">Beverages Sold (Total) <span className="text-red-500">*</span></label>
-                        <div className="relative">
-                          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">$</span>
-                          <input
-                            type="number"
-                            step="0.01"
-                            min="0"
-                            value={beveragesCash}
-                            onChange={(e) => { setBeveragesCash(e.target.value); setCashError(null) }}
                             className={`block w-full rounded-xl border py-3 pl-8 pr-4 text-sm text-slate-900 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500 ${cashError ? 'border-red-300 bg-red-50' : 'border-slate-200 bg-white'}`}
                             placeholder="0.00"
                             disabled={loading}
@@ -632,9 +650,7 @@ export default function MyPunchPage() {
                           (!collectedCash ||
                             parseFloat(collectedCash) < 0 ||
                             !dropAmount ||
-                            parseFloat(dropAmount) < 0 ||
-                            !beveragesCash ||
-                            parseFloat(beveragesCash) < 0))
+                            parseFloat(dropAmount) < 0))
                       }
                       className="flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 py-3 text-sm font-medium text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
                     >

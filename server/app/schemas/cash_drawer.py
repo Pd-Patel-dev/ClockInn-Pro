@@ -44,7 +44,7 @@ class CashDrawerSessionResponse(BaseModel):
     collected_cash_cents: Optional[int] = None
     drop_amount_cents: Optional[int] = None
     beverages_cash_cents: Optional[int] = None
-    expected_balance_cents: Optional[int] = None  # start + collected - drop (beverages not included)
+    expected_balance_cents: Optional[int] = None  # start + collected - drop (marketplace sales not included)
     delta_cents: Optional[int]
     status: str
     reviewed_by: Optional[UUID]

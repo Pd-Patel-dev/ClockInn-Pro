@@ -37,8 +37,8 @@ export default function KioskSlugPage() {
   const [cashAmount, setCashAmount] = useState('')
   const [collectedCash, setCollectedCash] = useState('')
   const [dropAmount, setDropAmount] = useState('')
-  const [beveragesCash, setBeveragesCash] = useState('')
   const [cashError, setCashError] = useState<string | null>(null)
+  const [drawerActiveBy, setDrawerActiveBy] = useState<string | null>(null)
   const [pendingPunch, setPendingPunch] = useState(false)
   const [isClockIn, setIsClockIn] = useState(false) // Track if this is clock-in or clock-out
   const [checkingPin, setCheckingPin] = useState(false)
@@ -151,8 +151,7 @@ export default function KioskSlugPage() {
     cashStartCents?: number,
     cashEndCents?: number,
     collectedCashCents?: number,
-    dropAmountCents?: number,
-    beveragesCashCents?: number
+    dropAmountCents?: number
   ) => {
     if (!slug) {
       setMessage('Invalid kiosk URL')
@@ -186,7 +185,6 @@ export default function KioskSlugPage() {
         cash_end_cents: cashEndCents,
         collected_cash_cents: collectedCashCents,
         drop_amount_cents: dropAmountCents,
-        beverages_cash_cents: beveragesCashCents,
         latitude: currentLocation?.latitude,
         longitude: currentLocation?.longitude,
       })
@@ -201,7 +199,6 @@ export default function KioskSlugPage() {
       setCashAmount('')
       setCollectedCash('')
       setDropAmount('')
-      setBeveragesCash('')
       setCashError(null)
       setPendingPunch(false)
       setShowCashDialog(false) // Close cash dialog on success
@@ -265,7 +262,6 @@ export default function KioskSlugPage() {
           setCashAmount('')
           setCollectedCash('')
           setDropAmount('')
-          setBeveragesCash('')
           setCashError(null)
           setMessage(null) // Clear error message since we're showing dialog
           
@@ -331,8 +327,13 @@ export default function KioskSlugPage() {
       }
       setEmployeeInfo(empInfo)
 
-      // Determine if we need cash drawer
+      // Determine if we need cash drawer (server already accounts for shared open drawer)
       const needsCash = data.cash_drawer_enabled && data.cash_drawer_required
+      const activeBy =
+        data.cash_drawer_already_active && data.cash_drawer_active_by
+          ? (data.cash_drawer_active_by as string)
+          : null
+      setDrawerActiveBy(activeBy)
 
       if (data.is_clocked_in) {
         // Employee is clocked in - show end shift form
@@ -343,7 +344,6 @@ export default function KioskSlugPage() {
           setCashAmount('')
           setCollectedCash('')
           setDropAmount('')
-          setBeveragesCash('')
           setCashError(null)
         } else {
           setPunchConfirmNext('execute')
@@ -358,7 +358,6 @@ export default function KioskSlugPage() {
           setCashAmount('')
           setCollectedCash('')
           setDropAmount('')
-          setBeveragesCash('')
           setCashError(null)
         } else {
           setPunchConfirmNext('execute')
@@ -409,7 +408,6 @@ export default function KioskSlugPage() {
     if (!isClockIn) {
       const collectedValue = parseFloat(collectedCash)
       const dropValue = parseFloat(dropAmount)
-      const beveragesValue = parseFloat(beveragesCash)
 
       if (isNaN(collectedValue) || collectedValue < 0) {
         setCashError('Please enter a valid collected cash amount')
@@ -420,18 +418,13 @@ export default function KioskSlugPage() {
         setCashError('Please enter a valid drop amount')
         return
       }
-
-      if (isNaN(beveragesValue) || beveragesValue < 0) {
-        setCashError('Please enter a valid beverages sold amount')
-        return
-      }
     }
 
     setCashError(null)
     setShowCashDialog(false)
     setPunchConfirmNext('execute_after_cash')
     setShowPunchConfirm(true)
-  }, [cashAmount, collectedCash, dropAmount, beveragesCash, isClockIn])
+  }, [cashAmount, collectedCash, dropAmount, isClockIn])
 
   const handleCashDialogCancel = useCallback(() => {
     setShowCashDialog(false)
@@ -446,14 +439,13 @@ export default function KioskSlugPage() {
     const cashCents = Math.round(cashValue * 100)
     const pinToUse = pinDisplay
     if (isClockIn) {
-      await executePunch(pinToUse, cashCents, undefined, undefined, undefined, undefined)
+      await executePunch(pinToUse, cashCents)
     } else {
       const collectedCents = Math.round(parseFloat(collectedCash) * 100)
       const dropCents = Math.round(parseFloat(dropAmount || '0') * 100)
-      const beveragesCents = Math.round(parseFloat(beveragesCash) * 100)
-      await executePunch(pinToUse, undefined, cashCents, collectedCents, dropCents, beveragesCents)
+      await executePunch(pinToUse, undefined, cashCents, collectedCents, dropCents)
     }
-  }, [cashAmount, collectedCash, dropAmount, beveragesCash, pinDisplay, isClockIn, executePunch])
+  }, [cashAmount, collectedCash, dropAmount, pinDisplay, isClockIn, executePunch])
 
   const handleKioskPunchConfirm = useCallback(() => {
     const next = punchConfirmNext
@@ -475,6 +467,7 @@ export default function KioskSlugPage() {
       setPendingPunch(true)
     } else {
       setPendingPunch(false)
+      setDrawerActiveBy(null)
       setPinDisplay('')
       setEmployeeInfo(null)
     }
@@ -797,13 +790,15 @@ export default function KioskSlugPage() {
             ? employeeInfo
               ? `Submit punch for ${employeeInfo.name} with the cash amounts you entered?`
               : 'Submit punch with the cash amounts you entered?'
-            : employeeInfo
-              ? isClockIn
-                ? `Confirm clock in for ${employeeInfo.name}.`
-                : `Confirm clock out for ${employeeInfo.name}.`
-              : isClockIn
-                ? 'Confirm you want to clock in.'
-                : 'Confirm you want to clock out.'
+            : drawerActiveBy && isClockIn
+              ? `Cash drawer is already activated by ${drawerActiveBy}. You can clock in without entering cash.`
+              : employeeInfo
+                ? isClockIn
+                  ? `Confirm clock in for ${employeeInfo.name}.`
+                  : `Confirm clock out for ${employeeInfo.name}.`
+                : isClockIn
+                  ? 'Confirm you want to clock in.'
+                  : 'Confirm you want to clock out.'
         }
         confirmText={isClockIn ? 'Clock in' : 'Clock out'}
         cancelText="Cancel"
@@ -879,7 +874,7 @@ export default function KioskSlugPage() {
                   </p>
                 </div>
               ) : (
-                // Clock-out: Need collected cash, beverages cash, and drawer cash
+                // Clock-out: Need collected cash, drop, and drawer cash
                 <div className="space-y-6 mb-8">
                   <div>
                     <label className="mb-3 block text-xs font-medium uppercase tracking-wide text-slate-400">
@@ -949,40 +944,6 @@ export default function KioskSlugPage() {
                     <p className="mt-2 text-xs text-slate-500">Cash removed/dropped from drawer during shift</p>
                   </div>
                   
-                  <div>
-                    <label className="mb-3 block text-xs font-medium uppercase tracking-wide text-slate-400">
-                      <div className="flex items-center gap-2">
-                        <svg className="h-4 w-4 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                        </svg>
-                        <span>Beverages Sold (Total)</span>
-                        <span className="text-red-400">*</span>
-                      </div>
-                    </label>
-                    <div className="relative group">
-                      <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                        <span className="text-slate-400 text-xl font-medium">$</span>
-                      </div>
-                      <input
-                        type="number"
-                        step="0.01"
-                        min="0"
-                        value={beveragesCash}
-                        onChange={(e) => {
-                          setBeveragesCash(e.target.value)
-                          setCashError(null)
-                        }}
-                        className={`block w-full rounded-xl border-2 py-4 pl-10 pr-4 text-base text-white transition-all focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-0 focus:ring-offset-slate-900 ${
-                          cashError 
-                            ? 'border-red-400/50 bg-red-950/30' 
-                            : 'border-slate-700 bg-slate-800'
-                        }`}
-                        placeholder="0.00"
-                        disabled={loading}
-                      />
-                    </div>
-                    <p className="mt-2 text-xs text-slate-500">Total beverage sales during shift (all payment types)</p>
-                  </div>
                   
                   <div>
                     <label className="mb-3 block text-xs font-medium uppercase tracking-wide text-slate-400">
@@ -1044,7 +1005,7 @@ export default function KioskSlugPage() {
                     loading || 
                     !cashAmount || 
                     parseFloat(cashAmount) < 0 ||
-                    (!isClockIn && (!collectedCash || parseFloat(collectedCash) < 0 || !dropAmount || parseFloat(dropAmount) < 0 || !beveragesCash || parseFloat(beveragesCash) < 0))
+                    (!isClockIn && (!collectedCash || parseFloat(collectedCash) < 0 || !dropAmount || parseFloat(dropAmount) < 0))
                   }
                   className="flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 py-3 font-medium text-white transition-colors hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
                 >

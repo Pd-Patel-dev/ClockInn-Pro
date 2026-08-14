@@ -450,6 +450,7 @@ async def admin_get_shift_note(
         "collected_cash_cents": getattr(cash_session, "collected_cash_cents", None) if cash_session else None,
         "drop_amount_cents": getattr(cash_session, "drop_amount_cents", None) if cash_session else None,
         "beverages_cash_cents": getattr(cash_session, "beverages_cash_cents", None) if cash_session else None,
+        "marketplace_sales": getattr(cash_session, "marketplace_sales_json", None) if cash_session else None,
         "comments": comments,
         "latest_manager_comment": latest_comment,
     }
@@ -523,6 +524,7 @@ async def admin_get_shift_note_by_time_entry(
             "collected_cash_cents": getattr(cash_session, "collected_cash_cents", None) if cash_session else None,
             "drop_amount_cents": getattr(cash_session, "drop_amount_cents", None) if cash_session else None,
             "beverages_cash_cents": getattr(cash_session, "beverages_cash_cents", None) if cash_session else None,
+            "marketplace_sales": getattr(cash_session, "marketplace_sales_json", None) if cash_session else None,
             "has_shift_note": False,
         }
     note, entry, employee_name = row
@@ -559,6 +561,7 @@ async def admin_get_shift_note_by_time_entry(
         "collected_cash_cents": getattr(cash_session, "collected_cash_cents", None) if cash_session else None,
         "drop_amount_cents": getattr(cash_session, "drop_amount_cents", None) if cash_session else None,
         "beverages_cash_cents": getattr(cash_session, "beverages_cash_cents", None) if cash_session else None,
+        "marketplace_sales": getattr(cash_session, "marketplace_sales_json", None) if cash_session else None,
         "has_shift_note": True,
     }
 

@@ -19,9 +19,51 @@ from app.services.company_service import (
     get_company_settings,
     update_company_name,
     update_company_settings,
+    DEFAULT_PUNCH_ALLOWED_ROLES,
 )
 
 router = APIRouter()
+
+
+def _settings_response(settings: dict) -> CompanySettingsResponse:
+    biweekly_anchor = None
+    if settings.get("biweekly_anchor_date"):
+        try:
+            biweekly_anchor = date_type.fromisoformat(settings["biweekly_anchor_date"])
+        except (ValueError, TypeError):
+            pass
+    return CompanySettingsResponse(
+        timezone=settings["timezone"],
+        payroll_week_start_day=settings["payroll_week_start_day"],
+        biweekly_anchor_date=biweekly_anchor,
+        overtime_enabled=settings["overtime_enabled"],
+        overtime_threshold_hours_per_week=settings["overtime_threshold_hours_per_week"],
+        overtime_multiplier_default=settings["overtime_multiplier_default"],
+        rounding_policy=settings["rounding_policy"],
+        breaks_paid=settings["breaks_paid"],
+        cash_drawer_enabled=settings.get("cash_drawer_enabled", False),
+        cash_drawer_required_for_all=settings.get("cash_drawer_required_for_all", False),
+        cash_drawer_required_roles=settings.get("cash_drawer_required_roles", []),
+        cash_drawer_currency=settings.get("cash_drawer_currency", "USD"),
+        cash_drawer_starting_amount_cents=settings.get("cash_drawer_starting_amount_cents", 0),
+        cash_drawer_variance_threshold_cents=settings.get("cash_drawer_variance_threshold_cents", 2000),
+        cash_drawer_allow_edit=settings.get("cash_drawer_allow_edit", True),
+        cash_drawer_require_manager_review=settings.get("cash_drawer_require_manager_review", False),
+        schedule_day_start_hour=settings.get("schedule_day_start_hour", 7),
+        schedule_day_end_hour=settings.get("schedule_day_end_hour", 7),
+        shift_notes_enabled=settings.get("shift_notes_enabled", True),
+        shift_notes_required_on_clock_out=settings.get("shift_notes_required_on_clock_out", False),
+        shift_notes_allow_edit_after_clock_out=settings.get("shift_notes_allow_edit_after_clock_out", False),
+        email_verification_required=settings.get("email_verification_required", True),
+        geofence_enabled=settings.get("geofence_enabled", False),
+        office_latitude=settings.get("office_latitude"),
+        office_longitude=settings.get("office_longitude"),
+        geofence_radius_meters=settings.get("geofence_radius_meters", 100),
+        kiosk_network_restriction_enabled=settings.get("kiosk_network_restriction_enabled", False),
+        kiosk_allowed_ips=settings.get("kiosk_allowed_ips") or [],
+        punch_allowed_roles=settings.get("punch_allowed_roles", list(DEFAULT_PUNCH_ALLOWED_ROLES)),
+        marketplace_items=settings.get("marketplace_items") or [],
+    )
 
 
 @router.get("/company/my-ip")
@@ -50,13 +92,6 @@ async def get_company_info_public_endpoint(
     company = await get_company_info(db, current_user.company_id)
     settings = get_company_settings(company)
     
-    # Convert biweekly_anchor_date string to date if present
-    biweekly_anchor = None
-    if settings.get("biweekly_anchor_date"):
-        try:
-            biweekly_anchor = date_type.fromisoformat(settings["biweekly_anchor_date"])
-        except (ValueError, TypeError):
-            pass
     
     # Get admin user for this company (only for admin users)
     admin_info = None
@@ -84,36 +119,7 @@ async def get_company_info_public_endpoint(
         slug=company.slug,
         kiosk_enabled=company.kiosk_enabled,
         created_at=company.created_at.isoformat(),
-        settings=CompanySettingsResponse(
-            timezone=settings["timezone"],
-            payroll_week_start_day=settings["payroll_week_start_day"],
-            biweekly_anchor_date=biweekly_anchor,
-            overtime_enabled=settings["overtime_enabled"],
-            overtime_threshold_hours_per_week=settings["overtime_threshold_hours_per_week"],
-            overtime_multiplier_default=settings["overtime_multiplier_default"],
-            rounding_policy=settings["rounding_policy"],
-            breaks_paid=settings["breaks_paid"],
-            cash_drawer_enabled=settings.get("cash_drawer_enabled", False),
-            cash_drawer_required_for_all=settings.get("cash_drawer_required_for_all", False),
-            cash_drawer_required_roles=settings.get("cash_drawer_required_roles", []),
-            cash_drawer_currency=settings.get("cash_drawer_currency", "USD"),
-            cash_drawer_starting_amount_cents=settings.get("cash_drawer_starting_amount_cents", 0),
-            cash_drawer_variance_threshold_cents=settings.get("cash_drawer_variance_threshold_cents", 2000),
-            cash_drawer_allow_edit=settings.get("cash_drawer_allow_edit", True),
-            cash_drawer_require_manager_review=settings.get("cash_drawer_require_manager_review", False),
-            schedule_day_start_hour=settings.get("schedule_day_start_hour", 7),
-            schedule_day_end_hour=settings.get("schedule_day_end_hour", 7),
-            shift_notes_enabled=settings.get("shift_notes_enabled", True),
-            shift_notes_required_on_clock_out=settings.get("shift_notes_required_on_clock_out", False),
-            shift_notes_allow_edit_after_clock_out=settings.get("shift_notes_allow_edit_after_clock_out", False),
-            email_verification_required=settings.get("email_verification_required", True),
-            geofence_enabled=settings.get("geofence_enabled", False),
-            office_latitude=settings.get("office_latitude"),
-            office_longitude=settings.get("office_longitude"),
-            geofence_radius_meters=settings.get("geofence_radius_meters", 100),
-            kiosk_network_restriction_enabled=settings.get("kiosk_network_restriction_enabled", False),
-            kiosk_allowed_ips=settings.get("kiosk_allowed_ips") or [],
-        ),
+        settings=_settings_response(settings),
         admin=admin_info,
     )
 
@@ -128,13 +134,6 @@ async def get_company_info_endpoint(
     company = await get_company_info(db, current_user.company_id)
     settings = get_company_settings(company)
     
-    # Convert biweekly_anchor_date string to date if present
-    biweekly_anchor = None
-    if settings.get("biweekly_anchor_date"):
-        try:
-            biweekly_anchor = date_type.fromisoformat(settings["biweekly_anchor_date"])
-        except (ValueError, TypeError):
-            pass
     
     # Get admin user for this company
     admin_result = await db.execute(
@@ -161,36 +160,7 @@ async def get_company_info_endpoint(
         slug=company.slug,
         kiosk_enabled=company.kiosk_enabled,
         created_at=company.created_at.isoformat(),
-        settings=CompanySettingsResponse(
-            timezone=settings["timezone"],
-            payroll_week_start_day=settings["payroll_week_start_day"],
-            biweekly_anchor_date=biweekly_anchor,
-            overtime_enabled=settings["overtime_enabled"],
-            overtime_threshold_hours_per_week=settings["overtime_threshold_hours_per_week"],
-            overtime_multiplier_default=settings["overtime_multiplier_default"],
-            rounding_policy=settings["rounding_policy"],
-            breaks_paid=settings["breaks_paid"],
-            cash_drawer_enabled=settings.get("cash_drawer_enabled", False),
-            cash_drawer_required_for_all=settings.get("cash_drawer_required_for_all", False),
-            cash_drawer_required_roles=settings.get("cash_drawer_required_roles", []),
-            cash_drawer_currency=settings.get("cash_drawer_currency", "USD"),
-            cash_drawer_starting_amount_cents=settings.get("cash_drawer_starting_amount_cents", 0),
-            cash_drawer_variance_threshold_cents=settings.get("cash_drawer_variance_threshold_cents", 2000),
-            cash_drawer_allow_edit=settings.get("cash_drawer_allow_edit", True),
-            cash_drawer_require_manager_review=settings.get("cash_drawer_require_manager_review", False),
-            schedule_day_start_hour=settings.get("schedule_day_start_hour", 7),
-            schedule_day_end_hour=settings.get("schedule_day_end_hour", 7),
-            shift_notes_enabled=settings.get("shift_notes_enabled", True),
-            shift_notes_required_on_clock_out=settings.get("shift_notes_required_on_clock_out", False),
-            shift_notes_allow_edit_after_clock_out=settings.get("shift_notes_allow_edit_after_clock_out", False),
-            email_verification_required=settings.get("email_verification_required", True),
-            geofence_enabled=settings.get("geofence_enabled", False),
-            office_latitude=settings.get("office_latitude"),
-            office_longitude=settings.get("office_longitude"),
-            geofence_radius_meters=settings.get("geofence_radius_meters", 100),
-            kiosk_network_restriction_enabled=settings.get("kiosk_network_restriction_enabled", False),
-            kiosk_allowed_ips=settings.get("kiosk_allowed_ips") or [],
-        ),
+        settings=_settings_response(settings),
         admin=admin_info,
     )
 
@@ -211,13 +181,6 @@ async def update_company_name_endpoint(
     )
     settings = get_company_settings(company)
     
-    # Convert biweekly_anchor_date string to date if present
-    biweekly_anchor = None
-    if settings.get("biweekly_anchor_date"):
-        try:
-            biweekly_anchor = date_type.fromisoformat(settings["biweekly_anchor_date"])
-        except (ValueError, TypeError):
-            pass
     
     # Get admin user for this company
     admin_result = await db.execute(
@@ -244,36 +207,7 @@ async def update_company_name_endpoint(
         slug=company.slug,
         kiosk_enabled=company.kiosk_enabled,
         created_at=company.created_at.isoformat(),
-        settings=CompanySettingsResponse(
-            timezone=settings["timezone"],
-            payroll_week_start_day=settings["payroll_week_start_day"],
-            biweekly_anchor_date=biweekly_anchor,
-            overtime_enabled=settings["overtime_enabled"],
-            overtime_threshold_hours_per_week=settings["overtime_threshold_hours_per_week"],
-            overtime_multiplier_default=settings["overtime_multiplier_default"],
-            rounding_policy=settings["rounding_policy"],
-            breaks_paid=settings["breaks_paid"],
-            cash_drawer_enabled=settings.get("cash_drawer_enabled", False),
-            cash_drawer_required_for_all=settings.get("cash_drawer_required_for_all", False),
-            cash_drawer_required_roles=settings.get("cash_drawer_required_roles", []),
-            cash_drawer_currency=settings.get("cash_drawer_currency", "USD"),
-            cash_drawer_starting_amount_cents=settings.get("cash_drawer_starting_amount_cents", 0),
-            cash_drawer_variance_threshold_cents=settings.get("cash_drawer_variance_threshold_cents", 2000),
-            cash_drawer_allow_edit=settings.get("cash_drawer_allow_edit", True),
-            cash_drawer_require_manager_review=settings.get("cash_drawer_require_manager_review", False),
-            schedule_day_start_hour=settings.get("schedule_day_start_hour", 7),
-            schedule_day_end_hour=settings.get("schedule_day_end_hour", 7),
-            shift_notes_enabled=settings.get("shift_notes_enabled", True),
-            shift_notes_required_on_clock_out=settings.get("shift_notes_required_on_clock_out", False),
-            shift_notes_allow_edit_after_clock_out=settings.get("shift_notes_allow_edit_after_clock_out", False),
-            email_verification_required=settings.get("email_verification_required", True),
-            geofence_enabled=settings.get("geofence_enabled", False),
-            office_latitude=settings.get("office_latitude"),
-            office_longitude=settings.get("office_longitude"),
-            geofence_radius_meters=settings.get("geofence_radius_meters", 100),
-            kiosk_network_restriction_enabled=settings.get("kiosk_network_restriction_enabled", False),
-            kiosk_allowed_ips=settings.get("kiosk_allowed_ips") or [],
-        ),
+        settings=_settings_response(settings),
         admin=admin_info,
     )
 
@@ -299,13 +233,6 @@ async def update_company_settings_endpoint(
     
     settings = get_company_settings(company)
     
-    # Convert biweekly_anchor_date string to date if present
-    biweekly_anchor = None
-    if settings.get("biweekly_anchor_date"):
-        try:
-            biweekly_anchor = date_type.fromisoformat(settings["biweekly_anchor_date"])
-        except (ValueError, TypeError):
-            pass
     
     # Get admin user for this company
     admin_result = await db.execute(
@@ -332,36 +259,7 @@ async def update_company_settings_endpoint(
         slug=company.slug,
         kiosk_enabled=company.kiosk_enabled,
         created_at=company.created_at.isoformat(),
-        settings=CompanySettingsResponse(
-            timezone=settings["timezone"],
-            payroll_week_start_day=settings["payroll_week_start_day"],
-            biweekly_anchor_date=biweekly_anchor,
-            overtime_enabled=settings["overtime_enabled"],
-            overtime_threshold_hours_per_week=settings["overtime_threshold_hours_per_week"],
-            overtime_multiplier_default=settings["overtime_multiplier_default"],
-            rounding_policy=settings["rounding_policy"],
-            breaks_paid=settings["breaks_paid"],
-            cash_drawer_enabled=settings.get("cash_drawer_enabled", False),
-            cash_drawer_required_for_all=settings.get("cash_drawer_required_for_all", False),
-            cash_drawer_required_roles=settings.get("cash_drawer_required_roles", []),
-            cash_drawer_currency=settings.get("cash_drawer_currency", "USD"),
-            cash_drawer_starting_amount_cents=settings.get("cash_drawer_starting_amount_cents", 0),
-            cash_drawer_variance_threshold_cents=settings.get("cash_drawer_variance_threshold_cents", 2000),
-            cash_drawer_allow_edit=settings.get("cash_drawer_allow_edit", True),
-            cash_drawer_require_manager_review=settings.get("cash_drawer_require_manager_review", False),
-            schedule_day_start_hour=settings.get("schedule_day_start_hour", 7),
-            schedule_day_end_hour=settings.get("schedule_day_end_hour", 7),
-            shift_notes_enabled=settings.get("shift_notes_enabled", True),
-            shift_notes_required_on_clock_out=settings.get("shift_notes_required_on_clock_out", False),
-            shift_notes_allow_edit_after_clock_out=settings.get("shift_notes_allow_edit_after_clock_out", False),
-            email_verification_required=settings.get("email_verification_required", True),
-            geofence_enabled=settings.get("geofence_enabled", False),
-            office_latitude=settings.get("office_latitude"),
-            office_longitude=settings.get("office_longitude"),
-            geofence_radius_meters=settings.get("geofence_radius_meters", 100),
-            kiosk_network_restriction_enabled=settings.get("kiosk_network_restriction_enabled", False),
-            kiosk_allowed_ips=settings.get("kiosk_allowed_ips") or [],
-        ),
+        settings=_settings_response(settings),
         admin=admin_info,
     )
 

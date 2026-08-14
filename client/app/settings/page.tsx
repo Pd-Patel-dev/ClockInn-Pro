@@ -10,6 +10,7 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import logger from '@/lib/logger'
 import { useToast } from '@/components/Toast'
+import { DEFAULT_PUNCH_ALLOWED_ROLES, PUNCH_ROLE_OPTIONS } from '@/lib/punch'
 const companyNameSchema = z.object({
   name: z.string().min(1, 'Company name is required').max(255, 'Company name is too long'),
 })
@@ -30,6 +31,13 @@ const companySettingsSchema = z.object({
   schedule_day_start_hour: z.number().int().min(0).max(23),
   schedule_day_end_hour: z.number().int().min(0).max(23),
   shift_notes_enabled: z.boolean(),
+  punch_allowed_roles: z.array(z.string()).optional(),
+})
+
+const marketplaceItemSchema = z.object({
+  id: z.string().min(1),
+  label: z.string().min(1, 'Label is required').max(100),
+  price_cents: z.number().int().min(0),
 })
 
 const cashDrawerSettingsSchema = z.object({
@@ -41,6 +49,7 @@ const cashDrawerSettingsSchema = z.object({
   cash_drawer_variance_threshold_cents: z.number().int().min(0),
   cash_drawer_allow_edit: z.boolean(),
   cash_drawer_require_manager_review: z.boolean(),
+  marketplace_items: z.array(marketplaceItemSchema).optional(),
 })
 
 const geofenceSettingsSchema = z.object({
@@ -86,6 +95,7 @@ interface CompanySettings {
   cash_drawer_variance_threshold_cents?: number
   cash_drawer_allow_edit?: boolean
   cash_drawer_require_manager_review?: boolean
+  marketplace_items?: { id: string; label: string; price_cents: number }[]
   schedule_day_start_hour?: number
   schedule_day_end_hour?: number
   geofence_enabled?: boolean
@@ -95,6 +105,7 @@ interface CompanySettings {
   kiosk_network_restriction_enabled?: boolean
   kiosk_allowed_ips?: string[]
   shift_notes_enabled?: boolean
+  punch_allowed_roles?: string[]
 }
 
 interface AdminInfo {
@@ -167,6 +178,9 @@ export default function AdminSettingsPage() {
   
   const cashDrawerEnabled = watchCashDrawer('cash_drawer_enabled')
   const cashDrawerRequiredForAll = watchCashDrawer('cash_drawer_required_for_all')
+  const [marketplaceItems, setMarketplaceItems] = useState<
+    { id: string; label: string; price_cents: number }[]
+  >([])
 
   const {
     control: controlGeofence,
@@ -287,6 +301,8 @@ export default function AdminSettingsPage() {
           schedule_day_start_hour: response.data.settings.schedule_day_start_hour ?? 7,
           schedule_day_end_hour: response.data.settings.schedule_day_end_hour ?? 7,
           shift_notes_enabled: response.data.settings.shift_notes_enabled ?? true,
+          punch_allowed_roles:
+            response.data.settings.punch_allowed_roles ?? [...DEFAULT_PUNCH_ALLOWED_ROLES],
         })
         
         // Reset cash drawer form
@@ -299,7 +315,9 @@ export default function AdminSettingsPage() {
           cash_drawer_variance_threshold_cents: response.data.settings.cash_drawer_variance_threshold_cents ?? 2000,
           cash_drawer_allow_edit: response.data.settings.cash_drawer_allow_edit ?? true,
           cash_drawer_require_manager_review: response.data.settings.cash_drawer_require_manager_review ?? false,
+          marketplace_items: response.data.settings.marketplace_items ?? [],
         })
+        setMarketplaceItems(response.data.settings.marketplace_items ?? [])
         resetGeofence({
           geofence_enabled: response.data.settings.geofence_enabled ?? false,
           office_latitude: response.data.settings.office_latitude ?? undefined,
@@ -352,6 +370,7 @@ export default function AdminSettingsPage() {
         schedule_day_start_hour: data.schedule_day_start_hour,
         schedule_day_end_hour: data.schedule_day_end_hour,
         shift_notes_enabled: data.shift_notes_enabled,
+        punch_allowed_roles: data.punch_allowed_roles || [],
       }
       
       logger.debug('Updating settings', { updateData })
@@ -376,6 +395,8 @@ export default function AdminSettingsPage() {
           schedule_day_start_hour: response.data.settings.schedule_day_start_hour ?? 7,
           schedule_day_end_hour: response.data.settings.schedule_day_end_hour ?? 7,
           shift_notes_enabled: response.data.settings.shift_notes_enabled ?? true,
+          punch_allowed_roles:
+            response.data.settings.punch_allowed_roles ?? [...DEFAULT_PUNCH_ALLOWED_ROLES],
         }, { keepDefaultValues: false })
       }, 50)
       
@@ -399,6 +420,12 @@ export default function AdminSettingsPage() {
   const onSubmitCashDrawer = async (data: CashDrawerSettingsForm) => {
     setSaving(true)
     try {
+      const blankLabels = marketplaceItems.some((i) => !i.label.trim())
+      if (blankLabels) {
+        toast.error('Each marketplace item needs a label before saving.')
+        setSaving(false)
+        return
+      }
       const updateData: any = {
         cash_drawer_enabled: data.cash_drawer_enabled,
         cash_drawer_required_for_all: data.cash_drawer_required_for_all,
@@ -408,6 +435,11 @@ export default function AdminSettingsPage() {
         cash_drawer_variance_threshold_cents: data.cash_drawer_variance_threshold_cents,
         cash_drawer_allow_edit: data.cash_drawer_allow_edit,
         cash_drawer_require_manager_review: data.cash_drawer_require_manager_review,
+        marketplace_items: marketplaceItems.map((i) => ({
+          id: i.id,
+          label: i.label.trim(),
+          price_cents: Math.max(0, Math.round(Number(i.price_cents) || 0)),
+        })),
       }
       
       logger.debug('Updating cash drawer settings', { updateData })
@@ -416,6 +448,7 @@ export default function AdminSettingsPage() {
       logger.debug('Cash drawer settings updated successfully', { response: response.data })
       
       setCompanyInfo(response.data)
+      setMarketplaceItems(response.data.settings.marketplace_items ?? [])
       
       setTimeout(() => {
         resetCashDrawer({
@@ -427,6 +460,7 @@ export default function AdminSettingsPage() {
           cash_drawer_variance_threshold_cents: response.data.settings.cash_drawer_variance_threshold_cents ?? 2000,
           cash_drawer_allow_edit: response.data.settings.cash_drawer_allow_edit ?? true,
           cash_drawer_require_manager_review: response.data.settings.cash_drawer_require_manager_review ?? false,
+          marketplace_items: response.data.settings.marketplace_items ?? [],
         }, { keepDefaultValues: false })
       }, 50)
       
@@ -1182,6 +1216,40 @@ export default function AdminSettingsPage() {
               </div>
 
               <div className="border-t border-slate-200 pt-6">
+                <h3 className="text-lg font-semibold text-slate-900 mb-2">Punch In / Out access</h3>
+                <p className="text-sm text-slate-600 mb-4">
+                  Choose which employee types can use Punch In / Out on the dashboard. Unchecked roles will not see the punch button or recent punch activity.
+                </p>
+                <Controller
+                  name="punch_allowed_roles"
+                  control={controlSettings}
+                  render={({ field }) => (
+                    <div className="space-y-2">
+                      {PUNCH_ROLE_OPTIONS.map((role) => (
+                        <label key={role.value} className="flex items-center">
+                          <input
+                            type="checkbox"
+                            checked={field.value?.includes(role.value) || false}
+                            onChange={(e) => {
+                              const currentRoles = field.value || []
+                              if (e.target.checked) {
+                                field.onChange([...currentRoles, role.value])
+                              } else {
+                                field.onChange(currentRoles.filter((r) => r !== role.value))
+                              }
+                            }}
+                            onBlur={field.onBlur}
+                            className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                          />
+                          <span className="ml-2 text-sm text-slate-700">{role.label}</span>
+                        </label>
+                      ))}
+                    </div>
+                  )}
+                />
+              </div>
+
+              <div className="border-t border-slate-200 pt-6">
                 <h3 className="text-lg font-semibold text-slate-900 mb-2">Shift notes</h3>
                 <p className="text-sm text-slate-600 mb-4">
                   Let employees use the shift notepad on punch and the shared “recent notes” feed on the dashboard. When turned off, those employee features are hidden and their shift-note APIs are disabled.{' '}
@@ -1474,6 +1542,93 @@ export default function AdminSettingsPage() {
                   )}
                 />
                 <p className="mt-1 text-xs text-slate-500">When enabled, sessions with variances exceeding the threshold must be reviewed and approved by a manager</p>
+              </div>
+
+              <div className="border-t border-slate-200 pt-6">
+                <div className="flex items-center justify-between gap-3 mb-2">
+                  <div>
+                    <h3 className="text-sm font-semibold text-slate-900">Marketplace items</h3>
+                    <p className="mt-0.5 text-xs text-slate-500">
+                      Front Desk tap-to-count products on the dashboard. Prices are used for Marketplace sales totals.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setMarketplaceItems((prev) => [
+                        ...prev,
+                        {
+                          id:
+                            typeof crypto !== 'undefined' && crypto.randomUUID
+                              ? crypto.randomUUID()
+                              : `item-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+                          label: '',
+                          price_cents: 0,
+                        },
+                      ])
+                    }
+                    className="shrink-0 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50"
+                  >
+                    Add item
+                  </button>
+                </div>
+                {marketplaceItems.length === 0 ? (
+                  <p className="text-sm text-slate-500 italic">No marketplace items configured. Add items and click Save Settings — Front Desk will see them on the dashboard while clocked in.</p>
+                ) : (
+                  <ul className="space-y-3">
+                    {marketplaceItems.map((item, idx) => (
+                      <li
+                        key={item.id}
+                        className="flex flex-col gap-2 sm:flex-row sm:items-end sm:gap-3"
+                      >
+                        <div className="flex-1">
+                          <label className="mb-1 block text-xs font-medium text-slate-600">Label</label>
+                          <input
+                            type="text"
+                            value={item.label}
+                            onChange={(e) => {
+                              const label = e.target.value
+                              setMarketplaceItems((prev) =>
+                                prev.map((row, i) => (i === idx ? { ...row, label } : row))
+                              )
+                            }}
+                            className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+                            placeholder="e.g. Water"
+                            maxLength={100}
+                          />
+                        </div>
+                        <div className="w-full sm:w-36">
+                          <label className="mb-1 block text-xs font-medium text-slate-600">Price ($)</label>
+                          <input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            value={(item.price_cents / 100).toFixed(2)}
+                            onChange={(e) => {
+                              const dollars = parseFloat(e.target.value)
+                              const price_cents = Number.isFinite(dollars)
+                                ? Math.max(0, Math.round(dollars * 100))
+                                : 0
+                              setMarketplaceItems((prev) =>
+                                prev.map((row, i) => (i === idx ? { ...row, price_cents } : row))
+                              )
+                            }}
+                            className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+                          />
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setMarketplaceItems((prev) => prev.filter((_, i) => i !== idx))
+                          }
+                          className="rounded-md px-3 py-2 text-sm text-red-600 hover:bg-red-50"
+                        >
+                          Remove
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
               </div>
 
               <div className="flex justify-end">

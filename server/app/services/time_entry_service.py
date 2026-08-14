@@ -117,6 +117,7 @@ async def punch(
         requires_cash_drawer,
         create_cash_drawer_session,
         close_cash_drawer_session,
+        get_open_company_cash_drawer,
     )
     from app.models.cash_drawer import CashCountSource
     
@@ -129,6 +130,12 @@ async def punch(
         )
     
     company_settings = get_company_settings(company)
+    from app.services.company_service import is_punch_allowed_for_role
+    if not is_punch_allowed_for_role(company_settings, employee.role):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Your employee type is not allowed to punch in/out. Contact your administrator.",
+        )
     # Convert role to string (handles both enum and string)
     employee_role_str = employee.role.value if hasattr(employee.role, 'value') else str(employee.role)
     cash_required = requires_cash_drawer(company_settings, employee_role_str)
@@ -245,16 +252,46 @@ async def punch(
             open_entry.clock_out_longitude = longitude
             await db.commit()
             await db.refresh(open_entry)
+
+            # Notify admins with shift summary (non-blocking for punch success)
+            try:
+                # Re-load cash session after close so amounts/status are current
+                closed_cash = None
+                if cash_session:
+                    closed_cash = (
+                        await db.execute(
+                            select(CashDrawerSession).where(
+                                CashDrawerSession.time_entry_id == open_entry.id
+                            )
+                        )
+                    ).scalar_one_or_none()
+                await _send_clock_out_shift_summary_email(
+                    db,
+                    company=company,
+                    employee=employee,
+                    entry=open_entry,
+                    cash_session=closed_cash,
+                )
+            except Exception as email_err:
+                logger.warning(
+                    "Clock-out succeeded but shift summary email failed: %s",
+                    email_err,
+                    exc_info=True,
+                )
+
             return open_entry
         else:
             # Clock in
-            # Check if cash drawer is required
-            if cash_required:
-                if cash_start_cents is None:
-                    raise HTTPException(
-                        status_code=status.HTTP_400_BAD_REQUEST,
-                        detail="Starting cash count is required to clock in",
-                    )
+            # Cash drawer: only one open session per company. If another FD already
+            # activated it, allow clock-in without starting cash / without a new session.
+            active_drawer = (
+                await get_open_company_cash_drawer(db, company_id) if cash_required else None
+            )
+            if cash_required and not active_drawer and cash_start_cents is None:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Starting cash count is required to clock in",
+                )
             
             new_entry = TimeEntry(
                 id=uuid.uuid4(),
@@ -271,8 +308,8 @@ async def punch(
             db.add(new_entry)
             await db.flush()  # Flush to get the ID
             
-            # Create cash drawer session if required
-            if cash_required and cash_start_cents is not None:
+            # Create cash drawer session only when this punch activates the drawer
+            if cash_required and not active_drawer and cash_start_cents is not None:
                 await create_cash_drawer_session(
                     db,
                     company_id,
@@ -298,6 +335,126 @@ async def punch(
                 prod_detail="Failed to process punch. Please try again.",
             ),
         )
+
+
+def _format_cents(cents: Optional[int]) -> str:
+    if cents is None:
+        return "N/A"
+    return f"${cents / 100:.2f}"
+
+
+async def _send_clock_out_shift_summary_email(
+    db: AsyncSession,
+    *,
+    company,
+    employee: User,
+    entry: TimeEntry,
+    cash_session=None,
+) -> None:
+    """Email company admins a clock-out shift summary. Never raises to callers."""
+    from app.services.company_service import get_company_admin_emails
+    from app.services.email_service import email_service
+    from app.services.timezone_service import (
+        get_company_timezone,
+        format_datetime_for_company,
+    )
+    from app.services.marketplace_service import marketplace_total_cents, normalize_sales
+
+    admin_emails = await get_company_admin_emails(db, company.id)
+    if not admin_emails:
+        logger.warning(
+            "Clock-out shift summary: no admin emails for company_id=%s",
+            company.id,
+        )
+        return
+
+    timezone_str = await get_company_timezone(db, company.id)
+    clock_in_label = (
+        format_datetime_for_company(entry.clock_in_at, timezone_str, "%b %d, %Y · %I:%M %p")
+        if entry.clock_in_at
+        else "N/A"
+    )
+    clock_out_label = (
+        format_datetime_for_company(entry.clock_out_at, timezone_str, "%b %d, %Y · %I:%M %p")
+        if entry.clock_out_at
+        else "N/A"
+    )
+
+    rounded_hours, rounded_minutes = await calculate_rounded_hours(db, entry, company.id)
+    if rounded_hours is not None and rounded_minutes is not None:
+        hrs = int(rounded_minutes) // 60
+        mins = int(rounded_minutes) % 60
+        duration_label = f"{hrs}h {mins:02d}m ({rounded_hours:.2f} hrs rounded)"
+    elif entry.clock_in_at and entry.clock_out_at:
+        raw_secs = (entry.clock_out_at - entry.clock_in_at).total_seconds()
+        hrs = int(raw_secs // 3600)
+        mins = int((raw_secs % 3600) // 60)
+        duration_label = f"{hrs}h {mins:02d}m"
+    else:
+        duration_label = "N/A"
+
+    role_str = (
+        employee.role.value if hasattr(employee.role, "value") else str(employee.role)
+    )
+    source_str = (
+        entry.source.value if hasattr(entry.source, "value") else str(entry.source or "")
+    )
+
+    cash_drawer = None
+    marketplace_rows = None
+    marketplace_total_label = None
+
+    # Cash drawer / marketplace only when this employee owned the drawer for the shift
+    if cash_session is not None:
+        cash_drawer = {
+            "start_cash": _format_cents(cash_session.start_cash_cents),
+            "end_cash": _format_cents(cash_session.end_cash_cents),
+            "collected_cash": _format_cents(cash_session.collected_cash_cents),
+            "drop_amount": _format_cents(cash_session.drop_amount_cents),
+            "delta": _format_cents(cash_session.delta_cents),
+            "status": (
+                cash_session.status.value
+                if hasattr(cash_session.status, "value")
+                else str(cash_session.status)
+            ),
+        }
+        from app.services.company_service import get_company_settings
+
+        catalog = get_company_settings(company).get("marketplace_items") or []
+        sales = normalize_sales(getattr(cash_session, "marketplace_sales_json", None))
+        sold = [s for s in sales if int(s.get("qty") or 0) > 0]
+        if catalog or sold or cash_session.beverages_cash_cents is not None:
+            marketplace_rows = [
+                {
+                    "label": row.get("label") or "Item",
+                    "qty": int(row.get("qty") or 0),
+                    "line_total": _format_cents(
+                        int(row.get("qty") or 0) * int(row.get("price_cents") or 0)
+                    ),
+                }
+                for row in sold
+            ]
+            total_cents = (
+                int(cash_session.beverages_cash_cents)
+                if cash_session.beverages_cash_cents is not None
+                else marketplace_total_cents(sales)
+            )
+            marketplace_total_label = _format_cents(total_cents)
+
+    await email_service.send_shift_summary_to_admins(
+        admin_emails,
+        company_name=company.name or "Company",
+        employee_name=employee.name or "Employee",
+        employee_email=employee.email,
+        employee_role=role_str,
+        clock_in_at=clock_in_label,
+        clock_out_at=clock_out_label,
+        duration_label=duration_label,
+        source=source_str,
+        cash_drawer=cash_drawer,
+        marketplace_sales=marketplace_rows,
+        marketplace_total_label=marketplace_total_label,
+    )
 
 
 async def get_my_time_entries(

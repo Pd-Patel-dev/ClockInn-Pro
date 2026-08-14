@@ -38,6 +38,7 @@ from app.services.cash_drawer_service import (
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+employee_router = APIRouter()
 
 
 def _safe_session_attr(session, name, default=None):
@@ -494,3 +495,64 @@ async def delete_cash_drawer_session_endpoint(
     await db.commit()
     
     return None
+
+
+# --- Employee marketplace (Front Desk open shift) ---
+
+from pydantic import BaseModel, Field
+from typing import Optional as Opt
+from app.core.dependencies import get_current_verified_user
+from app.services.marketplace_service import get_marketplace_state, update_marketplace_qty
+from app.services.cash_drawer_service import get_open_company_cash_drawer
+
+
+class MarketplaceUpdateBody(BaseModel):
+    item_id: str = Field(..., min_length=1, max_length=64)
+    qty: Opt[int] = Field(None, ge=0)
+    delta: Opt[int] = None
+
+
+@employee_router.get("/active")
+async def get_active_cash_drawer_status(
+    current_user: User = Depends(get_current_verified_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Company-wide open cash drawer (if any) and whether the current user owns it."""
+    active = await get_open_company_cash_drawer(db, current_user.company_id)
+    if not active:
+        return {"active_drawer": None, "owns_active_drawer": False}
+
+    is_mine = str(active["employee_id"]) == str(current_user.id)
+    return {
+        "active_drawer": {
+            "employee_id": str(active["employee_id"]),
+            "employee_name": active["employee_name"],
+            "is_mine": is_mine,
+        },
+        "owns_active_drawer": is_mine,
+    }
+
+
+@employee_router.get("/marketplace")
+async def get_marketplace_sales(
+    current_user: User = Depends(get_current_verified_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Current shift marketplace counts and running total (Front Desk)."""
+    return await get_marketplace_state(db, current_user)
+
+
+@employee_router.put("/marketplace")
+async def update_marketplace_sales(
+    body: MarketplaceUpdateBody,
+    current_user: User = Depends(get_current_verified_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Set or adjust marketplace item qty for the open cash drawer session."""
+    return await update_marketplace_qty(
+        db,
+        current_user,
+        item_id=body.item_id,
+        qty=body.qty,
+        delta=body.delta,
+    )

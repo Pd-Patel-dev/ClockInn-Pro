@@ -21,7 +21,7 @@ class TimeEntryCreate(BaseModel):
     cash_end_cents: Optional[int] = Field(None, ge=0, description="Ending cash in cents (required on clock-out if cash drawer session exists)")
     collected_cash_cents: Optional[int] = Field(None, ge=0, description="Total cash collected from customers (for punch-out)")
     drop_amount_cents: Optional[int] = Field(None, ge=0, description="Cash dropped from drawer during shift (for punch-out)")
-    beverages_cash_cents: Optional[int] = Field(None, ge=0, description="Cash from beverage sales (for punch-out)")
+    beverages_cash_cents: Optional[int] = Field(None, ge=0, description="Marketplace sales total in cents (for punch-out)")
     latitude: Optional[str] = Field(None, description="GPS latitude coordinate")
     longitude: Optional[str] = Field(None, description="GPS longitude coordinate")
 
@@ -32,7 +32,7 @@ class TimeEntryPunchMe(BaseModel):
     cash_end_cents: Optional[int] = Field(None, ge=0, description="Ending cash in cents (required on clock-out if cash drawer session exists)")
     collected_cash_cents: Optional[int] = Field(None, ge=0, description="Total cash collected from customers (for punch-out)")
     drop_amount_cents: Optional[int] = Field(None, ge=0, description="Cash dropped from drawer during shift (for punch-out)")
-    beverages_cash_cents: Optional[int] = Field(None, ge=0, description="Cash from beverage sales (for punch-out)")
+    beverages_cash_cents: Optional[int] = Field(None, ge=0, description="Marketplace sales total in cents (for punch-out)")
     latitude: Optional[str] = Field(None, description="GPS latitude coordinate")
     longitude: Optional[str] = Field(None, description="GPS longitude coordinate")
 

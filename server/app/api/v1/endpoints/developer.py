@@ -161,7 +161,7 @@ async def get_developer_stats(
             stats["email_service"] = {
                 "initialized": configured,
                 "has_credentials": configured,
-                "sender_email": "N/A",
+                "sender_email": email_service.get_sender_email() or settings.GMAIL_SENDER_EMAIL or "N/A",
                 "configured": configured,
                 "operational": operational,
             }
@@ -277,6 +277,22 @@ async def list_email_delivery_logs(
         q=q,
         template_key=template_key,
     )
+
+
+@router.get("/email-delivery-logs/{log_id}")
+@handle_endpoint_errors(operation_name="get_email_delivery_log")
+async def get_email_delivery_log(
+    log_id: UUID,
+    current_user: User = Depends(get_current_developer),
+    db: AsyncSession = Depends(get_db),
+):
+    """Delivery log detail with sender, receiver, company, and admin context."""
+    from app.services.email_delivery_log_service import get_email_delivery_log_detail
+
+    detail = await get_email_delivery_log_detail(db, log_id)
+    if not detail:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Delivery log not found")
+    return detail
 
 
 @router.get("/recent-activity")
@@ -518,6 +534,11 @@ def _build_company_info_response(company: Company, settings: Dict, admin_user: O
             geofence_radius_meters=settings.get("geofence_radius_meters", 100),
             kiosk_network_restriction_enabled=settings.get("kiosk_network_restriction_enabled", False),
             kiosk_allowed_ips=settings.get("kiosk_allowed_ips") or [],
+            punch_allowed_roles=settings.get(
+                "punch_allowed_roles",
+                ["MAINTENANCE", "FRONTDESK", "HOUSEKEEPING", "RESTAURANT", "SECURITY", "MANAGER"],
+            ),
+            marketplace_items=settings.get("marketplace_items") or [],
         ),
         admin=admin_info,
     )

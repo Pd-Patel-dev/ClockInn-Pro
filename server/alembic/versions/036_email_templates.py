@@ -1,5 +1,5 @@
 """
-Email templates tables + seed factory defaults.
+Email templates tables (create only; content unused).
 
 Revision ID: 036_email_templates
 Revises: 035_profile_fields
@@ -9,8 +9,6 @@ Create Date: 2026-07-31
 from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
-import uuid
-from datetime import datetime, timezone
 
 revision = "036_email_templates"
 down_revision = "035_profile_fields"
@@ -19,14 +17,6 @@ depends_on = None
 
 
 def upgrade() -> None:
-    emailtemplatecategory = postgresql.ENUM(
-        "TRANSACTIONAL",
-        "NOTIFICATION",
-        "SUMMARY",
-        "MARKETING",
-        name="emailtemplatecategory",
-        create_type=False,
-    )
     op.execute(
         """
         DO $$ BEGIN
@@ -101,54 +91,6 @@ def upgrade() -> None:
         "email_template_versions",
         ["template_id", "version_number"],
     )
-
-    # Seed factory templates (inline to avoid import path issues during migrate)
-    from app.services.email_template_factory import FACTORY_TEMPLATES
-    import json
-
-    conn = op.get_bind()
-    now = datetime.now(timezone.utc)
-    for ft in FACTORY_TEMPLATES:
-        tid = uuid.uuid4()
-        vid = uuid.uuid4()
-        conn.execute(
-            sa.text(
-                """
-                INSERT INTO email_templates
-                (id, key, name, description, category, variables_schema, is_system, is_enabled, created_at, updated_at)
-                VALUES (:id, :key, :name, :description, :category, CAST(:variables_schema AS jsonb), true, true, :now, :now)
-                """
-            ),
-            {
-                "id": tid,
-                "key": ft["key"],
-                "name": ft["name"],
-                "description": ft.get("description"),
-                "category": ft["category"],
-                "variables_schema": json.dumps(ft.get("variables_schema") or {}),
-                "now": now,
-            },
-        )
-        conn.execute(
-            sa.text(
-                """
-                INSERT INTO email_template_versions
-                (id, template_id, version_number, subject, body_html, body_text,
-                 is_published, is_draft, published_at, created_at, notes)
-                VALUES
-                (:id, :template_id, 1, :subject, :body_html, :body_text,
-                 true, false, :now, :now, 'Factory default')
-                """
-            ),
-            {
-                "id": vid,
-                "template_id": tid,
-                "subject": ft["subject"],
-                "body_html": ft["body_html"],
-                "body_text": ft["body_text"],
-                "now": now,
-            },
-        )
 
 
 def downgrade() -> None:

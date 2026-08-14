@@ -8,7 +8,7 @@ from uuid import UUID
 class ShiftNoteUpdateContent(BaseModel):
     """Body for updating current shift note content (autosave)."""
     content: str = Field(..., description="Note content (plain text)")
-    beverage_sold: Optional[int] = Field(None, ge=0, description="Number of beverages sold (optional)")
+    beverage_sold: Optional[int] = Field(None, ge=0, description="Deprecated; unused")
 
 
 class ShiftNoteResponse(BaseModel):

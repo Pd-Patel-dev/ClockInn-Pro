@@ -6,7 +6,6 @@ export interface NavItem {
 
 export const NAV_ITEMS: NavItem[] = [
   { label: 'Dashboard', href: '/dashboard', permission: 'clock' },
-  { label: 'Punch In/Out', href: '/punch-in-out', permission: 'clock' },
   { label: 'My Schedule', href: '/my-schedule', permission: 'schedule' },
   { label: 'Leave', href: '/leave', permission: 'leave' },
   { label: 'Shift log', href: '/shift-notes', permission: 'shift_notes' },

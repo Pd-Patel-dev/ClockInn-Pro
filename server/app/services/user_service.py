@@ -812,6 +812,9 @@ async def reset_password(
         )
     
     user.password_hash = get_password_hash(new_password)
+    # Clear pending invite/setup-link token so login is not still blocked
+    user.password_setup_token_hash = None
+    user.password_setup_expires_at = None
     
     # Log password change
     if actor_user_id:

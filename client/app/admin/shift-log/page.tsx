@@ -35,6 +35,13 @@ interface CashDrawerSession {
   clock_out_at: string | null
 }
 
+type MarketplaceSaleRow = {
+  id: string
+  label: string
+  price_cents: number
+  qty: number
+}
+
 const editSchema = z.object({
   start_cash_cents: z.string().optional(),
   end_cash_cents: z.string().optional(),
@@ -68,7 +75,8 @@ export default function AdminShiftLogPage() {
   const [detailSession, setDetailSession] = useState<CashDrawerSession | null>(null)
   const [shiftNoteDetail, setShiftNoteDetail] = useState<{
     content: string
-    beverage_sold?: number | null
+    beverages_cash_cents?: number | null
+    marketplace_sales?: MarketplaceSaleRow[] | null
     clock_in_at: string | null
     clock_out_at: string | null
   } | null>(null)
@@ -188,13 +196,15 @@ export default function AdminShiftLogPage() {
       const res = await api.get(`/admin/shift-notes/by-time-entry/${session.time_entry_id}`)
       const d = res.data as {
         content?: string
-        beverage_sold?: number | null
+        beverages_cash_cents?: number | null
+        marketplace_sales?: MarketplaceSaleRow[] | null
         clock_in_at?: string | null
         clock_out_at?: string | null
       }
       setShiftNoteDetail({
         content: d.content ?? '',
-        beverage_sold: d.beverage_sold,
+        beverages_cash_cents: d.beverages_cash_cents,
+        marketplace_sales: d.marketplace_sales ?? null,
         clock_in_at: d.clock_in_at ?? null,
         clock_out_at: d.clock_out_at ?? null,
       })
@@ -344,7 +354,7 @@ export default function AdminShiftLogPage() {
           <div className="mb-6">
             <h1 className="text-2xl font-semibold text-slate-900 mb-1">Shift Log</h1>
             <p className="text-sm text-slate-600">
-              Browse shifts by week (Mon–Sun). Click a row to open full details (clock in/out, cash drawer, beverages, shift notes).
+              Browse shifts by week (Mon–Sun). Click a row to open full details (clock in/out, cash drawer, marketplace sales, shift notes).
             </p>
           </div>
 
@@ -426,8 +436,8 @@ export default function AdminShiftLogPage() {
                   <th className="px-3 py-2 text-center text-xs font-medium text-slate-500 uppercase">End</th>
                   <th className="px-3 py-2 text-center text-xs font-medium text-slate-500 uppercase">Cash collected</th>
                   <th className="px-3 py-2 text-center text-xs font-medium text-slate-500 uppercase">Drop</th>
-                  <th className="px-3 py-2 text-center text-xs font-medium text-slate-500 uppercase" title="Total beverage sales for the shift (all payment types)">Beverages Sold</th>
-                  <th className="px-3 py-2 text-center text-xs font-medium text-slate-500 uppercase" title="Start + Collected - Drop (beverages not included)">Balance</th>
+                  <th className="px-3 py-2 text-center text-xs font-medium text-slate-500 uppercase" title="Total marketplace sales for the shift (all payment types)">Marketplace sales</th>
+                  <th className="px-3 py-2 text-center text-xs font-medium text-slate-500 uppercase" title="Start + Collected - Drop (marketplace sales not included)">Balance</th>
                   <th className="px-3 py-2 text-center text-xs font-medium text-slate-500 uppercase">+/-</th>
                   <th className="px-3 py-2 text-center text-xs font-medium text-slate-500 uppercase">Status</th>
                   <th className="px-3 py-2 text-center text-xs font-medium text-slate-500 uppercase">Actions</th>
@@ -615,9 +625,30 @@ export default function AdminShiftLogPage() {
                           <dd className="font-medium text-slate-900">{formatCurrencyOptional(detailSession.drop_amount_cents)}</dd>
                         </div>
                         <div className="flex justify-between">
-                          <dt className="text-slate-600">Amount of beverages sold</dt>
-                          <dd className="font-medium text-slate-900">{formatCurrency(detailSession.beverages_cash_cents)}</dd>
+                          <dt className="text-slate-600">Marketplace sales</dt>
+                          <dd className="font-medium text-slate-900">
+                            {formatCurrency(
+                              shiftNoteDetail?.beverages_cash_cents ?? detailSession.beverages_cash_cents
+                            )}
+                          </dd>
                         </div>
+                        {shiftNoteDetail?.marketplace_sales &&
+                          shiftNoteDetail.marketplace_sales.length > 0 && (
+                            <ul className="mt-1 space-y-1 rounded-lg border border-slate-100 bg-slate-50 px-3 py-2 text-xs text-slate-600">
+                              {shiftNoteDetail.marketplace_sales
+                                .filter((row) => (row.qty || 0) > 0)
+                                .map((row) => (
+                                  <li key={row.id} className="flex justify-between gap-2">
+                                    <span>
+                                      {row.label} × {row.qty}
+                                    </span>
+                                    <span className="tabular-nums font-medium text-slate-800">
+                                      {formatCurrency(row.qty * row.price_cents)}
+                                    </span>
+                                  </li>
+                                ))}
+                            </ul>
+                          )}
                         <div className="flex justify-between">
                           <dt className="text-slate-600">Ending balance</dt>
                           <dd className="font-medium text-slate-900">{formatCurrency(detailSession.end_cash_cents)}</dd>

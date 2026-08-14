@@ -1,7 +1,6 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
-import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import api from '@/lib/api'
 import { getCurrentUser } from '@/lib/auth'
@@ -16,17 +15,17 @@ import {
   CardHeader,
   CardTitle,
   Input,
+  Modal,
   TabPanel,
   Tabs,
   Textarea,
   Select,
 } from '@/components/ui'
 
-type EmailTab = 'overview' | 'templates' | 'delivery' | 'configuration'
+type EmailTab = 'overview' | 'delivery' | 'configuration'
 
 const EMAIL_TABS = [
   { id: 'overview', label: 'Overview' },
-  { id: 'templates', label: 'Templates' },
   { id: 'delivery', label: 'Delivery Log' },
   { id: 'configuration', label: 'Configuration' },
 ]
@@ -36,11 +35,23 @@ type DeliveryLogItem = {
   to_email: string
   subject: string | null
   template_key: string | null
+  email_type?: string
   kind: string
   status: string
   provider_message_id: string | null
   error_message: string | null
   created_at: string | null
+}
+
+type DeliveryLogDetail = DeliveryLogItem & {
+  sender_email: string | null
+  receiver_email: string
+  receiver_name: string | null
+  receiver_role: string | null
+  company_id: string | null
+  company_name: string | null
+  company_slug: string | null
+  admins: { name: string; email: string; role: string }[]
 }
 
 type DeliveryStats24h = {
@@ -55,6 +66,12 @@ function statusBadgeVariant(status: string): 'success' | 'danger' | 'warning' | 
   if (status === 'failed') return 'danger'
   if (status === 'skipped') return 'warning'
   return 'neutral'
+}
+
+function formatEmailType(row: Pick<DeliveryLogItem, 'email_type' | 'template_key'>): string {
+  if (row.email_type) return row.email_type
+  if (!row.template_key) return 'Other'
+  return row.template_key.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
 }
 
 export default function EmailSettingsPage() {
@@ -80,6 +97,28 @@ export default function EmailSettingsPage() {
   const [deliveryLoading, setDeliveryLoading] = useState(false)
   const [deliveryStatusFilter, setDeliveryStatusFilter] = useState('')
   const [deliveryQuery, setDeliveryQuery] = useState('')
+  const [detailOpen, setDetailOpen] = useState(false)
+  const [detailLoading, setDetailLoading] = useState(false)
+  const [detail, setDetail] = useState<DeliveryLogDetail | null>(null)
+
+  const openDeliveryDetail = useCallback(
+    async (id: string) => {
+      setDetailOpen(true)
+      setDetailLoading(true)
+      setDetail(null)
+      try {
+        const res = await api.get(`/developer/email-delivery-logs/${id}`)
+        setDetail(res.data as DeliveryLogDetail)
+      } catch (error) {
+        logger.error('Failed to load delivery log detail', error as Error)
+        toast.error('Failed to load email details')
+        setDetailOpen(false)
+      } finally {
+        setDetailLoading(false)
+      }
+    },
+    [toast]
+  )
 
   const checkGmailHealth = useCallback(async () => {
     setCheckingGmail(true)
@@ -211,7 +250,7 @@ export default function EmailSettingsPage() {
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-foreground">Email Service</h1>
           <p className="mt-1 text-sm text-foreground-muted">
-            Gmail delivery, templates, and platform email configuration (developer only).
+            Gmail delivery and platform email configuration (developer only).
           </p>
         </div>
 
@@ -258,7 +297,7 @@ export default function EmailSettingsPage() {
                 <p className="text-2xl font-semibold text-foreground">
                   {deliveryStats ? deliveryStats.skipped : '—'}
                 </p>
-                <p className="text-xs text-foreground-subtle">Disabled templates / blocked</p>
+                <p className="text-xs text-foreground-subtle">Blocked / not sent</p>
               </CardBody>
             </Card>
           </div>
@@ -320,26 +359,6 @@ export default function EmailSettingsPage() {
           </div>
         </TabPanel>
 
-        <TabPanel id="templates" value={tab}>
-          <Card>
-            <CardHeader>
-              <CardTitle>Template manager</CardTitle>
-              <CardDescription>
-                Edit Jinja HTML/text templates, live-preview with sample data, send test emails, and
-                publish versioned drafts. System templates can be reset to factory defaults.
-              </CardDescription>
-            </CardHeader>
-            <CardBody className="flex flex-wrap items-center gap-3">
-              <Link href="/settings/email/templates">
-                <Button>Open template manager</Button>
-              </Link>
-              <p className="text-sm text-foreground-muted">
-                Full-screen Monaco editor with draft autosave, version history, and publish diffs.
-              </p>
-            </CardBody>
-          </Card>
-        </TabPanel>
-
         <TabPanel id="delivery" value={tab}>
           <Card>
             <CardHeader>
@@ -384,21 +403,20 @@ export default function EmailSettingsPage() {
                       <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-foreground-muted">Time</th>
                       <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-foreground-muted">To</th>
                       <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-foreground-muted">Subject</th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-foreground-muted">Template</th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-foreground-muted">Kind</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-foreground-muted">Type</th>
                       <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-foreground-muted">Status</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border-subtle">
                     {deliveryLoading && deliveryLogs.length === 0 ? (
                       <tr>
-                        <td colSpan={6} className="px-4 py-10 text-center text-foreground-muted">
+                        <td colSpan={5} className="px-4 py-10 text-center text-foreground-muted">
                           Loading delivery logs…
                         </td>
                       </tr>
                     ) : deliveryLogs.length === 0 ? (
                       <tr>
-                        <td colSpan={6} className="px-4 py-10 text-center text-foreground-muted">
+                        <td colSpan={5} className="px-4 py-10 text-center text-foreground-muted">
                           No delivery logs yet. Sends will appear here after the next email goes out.
                         </td>
                       </tr>
@@ -412,8 +430,15 @@ export default function EmailSettingsPage() {
                           <td className="max-w-[220px] truncate px-4 py-3 text-foreground-muted">
                             {row.subject || '—'}
                           </td>
-                          <td className="px-4 py-3 text-foreground-muted">{row.template_key || '—'}</td>
-                          <td className="px-4 py-3 text-foreground-muted">{row.kind}</td>
+                          <td className="px-4 py-3">
+                            <button
+                              type="button"
+                              onClick={() => void openDeliveryDetail(row.id)}
+                              className="text-left font-medium text-accent underline-offset-2 hover:underline"
+                            >
+                              {formatEmailType(row)}
+                            </button>
+                          </td>
                           <td className="px-4 py-3">
                             <Badge variant={statusBadgeVariant(row.status)}>{row.status}</Badge>
                           </td>
@@ -425,6 +450,98 @@ export default function EmailSettingsPage() {
               </div>
             </CardBody>
           </Card>
+
+          <Modal
+            open={detailOpen}
+            onClose={() => {
+              setDetailOpen(false)
+              setDetail(null)
+            }}
+            title={detail ? formatEmailType(detail) : 'Email details'}
+            description={detail?.subject || undefined}
+            size="lg"
+            footer={
+              <Button
+                variant="secondary"
+                onClick={() => {
+                  setDetailOpen(false)
+                  setDetail(null)
+                }}
+              >
+                Close
+              </Button>
+            }
+          >
+            {detailLoading ? (
+              <p className="py-6 text-center text-sm text-foreground-muted">Loading details…</p>
+            ) : detail ? (
+              <div className="space-y-5 text-sm">
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div>
+                    <p className="text-xs font-medium uppercase text-foreground-muted">Status</p>
+                    <div className="mt-1">
+                      <Badge variant={statusBadgeVariant(detail.status)}>{detail.status}</Badge>
+                    </div>
+                  </div>
+                  <div>
+                    <p className="text-xs font-medium uppercase text-foreground-muted">Sent at</p>
+                    <p className="mt-1 text-foreground">
+                      {detail.created_at ? new Date(detail.created_at).toLocaleString() : '—'}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="rounded-control border border-border p-3">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-foreground-muted">Sender</p>
+                  <p className="mt-1 font-medium text-foreground">{detail.sender_email || '—'}</p>
+                </div>
+
+                <div className="rounded-control border border-border p-3">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-foreground-muted">Receiver</p>
+                  <p className="mt-1 font-medium text-foreground">
+                    {detail.receiver_name || 'Unknown user'}
+                  </p>
+                  <p className="text-foreground-muted">{detail.receiver_email}</p>
+                  {detail.receiver_role && (
+                    <p className="mt-1 text-xs text-foreground-subtle">Role: {detail.receiver_role}</p>
+                  )}
+                </div>
+
+                <div className="rounded-control border border-border p-3">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-foreground-muted">Company</p>
+                  <p className="mt-1 font-medium text-foreground">{detail.company_name || '—'}</p>
+                  {detail.company_slug && (
+                    <p className="text-xs text-foreground-subtle">Slug: {detail.company_slug}</p>
+                  )}
+                </div>
+
+                <div className="rounded-control border border-border p-3">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-foreground-muted">
+                    Company admins
+                  </p>
+                  {detail.admins.length === 0 ? (
+                    <p className="mt-1 text-foreground-muted">No admins found for this company.</p>
+                  ) : (
+                    <ul className="mt-2 space-y-2">
+                      {detail.admins.map((admin) => (
+                        <li key={admin.email} className="flex flex-col">
+                          <span className="font-medium text-foreground">{admin.name}</span>
+                          <span className="text-foreground-muted">{admin.email}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+
+                {detail.error_message && (
+                  <div className="rounded-control border border-red-200 bg-red-50 p-3 text-red-800">
+                    <p className="text-xs font-semibold uppercase">Error</p>
+                    <p className="mt-1 whitespace-pre-wrap">{detail.error_message}</p>
+                  </div>
+                )}
+              </div>
+            ) : null}
+          </Modal>
         </TabPanel>
 
         <TabPanel id="configuration" value={tab}>

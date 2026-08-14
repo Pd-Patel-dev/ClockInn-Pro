@@ -1,8 +1,15 @@
 from pydantic import BaseModel, Field, EmailStr, field_validator
-from typing import Optional, List
+from typing import Optional, List, Any
 from datetime import date, datetime
 from decimal import Decimal
 from uuid import UUID
+
+
+class MarketplaceItem(BaseModel):
+    """Admin-configured marketplace item (label + price)."""
+    id: str = Field(..., min_length=1, max_length=64)
+    label: str = Field(..., min_length=1, max_length=100)
+    price_cents: int = Field(..., ge=0)
 
 
 class CompanySettingsResponse(BaseModel):
@@ -37,6 +44,9 @@ class CompanySettingsResponse(BaseModel):
     # Kiosk: only allow on office network (IP allowlist)
     kiosk_network_restriction_enabled: Optional[bool] = False
     kiosk_allowed_ips: Optional[List[str]] = None
+    # Which employee types may punch in/out (dashboard + punch APIs)
+    punch_allowed_roles: Optional[list[str]] = None
+    marketplace_items: Optional[List[MarketplaceItem]] = None
 
 
 class AdminInfo(BaseModel):
@@ -96,6 +106,14 @@ class CompanySettingsUpdate(BaseModel):
     geofence_radius_meters: Optional[int] = Field(None, ge=10, le=5000, description="Allowed radius in meters (e.g. 100)")
     kiosk_network_restriction_enabled: Optional[bool] = Field(None, description="Restrict kiosk to office network only (IP allowlist)")
     kiosk_allowed_ips: Optional[List[str]] = Field(None, description="Allowed IPs or CIDR ranges (e.g. ['192.168.1.0/24', '10.0.0.1'])")
+    punch_allowed_roles: Optional[list[str]] = Field(
+        None,
+        description="Employee roles allowed to punch in/out (e.g. ['FRONTDESK', 'HOUSEKEEPING'])",
+    )
+    marketplace_items: Optional[List[MarketplaceItem]] = Field(
+        None,
+        description="Marketplace items for Front Desk sales during a shift (label + price_cents)",
+    )
 
 
 class CompanyNameUpdate(BaseModel):

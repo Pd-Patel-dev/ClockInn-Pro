@@ -10,8 +10,8 @@ export default function UnauthorizedPage() {
       <p className="mb-6 max-w-xs text-sm text-gray-500">
         You don&apos;t have permission to view this page. Contact your manager if you think this is a mistake.
       </p>
-      <Link href="/punch-in-out" className="text-sm font-medium text-gray-900 underline underline-offset-2">
-        Go to clock in
+      <Link href="/dashboard" className="text-sm font-medium text-gray-900 underline underline-offset-2">
+        Go to dashboard
       </Link>
     </div>
   )

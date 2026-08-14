@@ -157,6 +157,9 @@ async def verify_otp_and_reset_password(
     user.password_reset_otp_hash = None
     user.password_reset_otp_expires_at = None
     user.password_reset_attempts = 0
+    # Clear pending invite/setup-link token so login is not still blocked
+    user.password_setup_token_hash = None
+    user.password_setup_expires_at = None
     db.add(user)
     await db.commit()
     logger.info(f"Password reset successful for user {user.id} ({user.email})")

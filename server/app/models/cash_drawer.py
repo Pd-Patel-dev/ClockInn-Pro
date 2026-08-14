@@ -39,7 +39,9 @@ class CashDrawerSession(Base):
     # Cash collection details (for punch-out)
     collected_cash_cents = Column(BigInteger, nullable=True)  # Total cash collected from customers
     drop_amount_cents = Column(BigInteger, nullable=True)  # Cash dropped/removed from drawer during shift
-    beverages_cash_cents = Column(BigInteger, nullable=True)  # Total beverage sales (all payment types)
+    beverages_cash_cents = Column(BigInteger, nullable=True)  # Marketplace sales total (all payment types)
+    # Live marketplace sales during open shift: [{id, label, price_cents, qty}]
+    marketplace_sales_json = Column(JSONB, nullable=True)
     
     # Computed delta (end - start)
     delta_cents = Column(BigInteger, nullable=True)  # Computed in service layer

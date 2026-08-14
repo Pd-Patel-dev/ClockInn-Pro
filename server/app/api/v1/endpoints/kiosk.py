@@ -150,6 +150,8 @@ class KioskPinCheckResponse(BaseModel):
     verification_message: Optional[str] = None
     cash_drawer_enabled: bool = False
     cash_drawer_required: bool = False
+    cash_drawer_active_by: Optional[str] = None
+    cash_drawer_already_active: bool = False
 
 
 @router.post("/check-pin", response_model=KioskPinCheckResponse)
@@ -243,13 +245,42 @@ async def check_kiosk_pin(
         timezone_str = await get_company_timezone(db, company.id)
         clock_in_at = format_datetime_for_company(open_entry.clock_in_at, timezone_str)
     
-    # Check cash drawer requirements
+    # Check cash drawer requirements (shared company drawer: only one open at a time)
     from app.services.company_service import get_company_settings
-    from app.services.cash_drawer_service import requires_cash_drawer
-    
+    from app.services.cash_drawer_service import (
+        requires_cash_drawer,
+        get_open_company_cash_drawer,
+    )
+    from app.models.cash_drawer import CashDrawerSession
+
     company_settings = get_company_settings(company)
     employee_role_str = matching_employee.role.value if hasattr(matching_employee.role, 'value') else str(matching_employee.role)
-    cash_drawer_required = requires_cash_drawer(company_settings, employee_role_str)
+    role_requires_cash = requires_cash_drawer(company_settings, employee_role_str)
+    active_drawer = await get_open_company_cash_drawer(db, company.id) if role_requires_cash else None
+
+    cash_drawer_required = False
+    cash_drawer_already_active = False
+    cash_drawer_active_by = None
+
+    if role_requires_cash:
+        if is_clocked_in and open_entry:
+            # Clock-out: only the employee who owns the open drawer session enters cash
+            own_session = (
+                await db.execute(
+                    select(CashDrawerSession).where(
+                        CashDrawerSession.time_entry_id == open_entry.id
+                    )
+                )
+            ).scalar_one_or_none()
+            cash_drawer_required = own_session is not None
+        else:
+            # Clock-in: require starting cash only if no company drawer is open yet
+            if active_drawer:
+                cash_drawer_already_active = True
+                cash_drawer_active_by = active_drawer["employee_name"]
+                cash_drawer_required = False
+            else:
+                cash_drawer_required = True
     
     return KioskPinCheckResponse(
         valid=True,
@@ -259,6 +290,8 @@ async def check_kiosk_pin(
         requires_verification=False,
         cash_drawer_enabled=company_settings.get("cash_drawer_enabled", False),
         cash_drawer_required=cash_drawer_required,
+        cash_drawer_active_by=cash_drawer_active_by,
+        cash_drawer_already_active=cash_drawer_already_active,
     )
 
 
@@ -269,7 +302,7 @@ class KioskClockRequest(BaseModel):
     cash_end_cents: Optional[int] = Field(None, ge=0, description="Ending cash in cents (required on clock-out if cash drawer session exists)")
     collected_cash_cents: Optional[int] = Field(None, ge=0, description="Total cash collected from customers (for punch-out)")
     drop_amount_cents: Optional[int] = Field(None, ge=0, description="Cash dropped from drawer during shift (for punch-out)")
-    beverages_cash_cents: Optional[int] = Field(None, ge=0, description="Cash from beverage sales (for punch-out)")
+    beverages_cash_cents: Optional[int] = Field(None, ge=0, description="Marketplace sales total in cents (for punch-out)")
     latitude: Optional[str] = Field(None, description="GPS latitude coordinate")
     longitude: Optional[str] = Field(None, description="GPS longitude coordinate")
 

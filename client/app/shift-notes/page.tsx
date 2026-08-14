@@ -491,10 +491,10 @@ function EmptyActiveShift() {
         Your shift log will show here after you clock in.
       </p>
       <a
-        href="/punch-in-out"
+        href="/dashboard"
         className="inline-block mt-4 text-sm font-medium text-gray-900 border border-gray-200 rounded-md px-4 py-2 transition-colors duration-150 hover:bg-gray-50"
       >
-        Go to Punch In/Out
+        Go to Dashboard
       </a>
     </div>
   )

@@ -9,7 +9,6 @@ import { usePermissions } from '@/hooks/usePermissions'
 import { ROUTE_PERMISSIONS } from '@/config/navigation'
 import { AppHeader } from '@/components/AppHeader'
 import { DeveloperChromeProvider } from '@/components/DeveloperChromeContext'
-import { cn } from '@/lib/cn'
 
 export default function Layout({ children }: { children: React.ReactNode }) {
   const router = useRouter()
@@ -158,7 +157,6 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   const employeeLinks = useMemo(() => {
     const all = [
       { href: '/dashboard', label: 'Dashboard', permission: 'clock' },
-      { href: '/punch-in-out', label: 'Punch In/Out', permission: 'clock' },
       { href: '/shift-notes', label: 'Shift log', permission: 'shift_notes' },
       { href: '/my-schedule', label: 'My Schedule', permission: 'schedule' },
       { href: '/logs', label: 'My Logs', permission: 'clock' },
@@ -177,7 +175,6 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         type: 'single' as const,
         items: [
           { href: '/dashboard', label: 'Dashboard', permission: 'clock' },
-          { href: '/punch-in-out', label: 'Punch In/Out', permission: 'clock' },
         ],
       },
       {
@@ -414,14 +411,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       </aside>
         </>
       )}
-      <main
-        className={cn(
-          'w-full',
-          /^\/settings\/email\/templates\/[^/]+/.test(pathname)
-            ? 'max-w-none px-0 py-0'
-            : 'mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8'
-        )}
-      >
+      <main className="mx-auto w-full max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
         {children}
       </main>
     </div>

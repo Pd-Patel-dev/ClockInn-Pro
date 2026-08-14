@@ -7,10 +7,25 @@ export interface TooltipProps {
   content: React.ReactNode
   children: React.ReactElement
   side?: 'top' | 'bottom'
+  /** surface = light portal card; inverse = dark chip */
+  variant?: 'surface' | 'inverse'
   className?: string
 }
 
-export function Tooltip({ content, children, side = 'top', className }: TooltipProps) {
+const variantStyles = {
+  surface:
+    'border border-border bg-surface text-foreground shadow-lifted',
+  inverse:
+    'bg-slate-900 text-white shadow-lifted dark:bg-slate-100 dark:text-slate-900',
+} as const
+
+export function Tooltip({
+  content,
+  children,
+  side = 'top',
+  variant = 'surface',
+  className,
+}: TooltipProps) {
   const [visible, setVisible] = useState(false)
   const tipId = useId()
 
@@ -30,9 +45,12 @@ export function Tooltip({ content, children, side = 'top', className }: TooltipP
           id={tipId}
           role="tooltip"
           className={cn(
-            'pointer-events-none absolute z-50 max-w-xs rounded-control bg-slate-900 px-2 py-1 text-xs text-white shadow-lifted',
-            'dark:bg-slate-100 dark:text-slate-900',
-            side === 'top' ? 'bottom-full left-1/2 mb-2 -translate-x-1/2' : 'top-full left-1/2 mt-2 -translate-x-1/2',
+            'pointer-events-none absolute z-50 rounded-control px-2.5 py-1.5 text-xs',
+            'max-w-[18rem] min-w-[12rem] whitespace-normal',
+            variantStyles[variant],
+            side === 'top'
+              ? 'bottom-full left-1/2 mb-2 -translate-x-1/2'
+              : 'top-full left-1/2 mt-2 -translate-x-1/2',
             className
           )}
         >
