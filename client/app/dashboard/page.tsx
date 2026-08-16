@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import Layout from '@/components/Layout'
 import PunchInOutPanel from '@/components/PunchInOutPanel'
 import { getCurrentUser, User } from '@/lib/auth'
@@ -10,6 +10,7 @@ import api from '@/lib/api'
 import { format } from 'date-fns'
 import logger from '@/lib/logger'
 import { isPunchAllowed } from '@/lib/punch'
+import { InfoTip } from '@/components/ui/InfoTip'
 
 interface Employee {
   id: string
@@ -29,6 +30,13 @@ function getGreeting() {
 
 function firstName(fullName: string) {
   return fullName.trim().split(/\s+/)[0] || fullName
+}
+
+function initials(fullName: string) {
+  const parts = fullName.trim().split(/\s+/).filter(Boolean)
+  if (parts.length === 0) return '?'
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase()
+  return `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase()
 }
 
 function relativePunch(lastPunchAt: string | null) {
@@ -54,6 +62,8 @@ export default function DashboardPage() {
   const [totalEmployees, setTotalEmployees] = useState(0)
   const [activeToday, setActiveToday] = useState(0)
   const [pendingLeave, setPendingLeave] = useState(0)
+  const [forgotPunchOut, setForgotPunchOut] = useState(0)
+  const [autoClockOutIds, setAutoClockOutIds] = useState<Set<string>>(new Set())
   const [employees, setEmployees] = useState<Employee[]>([])
   const [loadingStats, setLoadingStats] = useState(true)
   const [canPunch, setCanPunch] = useState(false)
@@ -96,10 +106,17 @@ export default function DashboardPage() {
     setLoadingStats(true)
     try {
       const employeesResponse = await api.get('/users/admin/employees?limit=1000')
-      const employeesList = employeesResponse.data || []
+      const employeesList = (employeesResponse.data || []) as Employee[]
       setTotalEmployees(employeesList.length)
-      setActiveToday(employeesList.filter((emp: Employee) => emp.is_clocked_in === true).length)
-      setEmployees(employeesList.slice(0, 8))
+      setActiveToday(employeesList.filter((emp) => emp.is_clocked_in === true).length)
+      // Prefer people on shift, then alphabetical — show a compact roster
+      const ranked = [...employeesList].sort((a, b) => {
+        const aIn = a.is_clocked_in ? 1 : 0
+        const bIn = b.is_clocked_in ? 1 : 0
+        if (aIn !== bIn) return bIn - aIn
+        return a.name.localeCompare(b.name)
+      })
+      setEmployees(ranked.slice(0, 10))
 
       try {
         const leaveResponse = await api.get('/leave/admin/leave?status=pending&limit=1')
@@ -107,12 +124,44 @@ export default function DashboardPage() {
       } catch {
         setPendingLeave(0)
       }
+
+      try {
+        const notifRes = await api.get('/notifications?type=missing_punch&limit=40')
+        const items = (notifRes.data?.items || []) as {
+          actionable?: boolean
+          employee_id?: string | null
+        }[]
+        const actionable = items.filter((i) => i.actionable === true)
+        setForgotPunchOut(actionable.length)
+        setAutoClockOutIds(
+          new Set(
+            actionable
+              .map((i) => i.employee_id)
+              .filter((id): id is string => Boolean(id))
+          )
+        )
+      } catch {
+        setForgotPunchOut(0)
+        setAutoClockOutIds(new Set())
+      }
     } catch (error: unknown) {
       logger.error('Failed to fetch dashboard stats', error as Error, { endpoint: 'dashboard' })
     } finally {
       setLoadingStats(false)
     }
   }
+
+  const whoIsOn = useMemo(() => {
+    return [...employees].sort((a, b) => {
+      const aIn = a.is_clocked_in ? 1 : 0
+      const bIn = b.is_clocked_in ? 1 : 0
+      if (aIn !== bIn) return bIn - aIn
+      const aReview = autoClockOutIds.has(a.id) ? 1 : 0
+      const bReview = autoClockOutIds.has(b.id) ? 1 : 0
+      if (aReview !== bReview) return bReview - aReview
+      return a.name.localeCompare(b.name)
+    })
+  }, [employees, autoClockOutIds])
 
   if (loading) {
     return (
@@ -162,6 +211,28 @@ export default function DashboardPage() {
             <PunchInOutPanel user={user} compact />
           </section>
         )}
+
+          {isAdmin && forgotPunchOut > 0 && (
+            <section className="dashboard-reveal dashboard-reveal-delay-1">
+              <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-5 py-3.5 shadow-sm">
+                <div className="flex min-w-0 items-center gap-1.5">
+                  <p className="text-sm font-semibold text-amber-950">
+                    {forgotPunchOut} auto clock-out{forgotPunchOut === 1 ? '' : 's'}
+                  </p>
+                  <InfoTip
+                    label="About auto clock-out"
+                    content="Employee missed punch-out; shift closed at schedule time. Review in Shift Log, then Approve & Close."
+                  />
+                </div>
+                <Link
+                  href="/admin/shift-log"
+                  className="shrink-0 text-sm font-semibold text-amber-800 hover:text-amber-950"
+                >
+                  Review →
+                </Link>
+              </div>
+            </section>
+          )}
 
           {isAdmin && (
             <>
@@ -213,10 +284,18 @@ export default function DashboardPage() {
                 </div>
               </section>
 
-              {/* Team list */}
+              {/* Who’s on */}
               <section className="dashboard-reveal dashboard-reveal-delay-3">
-                <div className="mb-4 flex items-baseline justify-between gap-4">
-                  <h2 className="text-lg font-semibold text-slate-900">Who’s on</h2>
+                <div className="mb-4 flex items-end justify-between gap-4">
+                  <div>
+                    <h2 className="text-lg font-semibold tracking-tight text-slate-900">Team status</h2>
+                    {!loadingStats && (
+                      <p className="mt-0.5 text-sm text-slate-500">
+                        {activeToday} on shift
+                        {forgotPunchOut > 0 ? ` · ${forgotPunchOut} auto clock-out` : ''}
+                      </p>
+                    )}
+                  </div>
                   <Link
                     href="/employees"
                     className="text-sm font-medium text-slate-500 transition-colors hover:text-blue-600"
@@ -226,48 +305,102 @@ export default function DashboardPage() {
                 </div>
 
                 {loadingStats ? (
-                  <div className="space-y-3" role="status" aria-label="Loading employees">
+                  <div className="space-y-2" role="status" aria-label="Loading employees">
                     {[0, 1, 2].map((i) => (
-                      <div key={i} className="h-14 animate-pulse rounded-xl bg-white" />
+                      <div key={i} className="h-16 animate-pulse rounded-2xl bg-slate-100" />
                     ))}
                   </div>
-                ) : employees.length === 0 ? (
+                ) : whoIsOn.length === 0 ? (
                   <div className="rounded-2xl border border-dashed border-slate-200 bg-white px-6 py-14 text-center">
                     <p className="text-sm font-medium text-slate-700">No employees yet</p>
-                    <p className="mt-1 text-sm text-slate-400">Add your first team member to get started.</p>
                     <Link
                       href="/employees"
-                      className="mt-4 inline-block text-sm font-medium text-blue-600 hover:text-blue-700"
+                      className="mt-3 inline-block text-sm font-medium text-blue-600 hover:text-blue-700"
                     >
                       Go to Employees →
                     </Link>
                   </div>
                 ) : (
-                  <ul className="divide-y divide-slate-100 overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm">
-                    {employees.map((employee) => (
-                      <li key={employee.id}>
-                        <button
-                          type="button"
-                          onClick={() => router.push(`/employees/${employee.id}`)}
-                          className="flex w-full items-center gap-4 px-4 py-3.5 text-left transition-colors hover:bg-slate-50/90 focus:outline-none focus-visible:bg-slate-50 sm:px-5"
+                  <ul className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm">
+                    {whoIsOn.map((employee, index) => {
+                      const needsReview = autoClockOutIds.has(employee.id)
+                      const clockedIn = Boolean(employee.is_clocked_in)
+                      return (
+                        <li
+                          key={employee.id}
+                          className={index > 0 ? 'border-t border-slate-100' : undefined}
                         >
-                          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-sm font-semibold text-slate-700">
-                            {employee.name.charAt(0).toUpperCase()}
-                          </div>
-                          <div className="min-w-0 flex-1">
-                            <p className="truncate font-medium text-slate-900">{employee.name}</p>
-                            <p className="truncate text-sm text-slate-400">{relativePunch(employee.last_punch_at)}</p>
-                          </div>
-                          <span
-                            className={`shrink-0 text-xs font-medium ${
-                              employee.is_clocked_in ? 'text-emerald-600' : 'text-slate-400'
+                          <button
+                            type="button"
+                            onClick={() =>
+                              router.push(
+                                needsReview ? '/admin/shift-log' : `/employees/${employee.id}`
+                              )
+                            }
+                            className={`flex w-full items-center gap-3.5 px-4 py-3.5 text-left transition-colors focus:outline-none focus-visible:bg-slate-50 sm:px-5 ${
+                              needsReview
+                                ? 'bg-amber-50/50 hover:bg-amber-50'
+                                : 'hover:bg-slate-50/90'
                             }`}
                           >
-                            {employee.is_clocked_in ? 'In' : 'Out'}
-                          </span>
-                        </button>
-                      </li>
-                    ))}
+                            <div className="relative shrink-0">
+                              <div
+                                className={`flex h-11 w-11 items-center justify-center rounded-full text-sm font-semibold tracking-wide ${
+                                  clockedIn
+                                    ? 'bg-emerald-100 text-emerald-800'
+                                    : needsReview
+                                      ? 'bg-amber-100 text-amber-900'
+                                      : 'bg-slate-100 text-slate-600'
+                                }`}
+                              >
+                                {initials(employee.name)}
+                              </div>
+                              <span
+                                className={`absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-white ${
+                                  clockedIn
+                                    ? 'bg-emerald-500'
+                                    : needsReview
+                                      ? 'bg-amber-500'
+                                      : 'bg-slate-300'
+                                }`}
+                                aria-hidden
+                              />
+                            </div>
+
+                            <div className="min-w-0 flex-1">
+                              <div className="flex min-w-0 items-center gap-1.5">
+                                <p className="truncate font-medium text-slate-900">{employee.name}</p>
+                                {needsReview && (
+                                  <InfoTip
+                                    label="Auto clock-out"
+                                    content="Missed punch-out — reviewed in Shift Log."
+                                  />
+                                )}
+                              </div>
+                              <p className="mt-0.5 truncate text-sm text-slate-500">
+                                {needsReview
+                                  ? 'Auto clock-out'
+                                  : clockedIn
+                                    ? `On since ${relativePunch(employee.last_punch_at)}`
+                                    : relativePunch(employee.last_punch_at)}
+                              </p>
+                            </div>
+
+                            <span
+                              className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide ${
+                                clockedIn
+                                  ? 'bg-emerald-50 text-emerald-700'
+                                  : needsReview
+                                    ? 'bg-amber-100 text-amber-800'
+                                    : 'bg-slate-100 text-slate-500'
+                              }`}
+                            >
+                              {clockedIn ? 'In' : needsReview ? 'Review' : 'Out'}
+                            </span>
+                          </button>
+                        </li>
+                      )
+                    })}
                   </ul>
                 )}
               </section>

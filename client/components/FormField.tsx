@@ -1,6 +1,7 @@
 'use client'
 
 import React from 'react'
+import { InfoTip } from '@/components/ui/InfoTip'
 
 interface FormFieldProps {
   label: string
@@ -21,12 +22,14 @@ export const FormField: React.FC<FormFieldProps> = ({
 }) => {
   return (
     <div className={className}>
-      <label className="block text-sm font-medium text-slate-700 mb-1.5">
-        {label}
-        {required && <span className="text-red-500 ml-1">*</span>}
-      </label>
+      <div className="mb-1.5 flex items-center gap-1">
+        <label className="block text-sm font-medium text-slate-700">
+          {label}
+          {required && <span className="text-red-500 ml-1">*</span>}
+        </label>
+        {hint && !error && <InfoTip content={hint} label={`About ${label}`} />}
+      </div>
       {children}
-      {hint && !error && <p className="mt-1 text-xs text-slate-400">{hint}</p>}
       {error && (
         <div className="mt-1 flex items-start gap-1">
           <svg

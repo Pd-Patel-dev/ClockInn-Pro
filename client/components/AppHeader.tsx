@@ -51,6 +51,26 @@ function developerBreadcrumbs(pathname: string): BreadcrumbItem[] {
   return items
 }
 
+const NOTIF_SEEN_KEY = 'clockinn_notifications_seen_at'
+
+function getNotifSeenAt(userId: string): string | null {
+  try {
+    return localStorage.getItem(`${NOTIF_SEEN_KEY}:${userId}`)
+  } catch {
+    return null
+  }
+}
+
+function markNotifsSeen(userId: string): string {
+  const iso = new Date().toISOString()
+  try {
+    localStorage.setItem(`${NOTIF_SEEN_KEY}:${userId}`, iso)
+  } catch {
+    /* ignore */
+  }
+  return iso
+}
+
 export interface AppHeaderProps {
   user: User
   onLogout: () => void
@@ -79,7 +99,22 @@ export function AppHeader({
   const [scrolled, setScrolled] = useState(false)
   const [unread, setUnread] = useState(0)
   const [openDropdown, setOpenDropdown] = useState<string | null>(null)
+  const [notifOpen, setNotifOpen] = useState(false)
+  const [notifications, setNotifications] = useState<
+    {
+      id: string
+      type: string
+      title: string
+      message?: string | null
+      employee_name?: string
+      href: string
+      created_at?: string | null
+      actionable?: boolean
+    }[]
+  >([])
+  const [loadingNotifs, setLoadingNotifs] = useState(false)
   const dropdownRefs = useRef<Record<string, HTMLDivElement | null>>({})
+  const notifRef = useRef<HTMLDivElement | null>(null)
   const chrome = useDeveloperChrome()
 
   const breadcrumbs = useMemo(() => {
@@ -97,28 +132,89 @@ export function AppHeader({
 
   useEffect(() => {
     let cancelled = false
-    api
-      .get('/notifications/unread-count')
-      .then((res) => {
-        if (!cancelled) setUnread(res.data?.count ?? 0)
-      })
-      .catch(() => {
-        if (!cancelled) setUnread(0)
-      })
+    const loadCount = () => {
+      const since = getNotifSeenAt(user.id)
+      const params = since ? { since } : undefined
+      api
+        .get('/notifications/unread-count', { params })
+        .then((res) => {
+          if (!cancelled) setUnread(res.data?.count ?? 0)
+        })
+        .catch(() => {
+          if (!cancelled) setUnread(0)
+        })
+    }
+    loadCount()
+    const id = window.setInterval(loadCount, 60000)
     return () => {
       cancelled = true
+      window.clearInterval(id)
     }
-  }, [])
+  }, [user.id])
+
+  const loadNotifications = async () => {
+    setLoadingNotifs(true)
+    try {
+      const since = getNotifSeenAt(user.id)
+      const res = await api.get('/notifications', {
+        params: since ? { since } : undefined,
+      })
+      setNotifications(res.data?.items ?? [])
+      setUnread(0)
+    } catch {
+      setNotifications([])
+    } finally {
+      setLoadingNotifs(false)
+    }
+  }
+
+  const notifMeta = (type: string) => {
+    switch (type) {
+      case 'leave_pending':
+        return { label: 'Leave', className: 'bg-amber-100 text-amber-800' }
+      case 'auto_clock_out':
+        return { label: 'Auto clock-out', className: 'bg-amber-100 text-amber-800' }
+      case 'missing_punch':
+      case 'forgot_punch_out':
+        return { label: 'Missing punch', className: 'bg-red-100 text-red-800' }
+      case 'clock_in':
+        return { label: 'Clock in', className: 'bg-emerald-100 text-emerald-800' }
+      case 'clock_out':
+        return { label: 'Clock out', className: 'bg-slate-100 text-slate-700' }
+      default:
+        return { label: 'Update', className: 'bg-slate-100 text-slate-600' }
+    }
+  }
+
+  const relativeWhen = (iso?: string | null) => {
+    if (!iso) return ''
+    const d = new Date(iso)
+    if (Number.isNaN(d.getTime())) return ''
+    const mins = Math.floor((Date.now() - d.getTime()) / 60000)
+    if (mins < 1) return 'Just now'
+    if (mins < 60) return `${mins}m ago`
+    const hrs = Math.floor(mins / 60)
+    if (hrs < 24) return `${hrs}h ago`
+    const days = Math.floor(hrs / 24)
+    if (days === 1) return 'Yesterday'
+    if (days < 7) return `${days}d ago`
+    return d.toLocaleDateString()
+  }
 
   useEffect(() => {
-    if (!openDropdown) return
+    if (!openDropdown && !notifOpen) return
     const handleClickOutside = (event: MouseEvent) => {
-      const ref = dropdownRefs.current[openDropdown]
-      if (ref && !ref.contains(event.target as Node)) setOpenDropdown(null)
+      if (openDropdown) {
+        const ref = dropdownRefs.current[openDropdown]
+        if (ref && !ref.contains(event.target as Node)) setOpenDropdown(null)
+      }
+      if (notifOpen && notifRef.current && !notifRef.current.contains(event.target as Node)) {
+        setNotifOpen(false)
+      }
     }
     document.addEventListener('mousedown', handleClickOutside)
     return () => document.removeEventListener('mousedown', handleClickOutside)
-  }, [openDropdown])
+  }, [openDropdown, notifOpen])
 
   const isActive = (href: string) => {
     if (href === '/dashboard') return pathname === href
@@ -271,25 +367,144 @@ export function AppHeader({
             </Button>
           )}
 
-          <button
-            type="button"
-            className="relative rounded-control p-2 text-foreground-muted hover:bg-border-subtle hover:text-foreground"
-            aria-label="Notifications"
-          >
-            <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"
-              />
-            </svg>
-            {unread > 0 && (
-              <Badge variant="danger" className="absolute -right-0.5 -top-0.5 min-w-[1.1rem] justify-center px-1 py-0 text-[10px]">
-                {unread > 99 ? '99+' : unread}
-              </Badge>
+          <div className="relative" ref={notifRef}>
+            <button
+              type="button"
+              className="relative rounded-control p-2 text-foreground-muted hover:bg-border-subtle hover:text-foreground"
+              aria-label="Notifications"
+              aria-expanded={notifOpen}
+              onClick={() => {
+                const next = !notifOpen
+                setNotifOpen(next)
+                setOpenDropdown(null)
+                if (next) {
+                  setUnread(0)
+                  markNotifsSeen(user.id)
+                  void loadNotifications()
+                }
+              }}
+            >
+              <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"
+                />
+              </svg>
+              {unread > 0 && (
+                <Badge variant="danger" className="absolute -right-0.5 -top-0.5 min-w-[1.1rem] justify-center px-1 py-0 text-[10px]">
+                  {unread > 99 ? '99+' : unread}
+                </Badge>
+              )}
+            </button>
+            {notifOpen && (
+              <div className="absolute right-0 top-full z-50 mt-1 w-80 overflow-hidden rounded-xl border border-border bg-surface shadow-lg sm:w-96">
+                <div className="flex items-center justify-between border-b border-border px-3 py-2">
+                  <p className="text-sm font-semibold text-foreground">Notifications</p>
+                  {unread > 0 && (
+                    <span className="text-[11px] font-medium text-foreground-muted">{unread} need review</span>
+                  )}
+                </div>
+                <div className="max-h-96 overflow-y-auto">
+                  {loadingNotifs ? (
+                    <div className="space-y-2 p-3">
+                      <div className="h-14 animate-pulse rounded-lg bg-border-subtle" />
+                      <div className="h-14 animate-pulse rounded-lg bg-border-subtle" />
+                      <div className="h-14 animate-pulse rounded-lg bg-border-subtle" />
+                    </div>
+                  ) : notifications.length === 0 ? (
+                    <p className="px-4 py-8 text-center text-sm text-foreground-muted">No notifications</p>
+                  ) : (
+                    <ul className="divide-y divide-border">
+                      {notifications.map((n) => {
+                        const meta = notifMeta(n.type)
+                        return (
+                          <li key={n.id}>
+                            <Link
+                              href={n.href}
+                              onClick={() => setNotifOpen(false)}
+                              className={cn(
+                                'block px-3 py-3 transition-colors hover:bg-border-subtle/70',
+                                n.actionable && 'bg-amber-50/40'
+                              )}
+                            >
+                              <div className="flex items-start justify-between gap-2">
+                                <div className="min-w-0 flex-1">
+                                  <div className="flex flex-wrap items-center gap-1.5">
+                                    <span
+                                      className={cn(
+                                        'inline-flex rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide',
+                                        meta.className
+                                      )}
+                                    >
+                                      {meta.label}
+                                    </span>
+                                    {n.actionable && (
+                                      <span className="text-[10px] font-semibold uppercase tracking-wide text-amber-700">
+                                        Review
+                                      </span>
+                                    )}
+                                  </div>
+                                  <p className="mt-1 truncate text-sm font-medium text-foreground">
+                                    {n.employee_name || n.title}
+                                  </p>
+                                  <p className="truncate text-xs text-foreground-muted">
+                                    {n.employee_name ? n.title : n.message || ''}
+                                    {n.employee_name && n.message ? ` · ${n.message}` : ''}
+                                  </p>
+                                </div>
+                                <span className="shrink-0 text-[10px] tabular-nums text-foreground-muted">
+                                  {relativeWhen(n.created_at)}
+                                </span>
+                              </div>
+                            </Link>
+                          </li>
+                        )
+                      })}
+                    </ul>
+                  )}
+                </div>
+                {(isAdmin || notifications.length > 0) && (
+                  <div className="flex flex-wrap gap-x-3 gap-y-1 border-t border-border px-3 py-2">
+                    {isAdmin ? (
+                      <>
+                        <Link
+                          href="/leave-requests"
+                          onClick={() => setNotifOpen(false)}
+                          className="text-xs font-medium text-blue-600 hover:text-blue-700"
+                        >
+                          Leave
+                        </Link>
+                        <Link
+                          href="/admin/shift-log"
+                          onClick={() => setNotifOpen(false)}
+                          className="text-xs font-medium text-blue-600 hover:text-blue-700"
+                        >
+                          Shift Log
+                        </Link>
+                        <Link
+                          href="/time-entries"
+                          onClick={() => setNotifOpen(false)}
+                          className="text-xs font-medium text-blue-600 hover:text-blue-700"
+                        >
+                          Time entries
+                        </Link>
+                      </>
+                    ) : (
+                      <Link
+                        href="/my-schedule"
+                        onClick={() => setNotifOpen(false)}
+                        className="text-xs font-medium text-blue-600 hover:text-blue-700"
+                      >
+                        My Schedule
+                      </Link>
+                    )}
+                  </div>
+                )}
+              </div>
             )}
-          </button>
+          </div>
 
           <Menu>
             <MenuRoot>

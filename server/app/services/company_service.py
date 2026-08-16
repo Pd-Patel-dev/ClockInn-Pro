@@ -71,6 +71,8 @@ DEFAULT_PUNCH_ALLOWED_ROLES = [
     "MANAGER",
 ]
 DEFAULT_MARKETPLACE_ITEMS: list = []
+DEFAULT_AUTO_CLOCK_OUT_ENABLED = True
+DEFAULT_AUTO_CLOCK_OUT_GRACE_MINUTES = 0
 
 
 def is_punch_allowed_for_role(settings: Dict, role) -> bool:
@@ -118,6 +120,10 @@ def get_company_settings(company: Company) -> Dict:
         "kiosk_allowed_ips": settings.get("kiosk_allowed_ips") or [],
         "punch_allowed_roles": settings.get("punch_allowed_roles", list(DEFAULT_PUNCH_ALLOWED_ROLES)),
         "marketplace_items": settings.get("marketplace_items", list(DEFAULT_MARKETPLACE_ITEMS)),
+        "auto_clock_out_enabled": settings.get("auto_clock_out_enabled", DEFAULT_AUTO_CLOCK_OUT_ENABLED),
+        "auto_clock_out_grace_minutes": settings.get(
+            "auto_clock_out_grace_minutes", DEFAULT_AUTO_CLOCK_OUT_GRACE_MINUTES
+        ),
     }
 
 
@@ -261,6 +267,10 @@ async def update_company_settings(
             item.model_dump() if hasattr(item, "model_dump") else dict(item)
             for item in data.marketplace_items
         ]
+    if data.auto_clock_out_enabled is not None:
+        current_settings["auto_clock_out_enabled"] = data.auto_clock_out_enabled
+    if data.auto_clock_out_grace_minutes is not None:
+        current_settings["auto_clock_out_grace_minutes"] = data.auto_clock_out_grace_minutes
 
     logger.info(f"Settings after update: {current_settings}")
     

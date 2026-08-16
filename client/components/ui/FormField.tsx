@@ -2,6 +2,7 @@
 
 import React from 'react'
 import { cn } from '@/lib/cn'
+import { InfoTip } from '@/components/ui/InfoTip'
 
 export interface FormFieldProps {
   label: string
@@ -24,16 +25,18 @@ export function FormField({
 }: FormFieldProps) {
   return (
     <div className={className}>
-      <label htmlFor={htmlFor} className="mb-1.5 block text-sm font-medium text-foreground">
-        {label}
-        {required && (
-          <span className="ml-1 text-danger" aria-hidden>
-            *
-          </span>
-        )}
-      </label>
+      <div className="mb-1.5 flex items-center gap-1">
+        <label htmlFor={htmlFor} className="block text-sm font-medium text-foreground">
+          {label}
+          {required && (
+            <span className="ml-1 text-danger" aria-hidden>
+              *
+            </span>
+          )}
+        </label>
+        {hint && !error && <InfoTip content={hint} label={`About ${label}`} />}
+      </div>
       {children}
-      {hint && !error && <p className="mt-1 text-xs text-foreground-subtle">{hint}</p>}
       {error && (
         <p className="mt-1 text-xs text-danger" role="alert">
           {error}

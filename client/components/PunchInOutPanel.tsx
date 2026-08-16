@@ -5,7 +5,7 @@ import { createPortal } from 'react-dom'
 import Link from 'next/link'
 import ConfirmationDialog from '@/components/ConfirmationDialog'
 import { Button } from '@/components/ui/Button'
-import { Tooltip } from '@/components/ui/Tooltip'
+import { InfoTip } from '@/components/ui/InfoTip'
 import api from '@/lib/api'
 import type { User } from '@/lib/auth'
 import { addDays, format, parseISO } from 'date-fns'
@@ -138,15 +138,7 @@ function CashInfoLabel({
         {label}
         {required && <span className="ml-0.5 text-red-500">*</span>}
       </span>
-      <Tooltip content={hint} side="top" variant="surface">
-        <button
-          type="button"
-          className="inline-flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-full border border-slate-300 text-[9px] font-semibold leading-none text-slate-500 hover:border-slate-400 hover:bg-slate-50 hover:text-slate-700"
-          aria-label={`About ${label}`}
-        >
-          i
-        </button>
-      </Tooltip>
+      <InfoTip content={hint} label={`About ${label}`} />
     </div>
   )
 }
@@ -232,8 +224,8 @@ export default function PunchInOutPanel({ user, compact = false }: PunchInOutPan
 
   const fetchStatusAndEntries = useCallback(async () => {
     try {
-      const res = await api.get('/time/my?limit=8')
-      const list = res.data?.entries ?? []
+      const res = await api.get('/time/my?limit=7')
+      const list = (res.data?.entries ?? []).slice(0, 7)
       const hasOpen = list.length > 0 && !list[0].clock_out_at
       setCurrentStatus(hasOpen ? 'in' : 'out')
       setActiveClockInAt(hasOpen ? list[0].clock_in_at : null)
@@ -253,11 +245,19 @@ export default function PunchInOutPanel({ user, compact = false }: PunchInOutPan
   const fetchUpcomingShifts = useCallback(async () => {
     setLoadingSchedule(true)
     try {
-      const start = format(new Date(), 'yyyy-MM-dd')
-      const end = format(addDays(new Date(), 7), 'yyyy-MM-dd')
-      const res = await api.get(`/shifts?start_date=${start}&end_date=${end}`)
+      const todayStr = format(new Date(), 'yyyy-MM-dd')
+      // Inclusive 7-day window: today through today+6
+      const end = format(addDays(new Date(), 6), 'yyyy-MM-dd')
+      const res = await api.get(`/shifts?start_date=${todayStr}&end_date=${end}`)
       const list = (res.data || []) as UpcomingShift[]
-      setShifts(list.slice(0, 6))
+      // Today first, then upcoming days (chronological)
+      const sorted = [...list]
+        .filter((s) => s.shift_date >= todayStr)
+        .sort((a, b) => {
+          if (a.shift_date !== b.shift_date) return a.shift_date.localeCompare(b.shift_date)
+          return (a.start_time || '').localeCompare(b.start_time || '')
+        })
+      setShifts(sorted.slice(0, 7))
     } catch {
       setShifts([])
     } finally {
@@ -431,6 +431,7 @@ export default function PunchInOutPanel({ user, compact = false }: PunchInOutPan
     () => assignMarketplaceButtonColors(marketplaceRowIdsKey ? marketplaceRowIdsKey.split(',') : []),
     [marketplaceRowIdsKey]
   )
+  const todayDateStr = format(new Date(), 'yyyy-MM-dd')
 
   const ownsActiveDrawer = Boolean(
     marketplace?.active_drawer?.is_mine || marketplace?.clocked_in
@@ -726,6 +727,20 @@ export default function PunchInOutPanel({ user, compact = false }: PunchInOutPan
     const t = toTime12h(timeStr)
     const m = String(t.minute).padStart(2, '0')
     return `${t.hour12}:${m} ${t.ampm}`
+  }
+
+  const formatShiftHours = (start: string, end: string) => {
+    const parseMins = (t: string) => {
+      const [h, m] = t.split(':').map(Number)
+      if (Number.isNaN(h) || Number.isNaN(m)) return null
+      return h * 60 + m
+    }
+    const startMins = parseMins(start)
+    let endMins = parseMins(end)
+    if (startMins == null || endMins == null) return null
+    if (endMins <= startMins) endMins += 24 * 60
+    const hours = (endMins - startMins) / 60
+    return `${hours.toFixed(1)}h`
   }
 
   const formatElapsed = (clockInAt: string, now: Date) => {
@@ -1040,23 +1055,69 @@ export default function PunchInOutPanel({ user, compact = false }: PunchInOutPan
             ) : (
               <ul className="divide-y divide-slate-100">
                 {shifts.map((shift) => {
+                  const isToday = shift.shift_date === todayDateStr
                   let dayLabel = shift.shift_date
                   try {
-                    dayLabel = format(parseISO(shift.shift_date), 'EEE, MMM d')
+                    dayLabel = isToday
+                      ? `Today · ${format(parseISO(shift.shift_date), 'EEE, MMM d')}`
+                      : format(parseISO(shift.shift_date), 'EEE, MMM d')
                   } catch {
                     /* keep raw */
                   }
+                  const hoursLabel = formatShiftHours(shift.start_time, shift.end_time)
                   return (
-                    <li key={shift.id} className="flex items-center justify-between gap-3 px-4 py-3 sm:px-5">
+                    <li
+                      key={shift.id}
+                      className={
+                        isToday
+                          ? 'flex items-center justify-between gap-3 border-l-[3px] border-l-sky-400 bg-sky-50/80 px-4 py-3 sm:px-5'
+                          : 'flex items-center justify-between gap-3 px-4 py-3 sm:px-5'
+                      }
+                    >
                       <div className="min-w-0">
-                        <p className="truncate text-sm font-medium text-slate-800">{dayLabel}</p>
-                        <p className="mt-0.5 text-xs tabular-nums text-slate-400">
+                        <p
+                          className={
+                            isToday
+                              ? 'truncate text-sm font-semibold text-sky-900'
+                              : 'truncate text-sm font-medium text-slate-800'
+                          }
+                        >
+                          {dayLabel}
+                        </p>
+                        <p
+                          className={
+                            isToday
+                              ? 'mt-0.5 text-xs tabular-nums text-sky-700/80'
+                              : 'mt-0.5 text-xs tabular-nums text-slate-400'
+                          }
+                        >
                           {formatShiftTime(shift.start_time)}
                           <span className="mx-1 text-slate-300">→</span>
                           {formatShiftTime(shift.end_time)}
                         </p>
                       </div>
-                      <span className="shrink-0 text-xs capitalize text-slate-400">{shift.status}</span>
+                      <div className="shrink-0 text-right">
+                        {hoursLabel && (
+                          <p
+                            className={
+                              isToday
+                                ? 'text-sm font-medium tabular-nums text-sky-800'
+                                : 'text-sm font-medium tabular-nums text-slate-600'
+                            }
+                          >
+                            {hoursLabel}
+                          </p>
+                        )}
+                        <p
+                          className={
+                            isToday
+                              ? 'mt-0.5 text-xs font-medium uppercase tracking-wide text-sky-600'
+                              : 'mt-0.5 text-xs capitalize text-slate-400'
+                          }
+                        >
+                          {isToday ? 'Today' : shift.status}
+                        </p>
+                      </div>
                     </li>
                   )
                 })}
@@ -1071,7 +1132,7 @@ export default function PunchInOutPanel({ user, compact = false }: PunchInOutPan
         title={currentStatus === 'in' ? 'Clock out?' : 'Clock in?'}
         message={
           drawerActiveNote && currentStatus === 'out'
-            ? `Cash drawer is already activated by ${drawerActiveNote}. You can clock in without entering cash.`
+            ? `Cash drawer already activated by ${drawerActiveNote}.`
             : punchConfirmAfterCash
               ? currentStatus === 'in'
                 ? 'Submit with the cash amounts you entered?'

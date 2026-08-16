@@ -53,3 +53,16 @@ async def cleanup_verification_data_endpoint(
             ),
         )
 
+
+@router.post("/auto-clock-out/run")
+@handle_endpoint_errors(operation_name="run_auto_clock_out")
+async def run_auto_clock_out_endpoint(
+    current_user: User = Depends(get_current_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Manually trigger auto clock-out for forgotten punches (also runs on a background timer)."""
+    from app.services.auto_clock_out_service import run_auto_clock_outs
+
+    summary = await run_auto_clock_outs(db)
+    return {"success": True, **summary}
+

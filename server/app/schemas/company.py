@@ -47,6 +47,8 @@ class CompanySettingsResponse(BaseModel):
     # Which employee types may punch in/out (dashboard + punch APIs)
     punch_allowed_roles: Optional[list[str]] = None
     marketplace_items: Optional[List[MarketplaceItem]] = None
+    auto_clock_out_enabled: Optional[bool] = True
+    auto_clock_out_grace_minutes: Optional[int] = 0
 
 
 class AdminInfo(BaseModel):
@@ -113,6 +115,16 @@ class CompanySettingsUpdate(BaseModel):
     marketplace_items: Optional[List[MarketplaceItem]] = Field(
         None,
         description="Marketplace items for Front Desk sales during a shift (label + price_cents)",
+    )
+    auto_clock_out_enabled: Optional[bool] = Field(
+        None,
+        description="Automatically clock out employees who forget after their scheduled shift end",
+    )
+    auto_clock_out_grace_minutes: Optional[int] = Field(
+        None,
+        ge=0,
+        le=180,
+        description="Minutes after scheduled end before auto clock-out runs",
     )
 
 

@@ -55,6 +55,9 @@ export type { AvatarProps, AvatarSize } from './Avatar'
 export { Tooltip } from './Tooltip'
 export type { TooltipProps } from './Tooltip'
 
+export { InfoTip } from './InfoTip'
+export type { InfoTipProps } from './InfoTip'
+
 export { Skeleton, SkeletonText, SkeletonCard } from './Skeleton'
 export type { SkeletonProps } from './Skeleton'
 

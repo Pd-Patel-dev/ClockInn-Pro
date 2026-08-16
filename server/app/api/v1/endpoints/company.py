@@ -63,6 +63,8 @@ def _settings_response(settings: dict) -> CompanySettingsResponse:
         kiosk_allowed_ips=settings.get("kiosk_allowed_ips") or [],
         punch_allowed_roles=settings.get("punch_allowed_roles", list(DEFAULT_PUNCH_ALLOWED_ROLES)),
         marketplace_items=settings.get("marketplace_items") or [],
+        auto_clock_out_enabled=settings.get("auto_clock_out_enabled", True),
+        auto_clock_out_grace_minutes=settings.get("auto_clock_out_grace_minutes", 0),
     )
 
 

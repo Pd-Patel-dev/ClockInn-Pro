@@ -8,6 +8,7 @@ import { getCurrentUser, User } from '@/lib/auth'
 import { addWeeks, endOfWeek, format, isValid, parseISO, startOfWeek } from 'date-fns'
 import { useToast } from '@/components/Toast'
 import ConfirmationDialog from '@/components/ConfirmationDialog'
+import { InfoTip } from '@/components/ui/InfoTip'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
@@ -49,6 +50,15 @@ const editSchema = z.object({
 })
 
 type EditForm = z.infer<typeof editSchema>
+
+const FORGOT_PUNCH_OUT_MARKER = 'forgot to punch out'
+
+function isForgotPunchOutReview(session: CashDrawerSession): boolean {
+  return (
+    session.status === 'REVIEW_NEEDED' &&
+    Boolean(session.review_note?.toLowerCase().includes(FORGOT_PUNCH_OUT_MARKER))
+  )
+}
 
 export default function AdminShiftLogPage() {
   const router = useRouter()
@@ -337,6 +347,11 @@ export default function AdminShiftLogPage() {
     return styles[status as keyof typeof styles] || 'bg-slate-100 text-slate-800'
   }
 
+  const forgotPunchCount = useMemo(
+    () => sessions.filter((s) => isForgotPunchOutReview(s)).length,
+    [sessions]
+  )
+
   if (loading) {
     return (
       <Layout>
@@ -352,11 +367,26 @@ export default function AdminShiftLogPage() {
       <div className="px-4 py-8 sm:px-6 lg:px-8">
         <div className="max-w-6xl mx-auto">
           <div className="mb-6">
-            <h1 className="text-2xl font-semibold text-slate-900 mb-1">Shift Log</h1>
-            <p className="text-sm text-slate-600">
-              Browse shifts by week (Mon–Sun). Click a row to open full details (clock in/out, cash drawer, marketplace sales, shift notes).
-            </p>
+            <div className="flex items-center gap-1.5">
+              <h1 className="text-2xl font-semibold text-slate-900">Shift Log</h1>
+              <InfoTip
+                label="About Shift Log"
+                content="Browse shifts by week (Mon–Sun). Click a row for clock times, cash drawer, marketplace sales, and shift notes."
+              />
+            </div>
           </div>
+
+          {forgotPunchCount > 0 && (
+            <div className="mb-4 flex flex-wrap items-center gap-1.5 rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-amber-950">
+              <span className="font-semibold">
+                {forgotPunchCount} forgot punch-out{forgotPunchCount === 1 ? '' : 's'}
+              </span>
+              <InfoTip
+                label="About forgot punch-out"
+                content="Auto clock-out closed the shift and deactivated the cash drawer. Filter Review Needed, open details, then Approve & Close."
+              />
+            </div>
+          )}
 
           {/* Filters */}
           <div className="bg-white rounded-lg border border-slate-200 p-4 mb-6">
@@ -471,13 +501,22 @@ export default function AdminShiftLogPage() {
                         <tr
                           key={session.id}
                           onClick={() => handleViewFullDetails(session)}
-                          className="hover:bg-slate-50 cursor-pointer"
+                          className={
+                            isForgotPunchOutReview(session)
+                              ? 'cursor-pointer bg-amber-50/80 hover:bg-amber-50'
+                              : 'cursor-pointer hover:bg-slate-50'
+                          }
                         >
                           <td className="px-3 py-2 text-sm text-slate-900 text-center">
                             {format(new Date(session.start_counted_at), 'MM/dd/yy')}
                           </td>
                           <td className="px-3 py-2 text-sm font-medium text-slate-900 text-center">
                             {session.employee_name}
+                            {isForgotPunchOutReview(session) && (
+                              <span className="mt-0.5 block text-[10px] font-semibold uppercase tracking-wide text-amber-700">
+                                Forgot punch-out
+                              </span>
+                            )}
                           </td>
                           <td className="px-3 py-2 text-xs text-slate-600 text-center">
                             {session.clock_in_at ? (
@@ -588,6 +627,29 @@ export default function AdminShiftLogPage() {
                     </button>
                   </div>
                   <div className="px-6 py-4 space-y-6">
+                    {detailSession && isForgotPunchOutReview(detailSession) && (
+                      <div className="flex items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+                        <div className="flex min-w-0 items-center gap-1.5">
+                          <p className="font-semibold">Forgot punch-out</p>
+                          <InfoTip
+                            label="About forgot punch-out"
+                            content="Shift was auto clocked out at the scheduled end. Cash drawer was deactivated without an ending count."
+                          />
+                        </div>
+                        {detailSession.status === 'REVIEW_NEEDED' && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setShowDetailPanel(false)
+                              handleReview(detailSession)
+                            }}
+                            className="shrink-0 text-xs font-semibold text-amber-800 hover:text-amber-950"
+                          >
+                            Review →
+                          </button>
+                        )}
+                      </div>
+                    )}
                     <div>
                       <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Employee &amp; date</h3>
                       <p className="text-base font-medium text-slate-900">{detailSession.employee_name}</p>
@@ -772,7 +834,7 @@ export default function AdminShiftLogPage() {
 
           {showReviewDialog && selectedSession && (
             <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center p-4">
-              <div className="relative bg-white rounded-xl shadow-xl w-full max-w-md m-4">
+              <div className="relative bg-white rounded-xl shadow-xl w-full max-w-lg m-4">
                 <div className="flex justify-between items-center px-8 py-6 border-b border-slate-200">
                   <h3 className="text-xl font-bold text-slate-900">Review Shift Session</h3>
                   <button
@@ -787,11 +849,72 @@ export default function AdminShiftLogPage() {
                 </div>
                 <form onSubmit={(e) => { e.preventDefault(); onSubmitReview(); }} className="p-8">
                   <div className="space-y-4 mb-6">
-                    <div className="bg-slate-50 p-4 rounded-lg">
-                      <p className="text-sm text-slate-600 mb-2">Employee: <span className="font-semibold">{selectedSession.employee_name}</span></p>
-                      <p className="text-sm text-slate-600 mb-2">Start Cash: <span className="font-semibold">{formatCurrency(selectedSession.start_cash_cents)}</span></p>
-                      <p className="text-sm text-slate-600 mb-2">End Cash: <span className="font-semibold">{formatCurrency(selectedSession.end_cash_cents)}</span></p>
-                      <p className="text-sm text-slate-600">Delta: <span className={`font-semibold ${selectedSession.delta_cents && selectedSession.delta_cents < 0 ? 'text-red-600' : ''}`}>{formatCurrency(selectedSession.delta_cents)}</span></p>
+                    {isForgotPunchOutReview(selectedSession) && (
+                      <div className="flex items-center gap-1.5 rounded-lg border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-amber-950">
+                        <p className="font-semibold">Forgot punch-out</p>
+                        <InfoTip
+                          label="About forgot punch-out"
+                          content="Approving clears the review status and marks this drawer session closed."
+                        />
+                      </div>
+                    )}
+                    <div className="bg-slate-50 p-4 rounded-lg space-y-2 text-sm">
+                      <p className="text-slate-600">
+                        Employee: <span className="font-semibold text-slate-900">{selectedSession.employee_name}</span>
+                      </p>
+                      <p className="text-slate-600">
+                        Date:{' '}
+                        <span className="font-semibold text-slate-900">
+                          {format(new Date(selectedSession.start_counted_at), 'EEEE, MMM d, yyyy')}
+                        </span>
+                      </p>
+                      <p className="text-slate-600">
+                        Clock:{' '}
+                        <span className="font-semibold text-slate-900">
+                          {selectedSession.clock_in_at
+                            ? format(new Date(selectedSession.clock_in_at), 'h:mm a')
+                            : '—'}
+                          {' – '}
+                          {selectedSession.clock_out_at
+                            ? format(new Date(selectedSession.clock_out_at), 'h:mm a')
+                            : 'Open'}
+                        </span>
+                      </p>
+                      <div className="border-t border-slate-200 pt-2 mt-2 space-y-1">
+                        <p className="text-slate-600">
+                          Start cash: <span className="font-semibold text-slate-900">{formatCurrency(selectedSession.start_cash_cents)}</span>
+                        </p>
+                        <p className="text-slate-600">
+                          End cash:{' '}
+                          <span className="font-semibold text-slate-900">
+                            {selectedSession.end_cash_cents == null
+                              ? 'Not counted'
+                              : formatCurrency(selectedSession.end_cash_cents)}
+                          </span>
+                        </p>
+                        <p className="text-slate-600">
+                          Collected: <span className="font-semibold text-slate-900">{formatCurrency(selectedSession.collected_cash_cents)}</span>
+                        </p>
+                        <p className="text-slate-600">
+                          Drop: <span className="font-semibold text-slate-900">{formatCurrencyOptional(selectedSession.drop_amount_cents)}</span>
+                        </p>
+                        <p className="text-slate-600">
+                          Marketplace:{' '}
+                          <span className="font-semibold text-slate-900">{formatCurrency(selectedSession.beverages_cash_cents)}</span>
+                        </p>
+                        <p className="text-slate-600">
+                          Delta:{' '}
+                          <span className={`font-semibold ${getDeltaColor(selectedSession.delta_cents)}`}>
+                            {selectedSession.delta_cents == null ? '—' : formatCurrency(selectedSession.delta_cents)}
+                          </span>
+                        </p>
+                      </div>
+                      {selectedSession.review_note && (
+                        <p className="border-t border-slate-200 pt-2 flex items-center gap-1.5 text-slate-600">
+                          <span>Warning</span>
+                          <InfoTip content={selectedSession.review_note} label="Warning details" />
+                        </p>
+                      )}
                     </div>
                     <div>
                       <label className="block text-sm font-semibold text-slate-700 mb-2">Review Note</label>

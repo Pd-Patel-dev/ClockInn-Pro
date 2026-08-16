@@ -539,6 +539,8 @@ def _build_company_info_response(company: Company, settings: Dict, admin_user: O
                 ["MAINTENANCE", "FRONTDESK", "HOUSEKEEPING", "RESTAURANT", "SECURITY", "MANAGER"],
             ),
             marketplace_items=settings.get("marketplace_items") or [],
+            auto_clock_out_enabled=settings.get("auto_clock_out_enabled", True),
+            auto_clock_out_grace_minutes=settings.get("auto_clock_out_grace_minutes", 0),
         ),
         admin=admin_info,
     )

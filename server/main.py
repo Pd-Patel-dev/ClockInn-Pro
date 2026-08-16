@@ -23,16 +23,17 @@ access_logger = logging.getLogger("access")
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup
+    import asyncio
+    import os
+
     logger.info("Starting ClockInn API server...")
     # Run database migrations on startup (only if RUN_MIGRATIONS env var is set)
-    import os
     if os.getenv("RUN_MIGRATIONS", "false").lower() == "true":
         try:
             from alembic.config import Config
             from alembic import command
             from pathlib import Path
             from app.core.config import settings
-            import asyncio
             
             def run_migrations():
                 alembic_cfg = Config(str(Path(__file__).parent / "alembic.ini"))
@@ -75,10 +76,40 @@ async def lifespan(app: FastAPI):
     except Exception:
         pass
 
+    async def _auto_clock_out_loop():
+        """Periodically close open punches past scheduled shift end."""
+        from app.core.database import AsyncSessionLocal
+        from app.services.auto_clock_out_service import (
+            AUTO_CLOCK_OUT_INTERVAL_SECONDS,
+            run_auto_clock_outs,
+        )
+
+        # Short delay so startup / migrations finish first
+        await asyncio.sleep(15)
+        while True:
+            try:
+                async with AsyncSessionLocal() as db:
+                    summary = await run_auto_clock_outs(db)
+                    if summary.get("clocked_out") or summary.get("emails_sent") or summary.get("errors"):
+                        logger.info("Auto clock-out run: %s", summary)
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:
+                logger.error("Auto clock-out loop error: %s", e, exc_info=True)
+            await asyncio.sleep(AUTO_CLOCK_OUT_INTERVAL_SECONDS)
+
+    auto_clock_out_task = asyncio.create_task(_auto_clock_out_loop())
+    logger.info("Auto clock-out background task started")
+
     logger.info("ClockInn API server started successfully")
     yield
     # Shutdown
     logger.info("Shutting down ClockInn API server...")
+    auto_clock_out_task.cancel()
+    try:
+        await auto_clock_out_task
+    except asyncio.CancelledError:
+        pass
     try:
         from app.core.login_attempts import close_login_attempts_redis
         from app.middleware.rate_limit import close_rate_limit_redis
