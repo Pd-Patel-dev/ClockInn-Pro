@@ -22,7 +22,94 @@ from app.models.time_entry import TimeEntry, TimeEntryStatus
 from app.models.user import User, UserRole, UserStatus
 from app.models.company import Company
 from app.models.audit_log import AuditLog
-from app.services.company_service import get_company_settings
+from app.services.company_service import (
+    get_company_settings,
+    DEFAULT_CASH_DRAWER_VARIANCE_THRESHOLD_CENTS,
+    DEFAULT_CASH_DRAWER_REQUIRE_MANAGER_REVIEW,
+)
+
+
+def resolve_current_cash_cents(
+    session: CashDrawerSession,
+    current_cash_cents: Optional[int] = None,
+) -> Optional[int]:
+    """Current cash in drawer before drop (manual count).
+
+    Prefer explicit value, then stored column, then reconstruct as end + drop
+    for legacy sessions that only stored after-drop + drop.
+    """
+    if current_cash_cents is not None:
+        return max(0, int(current_cash_cents))
+    stored = getattr(session, "current_cash_cents", None)
+    if stored is not None:
+        return max(0, int(stored))
+    end = session.end_cash_cents
+    if end is None:
+        return None
+    drop = int(getattr(session, "drop_amount_cents", None) or 0)
+    return max(0, int(end) + drop)
+
+
+def expected_balance_cents(
+    session: CashDrawerSession,
+    current_cash_cents: Optional[int] = None,
+    drop_amount_cents: Optional[int] = None,
+) -> Optional[int]:
+    """Cash in drawer after drop = current cash − drop."""
+    current = resolve_current_cash_cents(session, current_cash_cents)
+    if current is None:
+        return None
+    if drop_amount_cents is not None:
+        drop = int(drop_amount_cents)
+    else:
+        drop = int(getattr(session, "drop_amount_cents", None) or 0)
+    return max(0, current - max(0, drop))
+
+
+def apply_end_balance_status(
+    session: CashDrawerSession,
+    end_cash_cents: int,
+    *,
+    current_cash_cents: Optional[int] = None,
+    drop_amount_cents: Optional[int] = None,
+    company_settings: Optional[Dict] = None,
+) -> None:
+    """Set delta and CLOSED vs REVIEW from end vs expected (current − drop).
+
+    REVIEW_NEEDED only when manager review is enabled and |delta| exceeds the
+    company variance threshold. Otherwise CLOSED (delta is still stored).
+    Auto clock-out force-close sets REVIEW_NEEDED separately.
+    """
+    expected = expected_balance_cents(
+        session,
+        current_cash_cents=current_cash_cents,
+        drop_amount_cents=drop_amount_cents,
+    )
+    if expected is None:
+        session.delta_cents = end_cash_cents - int(session.start_cash_cents or 0)
+    else:
+        session.delta_cents = int(end_cash_cents) - int(expected)
+
+    settings = company_settings or {}
+    require_review = bool(
+        settings.get(
+            "cash_drawer_require_manager_review",
+            DEFAULT_CASH_DRAWER_REQUIRE_MANAGER_REVIEW,
+        )
+    )
+    threshold = int(
+        settings.get(
+            "cash_drawer_variance_threshold_cents",
+            DEFAULT_CASH_DRAWER_VARIANCE_THRESHOLD_CENTS,
+        )
+    )
+    if threshold < 0:
+        threshold = 0
+
+    if require_review and abs(int(session.delta_cents or 0)) > threshold:
+        session.status = CashDrawerStatus.REVIEW_NEEDED
+    else:
+        session.status = CashDrawerStatus.CLOSED
 
 
 def requires_cash_drawer(company_settings: Dict, employee_role: str) -> bool:
@@ -166,9 +253,13 @@ async def close_cash_drawer_session(
     collected_cash_cents: Optional[int] = None,
     drop_amount_cents: Optional[int] = None,
     beverages_cash_cents: Optional[int] = None,
+    current_cash_cents: Optional[int] = None,
 ) -> CashDrawerSession:
     """Close a cash drawer session for clock-out.
-    Balance (expected) = start_cash + collected_cash - drop_amount. Marketplace sales are not included in balance.
+
+    Formula (matches clock-out UI):
+      cash after drop (expected) = current cash − drop
+      delta = end cash − expected
     """
     if end_cash_cents < 0:
         raise HTTPException(
@@ -210,12 +301,12 @@ async def close_cash_drawer_session(
     session.end_counted_at = datetime.utcnow()
     session.end_count_source = source
     
-    # Store collected cash if provided
+    # Legacy collected_cash still accepted but unused for balance
     if collected_cash_cents is not None:
         if collected_cash_cents < 0:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Room sale amount cannot be negative",
+                detail="Collected cash amount cannot be negative",
             )
         session.collected_cash_cents = collected_cash_cents
 
@@ -227,7 +318,8 @@ async def close_cash_drawer_session(
     company = (
         await db.execute(select(Company).where(Company.id == company_id))
     ).scalar_one_or_none()
-    catalog = get_company_settings(company).get("marketplace_items") or [] if company else []
+    company_settings = get_company_settings(company) if company else {}
+    catalog = company_settings.get("marketplace_items") or []
 
     if catalog or sales:
         session.marketplace_sales_json = sales
@@ -253,17 +345,33 @@ async def close_cash_drawer_session(
                 detail="Drop amount cannot be negative",
             )
         session.drop_amount_cents = drop_amount_cents
-    
-    # Calculate delta
-    session.delta_cents = end_cash_cents - session.start_cash_cents
-    
-    # Determine status: review only if end balance differs from initial balance
-    # If end balance equals initial balance, just log it (CLOSED)
-    # If end balance differs from initial balance, mark for review
-    if session.delta_cents != 0:
-        session.status = CashDrawerStatus.REVIEW_NEEDED
-    else:
-        session.status = CashDrawerStatus.CLOSED
+
+    resolved_current = current_cash_cents
+    if resolved_current is None and drop_amount_cents is not None:
+        # Reconstruct when client only sent after-drop + drop
+        resolved_current = end_cash_cents + int(drop_amount_cents)
+    if resolved_current is not None:
+        if resolved_current < 0:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Current cash amount cannot be negative",
+            )
+        drop_for_check = int(session.drop_amount_cents or 0)
+        if drop_for_check > resolved_current:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Drop amount cannot exceed current cash in drawer",
+            )
+        if hasattr(session, "current_cash_cents"):
+            session.current_cash_cents = resolved_current
+
+    apply_end_balance_status(
+        session,
+        end_cash_cents,
+        current_cash_cents=resolved_current,
+        drop_amount_cents=session.drop_amount_cents,
+        company_settings=company_settings,
+    )
     
     new_values = {
         "end_cash_cents": end_cash_cents,
@@ -461,13 +569,11 @@ async def edit_cash_drawer_session(
     # Recalculate delta if either value changed
     if start_cash_cents is not None or end_cash_cents is not None:
         if session.end_cash_cents is not None:
-            session.delta_cents = session.end_cash_cents - session.start_cash_cents
-            
-            # Determine status: review only if end balance differs from initial balance
-            if session.delta_cents != 0:
-                session.status = CashDrawerStatus.REVIEW_NEEDED
-            else:
-                session.status = CashDrawerStatus.CLOSED
+            apply_end_balance_status(
+                session,
+                session.end_cash_cents,
+                company_settings=company_settings,
+            )
     
     new_values = {
         "start_cash_cents": session.start_cash_cents,

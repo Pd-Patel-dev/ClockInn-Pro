@@ -30,11 +30,17 @@ function ForgotPasswordContent() {
       await api.post('/auth/forgot-password', { email: data.email })
       router.push(`/forgot-password/verify?email=${encodeURIComponent(data.email)}`)
     } catch (err: unknown) {
-      const ax = err as { response?: { data?: { detail?: string | string[] } } }
+      const ax = err as { response?: { status?: number; data?: { detail?: string | string[] } } }
       const d = ax.response?.data?.detail
-      setError(
-        Array.isArray(d) ? d[0] ?? 'Failed to send code. Please try again.' : (d || 'Failed to send code. Please try again.')
-      )
+      const msg = Array.isArray(d) ? d[0] : d
+      if (ax.response?.status === 503) {
+        setError(
+          msg ||
+            'We could not send the email right now. Try again in a few minutes or contact your administrator.',
+        )
+      } else {
+        setError(msg || 'Failed to send code. Please try again.')
+      }
     } finally {
       setLoading(false)
     }

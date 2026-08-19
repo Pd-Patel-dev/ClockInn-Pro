@@ -3,7 +3,7 @@ from uuid import UUID
 from decimal import Decimal
 from datetime import datetime, timezone
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, delete as sql_delete, func
+from sqlalchemy import select, delete as sql_delete, func, text
 from sqlalchemy.exc import IntegrityError
 from fastapi import HTTPException, status
 import logging
@@ -45,12 +45,6 @@ DEFAULT_CASH_DRAWER_REQUIRE_MANAGER_REVIEW = False
 DEFAULT_SCHEDULE_DAY_START_HOUR = 7
 DEFAULT_SCHEDULE_DAY_END_HOUR = 7
 
-# Shift notepad / common log
-DEFAULT_SHIFT_NOTES_ENABLED = True
-DEFAULT_SHIFT_NOTES_REQUIRED_ON_CLOCK_OUT = False
-DEFAULT_SHIFT_NOTES_ALLOW_EDIT_AFTER_CLOCK_OUT = False
-MIN_SHIFT_NOTE_LENGTH_REQUIRED = 10
-
 # Email verification: when True, users must verify email before using the app
 DEFAULT_EMAIL_VERIFICATION_REQUIRED = True
 
@@ -70,9 +64,20 @@ DEFAULT_PUNCH_ALLOWED_ROLES = [
     "SECURITY",
     "MANAGER",
 ]
+# Roles allowed to use the kiosk PIN pad (defaults match punch)
+DEFAULT_KIOSK_ALLOWED_ROLES = list(DEFAULT_PUNCH_ALLOWED_ROLES)
 DEFAULT_MARKETPLACE_ITEMS: list = []
 DEFAULT_AUTO_CLOCK_OUT_ENABLED = True
 DEFAULT_AUTO_CLOCK_OUT_GRACE_MINUTES = 0
+
+_ROLE_DISPLAY_NAMES = {
+    "MAINTENANCE": "Maintenance",
+    "FRONTDESK": "Front Desk",
+    "HOUSEKEEPING": "Housekeeping",
+    "RESTAURANT": "Restaurant",
+    "SECURITY": "Security",
+    "MANAGER": "Manager",
+}
 
 
 def is_punch_allowed_for_role(settings: Dict, role) -> bool:
@@ -82,6 +87,54 @@ def is_punch_allowed_for_role(settings: Dict, role) -> bool:
     if allowed is None:
         allowed = DEFAULT_PUNCH_ALLOWED_ROLES
     return role_str in allowed
+
+
+def is_kiosk_allowed_for_role(settings: Dict, role) -> bool:
+    """Return True if this employee type may use the company kiosk."""
+    role_str = role.value if hasattr(role, "value") else str(role)
+    allowed = settings.get("kiosk_allowed_roles")
+    if allowed is None:
+        allowed = DEFAULT_KIOSK_ALLOWED_ROLES
+    return role_str in allowed
+
+
+def kiosk_role_blocked_message(role) -> str:
+    """Short kiosk message when a role is not in kiosk_allowed_roles."""
+    role_str = role.value if hasattr(role, "value") else str(role)
+    name = _ROLE_DISPLAY_NAMES.get(role_str, role_str.replace("_", " ").title())
+    return f"{name} is not allowed to use the kiosk."
+
+
+def is_marketplace_enabled(settings: Dict) -> bool:
+    """True when marketplace sales are enabled for the company."""
+    if "marketplace_enabled" in settings:
+        return bool(settings.get("marketplace_enabled"))
+    return bool(settings.get("marketplace_items"))
+
+
+FRONTDESK_KIOSK_BLOCKED_MESSAGE = "Front Desk is not allowed to use the kiosk."
+
+
+def frontdesk_kiosk_blocked_by_marketplace(settings: Dict, role) -> bool:
+    """Marketplace requires Front Desk to punch via portal only (not kiosk)."""
+    role_str = role.value if hasattr(role, "value") else str(role)
+    return role_str == "FRONTDESK" and is_marketplace_enabled(settings)
+
+
+def assert_kiosk_role_allowed(settings: Dict, role) -> None:
+    """Raise HTTP 403 if this role may not use the kiosk."""
+    from fastapi import HTTPException, status
+
+    if frontdesk_kiosk_blocked_by_marketplace(settings, role):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=FRONTDESK_KIOSK_BLOCKED_MESSAGE,
+        )
+    if not is_kiosk_allowed_for_role(settings, role):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=kiosk_role_blocked_message(role),
+        )
 
 
 def get_company_settings(company: Company) -> Dict:
@@ -107,10 +160,6 @@ def get_company_settings(company: Company) -> Dict:
         "cash_drawer_require_manager_review": settings.get("cash_drawer_require_manager_review", DEFAULT_CASH_DRAWER_REQUIRE_MANAGER_REVIEW),
         "schedule_day_start_hour": settings.get("schedule_day_start_hour", DEFAULT_SCHEDULE_DAY_START_HOUR),
         "schedule_day_end_hour": settings.get("schedule_day_end_hour", DEFAULT_SCHEDULE_DAY_END_HOUR),
-        # Shift notepad
-        "shift_notes_enabled": settings.get("shift_notes_enabled", DEFAULT_SHIFT_NOTES_ENABLED),
-        "shift_notes_required_on_clock_out": settings.get("shift_notes_required_on_clock_out", DEFAULT_SHIFT_NOTES_REQUIRED_ON_CLOCK_OUT),
-        "shift_notes_allow_edit_after_clock_out": settings.get("shift_notes_allow_edit_after_clock_out", DEFAULT_SHIFT_NOTES_ALLOW_EDIT_AFTER_CLOCK_OUT),
         "email_verification_required": settings.get("email_verification_required", DEFAULT_EMAIL_VERIFICATION_REQUIRED),
         "geofence_enabled": settings.get("geofence_enabled", DEFAULT_GEOFENCE_ENABLED),
         "office_latitude": settings.get("office_latitude"),
@@ -119,6 +168,7 @@ def get_company_settings(company: Company) -> Dict:
         "kiosk_network_restriction_enabled": settings.get("kiosk_network_restriction_enabled", DEFAULT_KIOSK_NETWORK_RESTRICTION_ENABLED),
         "kiosk_allowed_ips": settings.get("kiosk_allowed_ips") or [],
         "punch_allowed_roles": settings.get("punch_allowed_roles", list(DEFAULT_PUNCH_ALLOWED_ROLES)),
+        "kiosk_allowed_roles": settings.get("kiosk_allowed_roles", list(DEFAULT_KIOSK_ALLOWED_ROLES)),
         "marketplace_items": settings.get("marketplace_items", list(DEFAULT_MARKETPLACE_ITEMS)),
         "marketplace_enabled": settings.get(
             "marketplace_enabled",
@@ -247,12 +297,6 @@ async def update_company_settings(
         current_settings["schedule_day_start_hour"] = data.schedule_day_start_hour
     if data.schedule_day_end_hour is not None:
         current_settings["schedule_day_end_hour"] = data.schedule_day_end_hour
-    if data.shift_notes_enabled is not None:
-        current_settings["shift_notes_enabled"] = data.shift_notes_enabled
-    if data.shift_notes_required_on_clock_out is not None:
-        current_settings["shift_notes_required_on_clock_out"] = data.shift_notes_required_on_clock_out
-    if data.shift_notes_allow_edit_after_clock_out is not None:
-        current_settings["shift_notes_allow_edit_after_clock_out"] = data.shift_notes_allow_edit_after_clock_out
     if data.email_verification_required is not None:
         current_settings["email_verification_required"] = data.email_verification_required
     if data.geofence_enabled is not None:
@@ -269,6 +313,8 @@ async def update_company_settings(
         current_settings["kiosk_allowed_ips"] = data.kiosk_allowed_ips
     if data.punch_allowed_roles is not None:
         current_settings["punch_allowed_roles"] = data.punch_allowed_roles
+    if data.kiosk_allowed_roles is not None:
+        current_settings["kiosk_allowed_roles"] = data.kiosk_allowed_roles
     if data.marketplace_items is not None:
         current_settings["marketplace_items"] = [
             item.model_dump() if hasattr(item, "model_dump") else dict(item)
@@ -291,6 +337,10 @@ async def update_company_settings(
         current_settings["payroll_pay_type"] = data.payroll_pay_type
     if "payroll_reminder_enabled" in data.model_fields_set and data.payroll_reminder_enabled is not None:
         current_settings["payroll_reminder_enabled"] = data.payroll_reminder_enabled
+
+    # Company-level kiosk flag (column on companies, not settings_json)
+    if getattr(data, "kiosk_enabled", None) is not None:
+        company.kiosk_enabled = bool(data.kiosk_enabled)
 
     logger.info(f"Settings after update: {current_settings}")
     
@@ -532,12 +582,11 @@ async def delete_company_as_developer(
     """
     from app.models.payroll import PayrollRun, PayrollLineItem, PayrollAdjustment
     from app.models.session import Session
-    from app.models.shift import ScheduleSwap, Shift, ShiftTemplate
+    from app.models.shift import Shift, ShiftTemplate
     from app.models.time_entry import TimeEntry
     from app.models.leave_request import LeaveRequest
     from app.models.permission import RolePermission
     from app.models.cash_drawer import CashDrawerAudit, CashDrawerSession
-    from app.models.shift_note import ShiftNoteComment, ShiftNote
 
     if company_id == _SYSTEM_DEFAULT_COMPANY_ID:
         raise HTTPException(
@@ -569,13 +618,29 @@ async def delete_company_as_developer(
 
     await db.execute(sql_delete(Session).where(Session.company_id == company_id))
 
-    await db.execute(sql_delete(ScheduleSwap).where(ScheduleSwap.company_id == company_id))
+    # schedule_swaps may still exist on older DBs; no-op if already dropped.
+    swaps_exists = await db.execute(text("SELECT to_regclass(:reg)"), {"reg": "public.schedule_swaps"})
+    if swaps_exists.scalar() is not None:
+        await db.execute(
+            text("DELETE FROM schedule_swaps WHERE company_id = :cid"),
+            {"cid": company_id},
+        )
+
     await db.execute(sql_delete(Shift).where(Shift.company_id == company_id))
     await db.execute(sql_delete(ShiftTemplate).where(ShiftTemplate.company_id == company_id))
 
-    # Rows that reference time_entries (FK may be NO ACTION on older DBs).
-    await db.execute(sql_delete(ShiftNoteComment).where(ShiftNoteComment.company_id == company_id))
-    await db.execute(sql_delete(ShiftNote).where(ShiftNote.company_id == company_id))
+    # Shift notes may still exist on older DBs; no-op if tables already dropped.
+    # Must run before time_entries delete (FKs may reference time_entries).
+    for table in ("shift_note_comments", "shift_notes"):
+        exists = await db.execute(
+            text("SELECT to_regclass(:reg)"),
+            {"reg": f"public.{table}"},
+        )
+        if exists.scalar() is not None:
+            await db.execute(
+                text(f"DELETE FROM {table} WHERE company_id = :cid"),
+                {"cid": company_id},
+            )
 
     # Cash drawer references time_entries; many DBs use NO ACTION (not CASCADE) on that FK.
     await db.execute(sql_delete(CashDrawerAudit).where(CashDrawerAudit.company_id == company_id))

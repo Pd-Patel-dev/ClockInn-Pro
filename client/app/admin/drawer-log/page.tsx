@@ -23,6 +23,7 @@ interface CashDrawerSession {
   start_counted_at: string
   end_cash_cents: number | null
   end_counted_at: string | null
+  current_cash_cents: number | null
   collected_cash_cents: number | null
   drop_amount_cents: number | null
   beverages_cash_cents: number | null
@@ -72,11 +73,15 @@ function needsWeekVerify(session: CashDrawerSession): boolean {
   return session.status !== 'OPEN' && !session.verified_at
 }
 
-/** Start/end cash don't match, or finished session still missing an ending count */
+/** After-drop cash doesn't match expected (current − drop), or finished session missing ending count */
 function hasBalanceDiscrepancy(session: CashDrawerSession): boolean {
   if (session.status === 'OPEN') return false
   if (session.end_cash_cents == null) return true
-  return session.start_cash_cents !== session.end_cash_cents
+  if (session.delta_cents != null) return session.delta_cents !== 0
+  if (session.expected_balance_cents != null) {
+    return session.end_cash_cents !== session.expected_balance_cents
+  }
+  return false
 }
 
 function initials(name: string) {
@@ -175,14 +180,6 @@ export default function AdminShiftLogPage() {
   const [deleting, setDeleting] = useState(false)
   const [showDetailPanel, setShowDetailPanel] = useState(false)
   const [detailSession, setDetailSession] = useState<CashDrawerSession | null>(null)
-  const [shiftNoteDetail, setShiftNoteDetail] = useState<{
-    content: string
-    beverages_cash_cents?: number | null
-    marketplace_sales?: MarketplaceSaleRow[] | null
-    clock_in_at: string | null
-    clock_out_at: string | null
-  } | null>(null)
-  const [loadingDetail, setLoadingDetail] = useState(false)
 
   const editForm = useForm<EditForm>({
     resolver: zodResolver(editSchema),
@@ -192,7 +189,7 @@ export default function AdminShiftLogPage() {
     const fetchUser = async () => {
       try {
         const currentUser = await getCurrentUser()
-        if (currentUser.role !== 'ADMIN') {
+        if (currentUser.role !== 'ADMIN' && currentUser.role !== 'MANAGER') {
           router.push('/dashboard')
           return
         }
@@ -264,32 +261,9 @@ export default function AdminShiftLogPage() {
     setShowDeleteDialog(true)
   }
 
-  const handleViewFullDetails = async (session: CashDrawerSession) => {
+  const handleViewFullDetails = (session: CashDrawerSession) => {
     setDetailSession(session)
-    setShiftNoteDetail(null)
     setShowDetailPanel(true)
-    setLoadingDetail(true)
-    try {
-      const res = await api.get(`/admin/shift-notes/by-time-entry/${session.time_entry_id}`)
-      const d = res.data as {
-        content?: string
-        beverages_cash_cents?: number | null
-        marketplace_sales?: MarketplaceSaleRow[] | null
-        clock_in_at?: string | null
-        clock_out_at?: string | null
-      }
-      setShiftNoteDetail({
-        content: d.content ?? '',
-        beverages_cash_cents: d.beverages_cash_cents,
-        marketplace_sales: d.marketplace_sales ?? null,
-        clock_in_at: d.clock_in_at ?? null,
-        clock_out_at: d.clock_out_at ?? null,
-      })
-    } catch {
-      setShiftNoteDetail(null)
-    } finally {
-      setLoadingDetail(false)
-    }
   }
 
   const onSubmitDelete = async () => {
@@ -394,7 +368,7 @@ export default function AdminShiftLogPage() {
       if (previewWindow && !previewWindow.closed) {
         previewWindow.close()
       }
-      toast.error(error.response?.data?.detail || 'Failed to export shift log')
+      toast.error(error.response?.data?.detail || 'Failed to export drawer log')
     } finally {
       setExporting(false)
     }
@@ -719,7 +693,7 @@ export default function AdminShiftLogPage() {
                         Start
                       </th>
                       <th className="px-4 py-3 text-right text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-400">
-                        End
+                        After drop
                       </th>
                       <th className="px-4 py-3 text-right text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-400">
                         Drop
@@ -867,7 +841,6 @@ export default function AdminShiftLogPage() {
               onClick={() => {
                 setShowDetailPanel(false)
                 setDetailSession(null)
-                setShiftNoteDetail(null)
               }}
             />
             <div className="fixed inset-y-0 right-0 flex max-w-full pl-10">
@@ -890,7 +863,6 @@ export default function AdminShiftLogPage() {
                       onClick={() => {
                         setShowDetailPanel(false)
                         setDetailSession(null)
-                        setShiftNoteDetail(null)
                       }}
                       className="rounded-lg p-1.5 text-slate-400 hover:bg-white/10 hover:text-white"
                       aria-label="Close"
@@ -993,9 +965,9 @@ export default function AdminShiftLogPage() {
                         </dd>
                       </div>
                       <div className="flex justify-between gap-3">
-                        <dt className="text-slate-500">Room sale</dt>
+                        <dt className="text-slate-500">Current cash</dt>
                         <dd className="font-medium tabular-nums text-slate-900">
-                          {formatCurrency(detailSession.collected_cash_cents)}
+                          {formatCurrencyOptional(detailSession.current_cash_cents)}
                         </dd>
                       </div>
                       <div className="flex justify-between gap-3 rounded-lg bg-white px-2 py-1.5 ring-1 ring-slate-200/80">
@@ -1004,13 +976,26 @@ export default function AdminShiftLogPage() {
                           {formatCurrencyOptional(detailSession.drop_amount_cents)}
                         </dd>
                       </div>
+                      <div className="flex justify-between gap-3">
+                        <dt className="text-slate-500">After drop</dt>
+                        <dd className="font-medium tabular-nums text-slate-900">
+                          {detailSession.end_cash_cents == null
+                            ? '—'
+                            : formatCurrency(detailSession.end_cash_cents)}
+                        </dd>
+                      </div>
+                      {detailSession.expected_balance_cents != null && (
+                        <div className="flex justify-between gap-3 text-xs text-slate-500">
+                          <dt>Expected (current − drop)</dt>
+                          <dd className="tabular-nums">
+                            {formatCurrency(detailSession.expected_balance_cents)}
+                          </dd>
+                        </div>
+                      )}
                       <div className="flex justify-between gap-3 rounded-lg bg-white px-2 py-1.5 ring-1 ring-slate-200/80">
                         <dt className="font-medium text-slate-700">Sales</dt>
                         <dd className="font-semibold tabular-nums text-slate-900">
-                          {formatCurrency(
-                            shiftNoteDetail?.beverages_cash_cents ??
-                              detailSession.beverages_cash_cents
-                          )}
+                          {formatCurrency(detailSession.beverages_cash_cents)}
                         </dd>
                       </div>
                       {(detailSession.marketplace_cash_cents != null ||
@@ -1030,16 +1015,10 @@ export default function AdminShiftLogPage() {
                           </span>
                         </div>
                       )}
-                      {((shiftNoteDetail?.marketplace_sales &&
-                        shiftNoteDetail.marketplace_sales.length > 0) ||
-                        (detailSession.marketplace_sales &&
-                          detailSession.marketplace_sales.length > 0)) && (
+                      {detailSession.marketplace_sales &&
+                        detailSession.marketplace_sales.length > 0 && (
                           <ul className="mt-1 space-y-1 rounded-lg border border-slate-200/80 bg-white px-3 py-2 text-xs text-slate-600">
-                            {(
-                              shiftNoteDetail?.marketplace_sales ??
-                              detailSession.marketplace_sales ??
-                              []
-                            )
+                            {detailSession.marketplace_sales
                               .filter((row) => (row.qty || 0) > 0)
                               .map((row) => (
                                 <li
@@ -1065,12 +1044,6 @@ export default function AdminShiftLogPage() {
                               ))}
                           </ul>
                         )}
-                      <div className="flex justify-between gap-3">
-                        <dt className="text-slate-500">Ending</dt>
-                        <dd className="font-medium tabular-nums text-slate-900">
-                          {formatCurrency(detailSession.end_cash_cents)}
-                        </dd>
-                      </div>
                       <div className="flex justify-between gap-3 border-t border-slate-200/80 pt-2">
                         <dt className="font-medium text-slate-600">Difference</dt>
                         <dd
@@ -1084,26 +1057,6 @@ export default function AdminShiftLogPage() {
                         </dd>
                       </div>
                     </dl>
-                  </div>
-
-                  <div>
-                    <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-400">
-                      Shift notes
-                    </p>
-                    {loadingDetail ? (
-                      <div className="space-y-2 py-2">
-                        <div className="h-4 animate-pulse rounded bg-slate-100" />
-                        <div className="h-4 w-[80%] animate-pulse rounded bg-slate-100" />
-                        <div className="h-4 w-[60%] animate-pulse rounded bg-slate-100" />
-                      </div>
-                    ) : shiftNoteDetail?.content ? (
-                      <pre className="max-h-64 overflow-y-auto overflow-x-hidden whitespace-pre-wrap break-words rounded-xl border border-slate-200/80 bg-slate-50 p-4 font-sans text-sm text-slate-800">
-                        {/* User-supplied: text only (React escapes). Do not use dangerouslySetInnerHTML. */}
-                        {shiftNoteDetail.content}
-                      </pre>
-                    ) : (
-                      <p className="text-sm italic text-slate-500">No shift note for this shift.</p>
-                    )}
                   </div>
                 </div>
               </div>
@@ -1315,17 +1268,23 @@ export default function AdminShiftLogPage() {
                         </span>
                       </p>
                       <p className="flex justify-between">
-                        <span>End</span>
+                        <span>Current</span>
+                        <span className="font-medium tabular-nums text-slate-800">
+                          {formatCurrencyOptional(selectedSession.current_cash_cents)}
+                        </span>
+                      </p>
+                      <p className="flex justify-between">
+                        <span>Drop</span>
+                        <span className="font-medium tabular-nums text-slate-800">
+                          {formatCurrencyOptional(selectedSession.drop_amount_cents)}
+                        </span>
+                      </p>
+                      <p className="flex justify-between">
+                        <span>After drop</span>
                         <span className="font-medium tabular-nums text-slate-800">
                           {selectedSession.end_cash_cents == null
                             ? 'Not counted'
                             : formatCurrency(selectedSession.end_cash_cents)}
-                        </span>
-                      </p>
-                      <p className="flex justify-between">
-                        <span>Room sale</span>
-                        <span className="font-medium tabular-nums text-slate-800">
-                          {formatCurrency(selectedSession.collected_cash_cents)}
                         </span>
                       </p>
                       <p className="flex justify-between">

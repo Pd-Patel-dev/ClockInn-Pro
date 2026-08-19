@@ -16,7 +16,6 @@ ROLE_PERMISSIONS: dict[UserRole, set[str]] = {
         "common_log",
         "settings",
         "user_management",
-        "shift_notes",
     },
     UserRole.MANAGER: {
         "clock",
@@ -28,7 +27,6 @@ ROLE_PERMISSIONS: dict[UserRole, set[str]] = {
         "reports",
         "common_log",
         "user_management",
-        "shift_notes",
         "cash_drawer",
     },
     UserRole.FRONTDESK: {
@@ -36,32 +34,27 @@ ROLE_PERMISSIONS: dict[UserRole, set[str]] = {
         "schedule",
         "leave",
         "cash_drawer",
-        "shift_notes",
     },
     UserRole.HOUSEKEEPING: {
         "clock",
         "schedule",
         "leave",
-        "shift_notes",
     },
     UserRole.MAINTENANCE: {
         "clock",
         "schedule",
         "leave",
-        "shift_notes",
     },
     UserRole.RESTAURANT: {
         "clock",
         "schedule",
         "leave",
         "cash_drawer",
-        "shift_notes",
     },
     UserRole.SECURITY: {
         "clock",
         "schedule",
         "leave",
-        "shift_notes",
     },
     # Keep developer unrestricted for internal tooling.
     UserRole.DEVELOPER: {
@@ -76,11 +69,9 @@ ROLE_PERMISSIONS: dict[UserRole, set[str]] = {
         "common_log",
         "settings",
         "user_management",
-        "shift_notes",
     },
 }
 
 
 def has_permission(role: UserRole, feature: str) -> bool:
     return feature in ROLE_PERMISSIONS.get(role, set())
-

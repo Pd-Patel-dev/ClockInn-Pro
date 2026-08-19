@@ -127,37 +127,3 @@ class ShiftTemplate(Base):
     employee = relationship("User", foreign_keys=[employee_id], backref="shift_templates")
     creator = relationship("User", foreign_keys=[created_by])
 
-
-class ScheduleSwap(Base):
-    """Employee shift swap requests."""
-    __tablename__ = "schedule_swaps"
-
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    company_id = Column(UUID(as_uuid=True), ForeignKey("companies.id"), nullable=False, index=True)
-    
-    # Swaps
-    original_shift_id = Column(UUID(as_uuid=True), ForeignKey("shifts.id"), nullable=False)
-    requested_shift_id = Column(UUID(as_uuid=True), ForeignKey("shifts.id"), nullable=True)  # Null if open request
-    
-    # Employees
-    requester_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)  # Employee requesting swap
-    offerer_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)  # Employee offering swap
-    
-    # Status
-    status = Column(String(50), nullable=False, default="pending")  # pending, approved, rejected, cancelled
-    approved_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
-    approved_at = Column(DateTime(timezone=True), nullable=True)
-    notes = Column(Text, nullable=True)
-    
-    # Timestamps
-    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
-    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
-    
-    # Relationships
-    company = relationship("Company", backref="schedule_swaps")
-    original_shift = relationship("Shift", foreign_keys=[original_shift_id], backref="swap_requests")
-    requested_shift = relationship("Shift", foreign_keys=[requested_shift_id])
-    requester = relationship("User", foreign_keys=[requester_id], backref="swap_requests")
-    offerer = relationship("User", foreign_keys=[offerer_id], backref="swap_offers")
-    approver = relationship("User", foreign_keys=[approved_by])
-

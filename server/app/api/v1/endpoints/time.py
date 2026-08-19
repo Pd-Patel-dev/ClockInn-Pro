@@ -7,7 +7,7 @@ from uuid import UUID
 import uuid
 
 from app.core.database import get_db
-from app.core.dependencies import get_current_user, get_current_admin, get_current_verified_user
+from app.core.dependencies import get_current_user, get_current_admin, get_current_admin_or_manager, get_current_verified_user
 from app.core.error_handling import handle_endpoint_errors, parse_uuid
 from app.models.user import User, UserRole, UserStatus
 from app.models.time_entry import TimeEntryStatus
@@ -173,6 +173,7 @@ async def punch_endpoint(
         skip_pin_verification=False,
         cash_start_cents=data.cash_start_cents,
         cash_end_cents=data.cash_end_cents,
+        current_cash_cents=data.current_cash_cents,
         collected_cash_cents=data.collected_cash_cents,
         drop_amount_cents=data.drop_amount_cents,
         beverages_cash_cents=data.beverages_cash_cents,
@@ -334,6 +335,7 @@ async def punch_me_endpoint(
         skip_pin_verification=False,
         cash_start_cents=data.cash_start_cents,
         cash_end_cents=data.cash_end_cents,
+        current_cash_cents=data.current_cash_cents,
         collected_cash_cents=data.collected_cash_cents,
         drop_amount_cents=data.drop_amount_cents,
         beverages_cash_cents=data.beverages_cash_cents,
@@ -420,6 +422,7 @@ async def punch_me_simple_endpoint(
         skip_pin_verification=True,
         cash_start_cents=data.cash_start_cents,
         cash_end_cents=data.cash_end_cents,
+        current_cash_cents=data.current_cash_cents,
         collected_cash_cents=data.collected_cash_cents,
         drop_amount_cents=data.drop_amount_cents,
         beverages_cash_cents=data.beverages_cash_cents,
@@ -545,10 +548,10 @@ async def get_admin_time_entries_endpoint(
     status: Optional[TimeEntryStatus] = Query(None),
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=1000),
-    current_user: User = Depends(get_current_admin),
+    current_user: User = Depends(get_current_admin_or_manager),
     db: AsyncSession = Depends(get_db),
 ):
-    """Get time entries for admin view."""
+    """Get time entries for admin/manager Punch Log view."""
     emp_id = None
     if employee_id:
         emp_id = parse_uuid(employee_id, "Employee ID")

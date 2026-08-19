@@ -64,17 +64,28 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning("Could not check email service: %s", e)
     
-    try:
-        from app.core.config import settings as _settings
+    from app.core.config import settings as _settings
+    from app.core.environment import is_production_environment
 
-        if _settings.REDIS_URL:
+    if (_settings.REDIS_URL or "").strip():
+        try:
+            from app.core.login_attempts import ping_login_attempts_redis
+
+            await ping_login_attempts_redis()
             logger.info("Login lockout: Redis backend (REDIS_URL is set).")
             logger.info("API rate limits: Redis sliding window (shared across API replicas).")
-        else:
-            logger.info("Login lockout: in-memory — set REDIS_URL for shared lockout across API replicas.")
-            logger.info("API rate limits: in-memory per process — set REDIS_URL to share limits across replicas.")
-    except Exception:
-        pass
+        except Exception as e:
+            if is_production_environment():
+                logger.error("Redis required in production but unreachable: %s", e)
+                raise
+            logger.warning(
+                "REDIS_URL is set but Redis is unreachable (%s); falling back to in-memory "
+                "rate limits / lockout until Redis is available.",
+                e,
+            )
+    else:
+        logger.info("Login lockout: in-memory — set REDIS_URL for shared lockout across API replicas.")
+        logger.info("API rate limits: in-memory per process — set REDIS_URL to share limits across replicas.")
 
     async def _auto_clock_out_loop():
         """Periodically close open punches past scheduled shift end."""

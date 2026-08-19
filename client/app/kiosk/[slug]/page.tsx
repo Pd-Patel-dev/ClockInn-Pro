@@ -35,8 +35,10 @@ export default function KioskSlugPage() {
   const [showPunchConfirm, setShowPunchConfirm] = useState(false)
   const [punchConfirmNext, setPunchConfirmNext] = useState<'execute' | 'execute_after_cash' | null>(null)
   const [cashAmount, setCashAmount] = useState('')
-  const [collectedCash, setCollectedCash] = useState('')
+  const [currentCashAmount, setCurrentCashAmount] = useState('')
   const [dropAmount, setDropAmount] = useState('')
+  const [startCashCents, setStartCashCents] = useState(0)
+  const [marketplaceCashCents, setMarketplaceCashCents] = useState(0)
   const [cashError, setCashError] = useState<string | null>(null)
   const [drawerActiveBy, setDrawerActiveBy] = useState<string | null>(null)
   const [pendingPunch, setPendingPunch] = useState(false)
@@ -150,8 +152,8 @@ export default function KioskSlugPage() {
     pin: string,
     cashStartCents?: number,
     cashEndCents?: number,
-    collectedCashCents?: number,
-    dropAmountCents?: number
+    dropAmountCents?: number,
+    currentCashCents?: number
   ) => {
     if (!slug) {
       setMessage('Invalid kiosk URL')
@@ -183,7 +185,7 @@ export default function KioskSlugPage() {
         pin: pin,
         cash_start_cents: cashStartCents,
         cash_end_cents: cashEndCents,
-        collected_cash_cents: collectedCashCents,
+        current_cash_cents: currentCashCents,
         drop_amount_cents: dropAmountCents,
         latitude: currentLocation?.latitude,
         longitude: currentLocation?.longitude,
@@ -197,7 +199,7 @@ export default function KioskSlugPage() {
       // Clear PIN and employee info immediately after successful punch
       setPinDisplay('')
       setCashAmount('')
-      setCollectedCash('')
+      setCurrentCashAmount('')
       setDropAmount('')
       setCashError(null)
       setPendingPunch(false)
@@ -260,7 +262,7 @@ export default function KioskSlugPage() {
           setPendingPunch(true)
           setShowCashDialog(true)
           setCashAmount('')
-          setCollectedCash('')
+          setCurrentCashAmount('')
           setDropAmount('')
           setCashError(null)
           setMessage(null) // Clear error message since we're showing dialog
@@ -338,11 +340,13 @@ export default function KioskSlugPage() {
       if (data.is_clocked_in) {
         // Employee is clocked in - show end shift form
         setIsClockIn(false)
+        setStartCashCents(Number(data.cash_drawer_start_cash_cents) || 0)
+        setMarketplaceCashCents(Number(data.cash_drawer_marketplace_cash_cents) || 0)
         if (needsCash) {
           setPendingPunch(true)
           setShowCashDialog(true)
           setCashAmount('')
-          setCollectedCash('')
+          setCurrentCashAmount('')
           setDropAmount('')
           setCashError(null)
         } else {
@@ -352,11 +356,13 @@ export default function KioskSlugPage() {
       } else {
         // Employee is not clocked in - show start shift form with greeting
         setIsClockIn(true)
+        setStartCashCents(0)
+        setMarketplaceCashCents(0)
         if (needsCash) {
           setPendingPunch(true)
           setShowCashDialog(true)
           setCashAmount('')
-          setCollectedCash('')
+          setCurrentCashAmount('')
           setDropAmount('')
           setCashError(null)
         } else {
@@ -396,26 +402,55 @@ export default function KioskSlugPage() {
     await checkPin(pinToUse)
   }, [pinDisplay, checkPin, pendingPunch, showCashDialog, checkingPin, showPunchConfirm])
 
-  const handleCashDialogSubmit = useCallback(async () => {
-    // Validate cash amount
-    const cashValue = parseFloat(cashAmount)
-    if (isNaN(cashValue) || cashValue < 0) {
-      setCashError('Please enter a valid cash amount')
+  // Prefill drop = current − starting; after drop = current − drop
+  useEffect(() => {
+    if (isClockIn || !showCashDialog) return
+    const current = parseFloat(currentCashAmount)
+    if (!Number.isFinite(current) || current < 0) {
+      setDropAmount('')
       return
     }
-    
-    // For clock-out, validate additional cash fields
-    if (!isClockIn) {
-      const collectedValue = parseFloat(collectedCash)
-      const dropValue = parseFloat(dropAmount)
+    const suggestedCents = Math.max(0, Math.round(current * 100) - startCashCents)
+    setDropAmount((suggestedCents / 100).toFixed(2))
+  }, [isClockIn, showCashDialog, currentCashAmount, startCashCents])
 
-      if (isNaN(collectedValue) || collectedValue < 0) {
-        setCashError('Please enter a valid room sale amount')
+  useEffect(() => {
+    if (isClockIn || !showCashDialog) return
+    const current = parseFloat(currentCashAmount)
+    const drop = parseFloat(dropAmount)
+    if (!Number.isFinite(current) || current < 0 || !Number.isFinite(drop) || drop < 0 || drop > current) {
+      setCashAmount('')
+      return
+    }
+    const endCents = Math.max(0, Math.round(current * 100) - Math.round(drop * 100))
+    setCashAmount((endCents / 100).toFixed(2))
+  }, [isClockIn, showCashDialog, currentCashAmount, dropAmount])
+
+  const handleCashDialogSubmit = useCallback(async () => {
+    if (isClockIn) {
+      const cashValue = parseFloat(cashAmount)
+      if (isNaN(cashValue) || cashValue < 0) {
+        setCashError('Please enter a valid cash amount')
         return
       }
-
+    } else {
+      const currentValue = parseFloat(currentCashAmount)
+      if (isNaN(currentValue) || currentValue < 0) {
+        setCashError('Please enter the current cash in drawer')
+        return
+      }
+      const dropValue = parseFloat(dropAmount)
       if (isNaN(dropValue) || dropValue < 0) {
         setCashError('Please enter a valid drop amount')
+        return
+      }
+      if (dropValue > currentValue) {
+        setCashError('Drop amount cannot exceed current cash in drawer')
+        return
+      }
+      const endValue = parseFloat(cashAmount)
+      if (isNaN(endValue) || endValue < 0) {
+        setCashError('Enter current cash and drop to calculate cash after drop')
         return
       }
     }
@@ -424,12 +459,14 @@ export default function KioskSlugPage() {
     setShowCashDialog(false)
     setPunchConfirmNext('execute_after_cash')
     setShowPunchConfirm(true)
-  }, [cashAmount, collectedCash, dropAmount, isClockIn])
+  }, [cashAmount, currentCashAmount, dropAmount, isClockIn])
 
   const handleCashDialogCancel = useCallback(() => {
     setShowCashDialog(false)
     setPendingPunch(false)
     setCashAmount('')
+    setCurrentCashAmount('')
+    setDropAmount('')
     setCashError(null)
     setPinDisplay('')
   }, [])
@@ -441,11 +478,11 @@ export default function KioskSlugPage() {
     if (isClockIn) {
       await executePunch(pinToUse, cashCents)
     } else {
-      const collectedCents = Math.round(parseFloat(collectedCash) * 100)
       const dropCents = Math.round(parseFloat(dropAmount || '0') * 100)
-      await executePunch(pinToUse, undefined, cashCents, collectedCents, dropCents)
+      const currentCents = Math.round(parseFloat(currentCashAmount || '0') * 100)
+      await executePunch(pinToUse, undefined, cashCents, dropCents, currentCents)
     }
-  }, [cashAmount, collectedCash, dropAmount, pinDisplay, isClockIn, executePunch])
+  }, [cashAmount, currentCashAmount, dropAmount, pinDisplay, isClockIn, executePunch])
 
   const handleKioskPunchConfirm = useCallback(() => {
     const next = punchConfirmNext
@@ -874,15 +911,12 @@ export default function KioskSlugPage() {
                   </p>
                 </div>
               ) : (
-                // Clock-out: Need collected cash, drop, and drawer cash
+                // Clock-out: current cash, drop, after drop
                 <div className="space-y-6 mb-8">
                   <div>
                     <label className="mb-3 block text-xs font-medium uppercase tracking-wide text-slate-400">
                       <div className="flex items-center gap-2">
-                        <svg className="h-4 w-4 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                        </svg>
-                        <span>Room Sale Amount</span>
+                        <span>Current Cash in Drawer</span>
                         <span className="text-red-400">*</span>
                       </div>
                     </label>
@@ -894,9 +928,9 @@ export default function KioskSlugPage() {
                         type="number"
                         step="0.01"
                         min="0"
-                        value={collectedCash}
+                        value={currentCashAmount}
                         onChange={(e) => {
-                          setCollectedCash(e.target.value)
+                          setCurrentCashAmount(e.target.value)
                           setCashError(null)
                         }}
                         autoFocus
@@ -909,9 +943,9 @@ export default function KioskSlugPage() {
                         disabled={loading}
                       />
                     </div>
-                    <p className="mt-2 text-xs text-slate-500">Total cash collected from customers</p>
+                    <p className="mt-2 text-xs text-slate-500">Count of cash currently in the drawer</p>
                   </div>
-                  
+
                   <div>
                     <label className="mb-3 block text-xs font-medium uppercase tracking-wide text-slate-400">
                       <div className="flex items-center gap-2">
@@ -927,9 +961,27 @@ export default function KioskSlugPage() {
                         type="number"
                         step="0.01"
                         min="0"
+                        max={
+                          Number.isFinite(parseFloat(currentCashAmount)) && parseFloat(currentCashAmount) >= 0
+                            ? parseFloat(currentCashAmount)
+                            : undefined
+                        }
                         value={dropAmount}
                         onChange={(e) => {
-                          setDropAmount(e.target.value)
+                          const v = e.target.value
+                          const current = parseFloat(currentCashAmount)
+                          const next = parseFloat(v)
+                          if (
+                            Number.isFinite(current) &&
+                            current >= 0 &&
+                            Number.isFinite(next) &&
+                            next > current
+                          ) {
+                            setDropAmount(current.toFixed(2))
+                            setCashError('Drop amount cannot exceed current cash in drawer')
+                            return
+                          }
+                          setDropAmount(v)
                           setCashError(null)
                         }}
                         className={`block w-full rounded-xl border-2 py-4 pl-10 pr-4 text-base text-white transition-all focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-0 focus:ring-offset-slate-900 ${
@@ -941,9 +993,8 @@ export default function KioskSlugPage() {
                         disabled={loading}
                       />
                     </div>
-                    <p className="mt-2 text-xs text-slate-500">Cash removed/dropped from drawer during shift</p>
+                    <p className="mt-2 text-xs text-slate-500">Prefills as current − starting; cannot exceed current cash</p>
                   </div>
-                  
                   
                   <div>
                     <label className="mb-3 block text-xs font-medium uppercase tracking-wide text-slate-400">
@@ -951,8 +1002,7 @@ export default function KioskSlugPage() {
                         <svg className="h-4 w-4 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
                         </svg>
-                        <span>Cash in Drawer</span>
-                        <span className="text-red-400">*</span>
+                        <span>Cash in Drawer After Drop</span>
                       </div>
                     </label>
                     <div className="relative group">
@@ -964,25 +1014,13 @@ export default function KioskSlugPage() {
                         step="0.01"
                         min="0"
                         value={cashAmount}
-                        onChange={(e) => {
-                          setCashAmount(e.target.value)
-                          setCashError(null)
-                        }}
-                        onKeyPress={(e) => {
-                          if (e.key === 'Enter') {
-                            handleCashDialogSubmit()
-                          }
-                        }}
-                        className={`block w-full rounded-xl border-2 py-4 pl-10 pr-4 text-base text-white transition-all focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-0 focus:ring-offset-slate-900 ${
-                          cashError 
-                            ? 'border-red-400/50 bg-red-950/30' 
-                            : 'border-slate-700 bg-slate-800'
-                        }`}
+                        readOnly
+                        className="block w-full cursor-default rounded-xl border-2 border-slate-700 bg-slate-900/80 py-4 pl-10 pr-4 text-base tabular-nums text-slate-300"
                         placeholder="0.00"
                         disabled={loading}
                       />
                     </div>
-                    <p className="mt-2 text-xs text-slate-500">Final cash amount remaining in drawer</p>
+                    <p className="mt-2 text-xs text-slate-500">Auto: current cash − drop</p>
                   </div>
                   
                   {cashError && (
@@ -1002,10 +1040,16 @@ export default function KioskSlugPage() {
                   type="button"
                   onClick={handleCashDialogSubmit}
                   disabled={
-                    loading || 
-                    !cashAmount || 
-                    parseFloat(cashAmount) < 0 ||
-                    (!isClockIn && (!collectedCash || parseFloat(collectedCash) < 0 || !dropAmount || parseFloat(dropAmount) < 0))
+                    loading ||
+                    (isClockIn && (!cashAmount || parseFloat(cashAmount) < 0)) ||
+                    (!isClockIn &&
+                      (!currentCashAmount ||
+                        parseFloat(currentCashAmount) < 0 ||
+                        !dropAmount ||
+                        parseFloat(dropAmount) < 0 ||
+                        parseFloat(dropAmount) > parseFloat(currentCashAmount) ||
+                        !cashAmount ||
+                        parseFloat(cashAmount) < 0))
                   }
                   className="flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 py-3 font-medium text-white transition-colors hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
                 >

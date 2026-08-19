@@ -152,6 +152,8 @@ class KioskPinCheckResponse(BaseModel):
     cash_drawer_required: bool = False
     cash_drawer_active_by: Optional[str] = None
     cash_drawer_already_active: bool = False
+    cash_drawer_start_cash_cents: Optional[int] = None
+    cash_drawer_marketplace_cash_cents: Optional[int] = None
 
 
 @router.post("/check-pin", response_model=KioskPinCheckResponse)
@@ -212,6 +214,13 @@ async def check_kiosk_pin(
     
     if not matching_employee:
         return KioskPinCheckResponse(valid=False)
+
+    from app.services.company_service import (
+        get_company_settings,
+        assert_kiosk_role_allowed,
+    )
+    company_settings_early = get_company_settings(company)
+    assert_kiosk_role_allowed(company_settings_early, matching_employee.role)
     
     # Check if employee's email is verified (respects company email_verification_required)
     from app.services.verification_service import check_verification_required_for_user
@@ -261,6 +270,8 @@ async def check_kiosk_pin(
     cash_drawer_required = False
     cash_drawer_already_active = False
     cash_drawer_active_by = None
+    cash_drawer_start_cash_cents = None
+    cash_drawer_marketplace_cash_cents = None
 
     if role_requires_cash:
         if is_clocked_in and open_entry:
@@ -273,6 +284,17 @@ async def check_kiosk_pin(
                 )
             ).scalar_one_or_none()
             cash_drawer_required = own_session is not None
+            if own_session is not None:
+                cash_drawer_start_cash_cents = int(own_session.start_cash_cents or 0)
+                from app.services.marketplace_service import (
+                    marketplace_cash_cents,
+                    normalize_sales,
+                )
+
+                sales = normalize_sales(
+                    getattr(own_session, "marketplace_sales_json", None)
+                )
+                cash_drawer_marketplace_cash_cents = marketplace_cash_cents(sales)
         else:
             # Clock-in: require starting cash only if no company drawer is open yet
             if active_drawer:
@@ -292,6 +314,8 @@ async def check_kiosk_pin(
         cash_drawer_required=cash_drawer_required,
         cash_drawer_active_by=cash_drawer_active_by,
         cash_drawer_already_active=cash_drawer_already_active,
+        cash_drawer_start_cash_cents=cash_drawer_start_cash_cents,
+        cash_drawer_marketplace_cash_cents=cash_drawer_marketplace_cash_cents,
     )
 
 
@@ -299,8 +323,9 @@ class KioskClockRequest(BaseModel):
     company_slug: str = Field(..., min_length=1, max_length=50)
     pin: str = Field(..., min_length=4, max_length=4, pattern="^[0-9]{4}$")
     cash_start_cents: Optional[int] = Field(None, ge=0, description="Starting cash in cents (required on clock-in if cash drawer enabled)")
-    cash_end_cents: Optional[int] = Field(None, ge=0, description="Ending cash in cents (required on clock-out if cash drawer session exists)")
-    collected_cash_cents: Optional[int] = Field(None, ge=0, description="Total cash collected from customers (for punch-out)")
+    cash_end_cents: Optional[int] = Field(None, ge=0, description="Cash in drawer after drop (clock-out)")
+    current_cash_cents: Optional[int] = Field(None, ge=0, description="Current cash in drawer before drop (clock-out)")
+    collected_cash_cents: Optional[int] = Field(None, ge=0, description="Legacy; unused by current clock-out UI")
     drop_amount_cents: Optional[int] = Field(None, ge=0, description="Cash dropped from drawer during shift (for punch-out)")
     beverages_cash_cents: Optional[int] = Field(None, ge=0, description="Marketplace sales total in cents (for punch-out)")
     latitude: Optional[str] = Field(None, description="GPS latitude coordinate")
@@ -371,6 +396,12 @@ async def kiosk_clock(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid PIN",
         )
+
+    from app.services.company_service import (
+        get_company_settings as _get_company_settings,
+        assert_kiosk_role_allowed,
+    )
+    assert_kiosk_role_allowed(_get_company_settings(company), matching_employee.role)
     
     # Check kiosk network after we know who is punching — block if wrong network, send warning email only on actual punch attempt
     await _check_kiosk_network(request, company, db, employee=matching_employee, send_warning_email=True)
@@ -404,6 +435,7 @@ async def kiosk_clock(
         skip_pin_verification=True,  # PIN already verified
         cash_start_cents=data.cash_start_cents,
         cash_end_cents=data.cash_end_cents,
+        current_cash_cents=data.current_cash_cents,
         collected_cash_cents=data.collected_cash_cents,
         drop_amount_cents=data.drop_amount_cents,
         beverages_cash_cents=data.beverages_cash_cents,

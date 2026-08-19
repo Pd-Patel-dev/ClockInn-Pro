@@ -185,7 +185,10 @@ function VerifyCodeContent() {
             </div>
 
             <p className="mt-6 text-xs text-slate-500 text-center">
-              Code expires in 15 minutes. Check spam if you don&apos;t see the email.
+              Code expires in 15 minutes. Check spam if you don&apos;t see the email. If nothing
+              arrives, ask your administrator to confirm Email Service is connected, or use{' '}
+              <span className="font-medium text-slate-600">Employees → Resend invite</span> for
+              new accounts.
             </p>
           </div>
         </div>

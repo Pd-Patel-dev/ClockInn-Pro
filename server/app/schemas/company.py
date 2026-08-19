@@ -32,9 +32,6 @@ class CompanySettingsResponse(BaseModel):
     cash_drawer_require_manager_review: Optional[bool] = None
     schedule_day_start_hour: Optional[int] = 7  # 0-23, hour when schedule day starts (e.g. 7 = 7 AM)
     schedule_day_end_hour: Optional[int] = 7    # 0-23, hour when schedule day ends (same = 24h, e.g. 7 = 7 AM next day)
-    shift_notes_enabled: Optional[bool] = True
-    shift_notes_required_on_clock_out: Optional[bool] = False
-    shift_notes_allow_edit_after_clock_out: Optional[bool] = False
     email_verification_required: Optional[bool] = True  # If False, users in this company can use the app without verifying email
     # Geofence: require punch in/out only when at office
     geofence_enabled: Optional[bool] = False
@@ -46,6 +43,7 @@ class CompanySettingsResponse(BaseModel):
     kiosk_allowed_ips: Optional[List[str]] = None
     # Which employee types may punch in/out (dashboard + punch APIs)
     punch_allowed_roles: Optional[list[str]] = None
+    kiosk_allowed_roles: Optional[list[str]] = None
     marketplace_items: Optional[List[MarketplaceItem]] = None
     marketplace_enabled: Optional[bool] = False
     auto_clock_out_enabled: Optional[bool] = True
@@ -98,14 +96,11 @@ class CompanySettingsUpdate(BaseModel):
     cash_drawer_required_roles: Optional[list[str]] = Field(None, description="Roles that require cash drawer (e.g., ['FRONTDESK', 'HOUSEKEEPING'])")
     cash_drawer_currency: Optional[str] = Field(None, max_length=10, description="Currency code (e.g., USD)")
     cash_drawer_starting_amount_cents: Optional[int] = Field(None, ge=0, description="Default starting cash amount in cents (e.g., 10000 = $100.00)")
-    cash_drawer_variance_threshold_cents: Optional[int] = Field(None, ge=0, description="Variance threshold in cents (e.g., 2000 = $20.00)")
+    cash_drawer_variance_threshold_cents: Optional[int] = Field(None, ge=0, description="When manager review is on, |delta| above this (cents) marks REVIEW_NEEDED (e.g. 2000 = $20.00)")
     cash_drawer_allow_edit: Optional[bool] = Field(None, description="Allow editing cash drawer sessions")
-    cash_drawer_require_manager_review: Optional[bool] = Field(None, description="Require manager review for variances")
+    cash_drawer_require_manager_review: Optional[bool] = Field(None, description="If true, flag REVIEW_NEEDED when |delta| exceeds variance threshold; if false, close normally (delta still stored)")
     schedule_day_start_hour: Optional[int] = Field(None, ge=0, le=23, description="Hour (0-23) when the schedule day starts (e.g. 7 = 7 AM)")
     schedule_day_end_hour: Optional[int] = Field(None, ge=0, le=23, description="Hour (0-23) when the schedule day ends (e.g. 7 = 7 AM next day; same as start = 24h day)")
-    shift_notes_enabled: Optional[bool] = Field(None, description="Enable shift notepad / common log")
-    shift_notes_required_on_clock_out: Optional[bool] = Field(None, description="Require shift note before clock out")
-    shift_notes_allow_edit_after_clock_out: Optional[bool] = Field(None, description="Allow editing shift note after clock out")
     email_verification_required: Optional[bool] = Field(None, description="If False, users in this company can use the app without email verification")
     geofence_enabled: Optional[bool] = Field(None, description="Require employees to be within office radius to punch in/out")
     office_latitude: Optional[float] = Field(None, ge=-90, le=90, description="Office location latitude")
@@ -117,6 +112,10 @@ class CompanySettingsUpdate(BaseModel):
         None,
         description="Employee roles allowed to punch in/out (e.g. ['FRONTDESK', 'HOUSEKEEPING'])",
     )
+    kiosk_allowed_roles: Optional[list[str]] = Field(
+        None,
+        description="Employee roles allowed to use the kiosk PIN pad (e.g. ['HOUSEKEEPING', 'MAINTENANCE'])",
+    )
     marketplace_items: Optional[List[MarketplaceItem]] = Field(
         None,
         description="Marketplace items for Front Desk sales during a shift (label + price_cents)",
@@ -124,6 +123,10 @@ class CompanySettingsUpdate(BaseModel):
     marketplace_enabled: Optional[bool] = Field(
         None,
         description="Enable marketplace sales on the Front Desk dashboard",
+    )
+    kiosk_enabled: Optional[bool] = Field(
+        None,
+        description="Enable or disable the company kiosk (PIN pad). Recommended off when Marketplace is on for Front Desk.",
     )
     auto_clock_out_enabled: Optional[bool] = Field(
         None,
@@ -163,7 +166,7 @@ class CompanyCreateWithAdmin(BaseModel):
     address: Optional[str] = None
     phone: Optional[str] = None
     email: Optional[EmailStr] = None  # company contact email, separate from admin email
-    email_verification_required: bool = Field(default=False)
+    email_verification_required: bool = Field(default=True)
 
     admin_name: str = Field(min_length=2, max_length=100)
     admin_email: EmailStr

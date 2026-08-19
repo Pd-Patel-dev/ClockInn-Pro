@@ -10,7 +10,11 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import logger from '@/lib/logger'
 import { useToast } from '@/components/Toast'
-import { DEFAULT_PUNCH_ALLOWED_ROLES, PUNCH_ROLE_OPTIONS } from '@/lib/punch'
+import {
+  DEFAULT_KIOSK_ALLOWED_ROLES,
+  DEFAULT_PUNCH_ALLOWED_ROLES,
+  PUNCH_ROLE_OPTIONS,
+} from '@/lib/punch'
 import RolesPermissionsTab from '@/components/settings/RolesPermissionsTab'
 import { InfoTip } from '@/components/ui/InfoTip'
 
@@ -110,7 +114,6 @@ const companySettingsSchema = z.object({
   breaks_paid: z.boolean(),
   schedule_day_start_hour: z.number().int().min(0).max(23),
   schedule_day_end_hour: z.number().int().min(0).max(23),
-  shift_notes_enabled: z.boolean(),
   auto_clock_out_enabled: z.boolean(),
   /** Hours after scheduled end before auto clock-out runs (0–12). Stored as minutes. */
   auto_clock_out_grace_hours: z.number().int().min(0).max(12),
@@ -136,6 +139,7 @@ const cashDrawerSettingsSchema = z.object({
 
 const marketplaceSettingsSchema = z.object({
   marketplace_enabled: z.boolean(),
+  disable_company_kiosk: z.boolean().optional(),
   marketplace_items: z.array(marketplaceItemSchema).optional(),
 })
 
@@ -196,10 +200,10 @@ interface CompanySettings {
   geofence_radius_meters?: number
   kiosk_network_restriction_enabled?: boolean
   kiosk_allowed_ips?: string[]
-  shift_notes_enabled?: boolean
   auto_clock_out_enabled?: boolean
   auto_clock_out_grace_minutes?: number
   punch_allowed_roles?: string[]
+  kiosk_allowed_roles?: string[]
 }
 
 interface AdminInfo {
@@ -240,6 +244,9 @@ export default function AdminSettingsPage() {
   const [kioskUrl, setKioskUrl] = useState<string>('')
   const [kioskNetworkRestrictionEnabled, setKioskNetworkRestrictionEnabled] = useState(false)
   const [kioskAllowedIpsText, setKioskAllowedIpsText] = useState('')
+  const [kioskAllowedRoles, setKioskAllowedRoles] = useState<string[]>([
+    ...DEFAULT_KIOSK_ALLOWED_ROLES,
+  ])
   const [kioskFetchingMyIp, setKioskFetchingMyIp] = useState(false)
 
   const {
@@ -283,9 +290,11 @@ export default function AdminSettingsPage() {
     resolver: zodResolver(marketplaceSettingsSchema),
     defaultValues: {
       marketplace_enabled: false,
+      disable_company_kiosk: true,
     },
   })
   const marketplaceEnabled = watchMarketplace('marketplace_enabled')
+  const disableCompanyKiosk = watchMarketplace('disable_company_kiosk')
   const [marketplaceItems, setMarketplaceItems] = useState<
     { id: string; label: string; price_cents: number }[]
   >([])
@@ -426,7 +435,6 @@ export default function AdminSettingsPage() {
           breaks_paid: response.data.settings.breaks_paid ?? false,
           schedule_day_start_hour: response.data.settings.schedule_day_start_hour ?? 7,
           schedule_day_end_hour: response.data.settings.schedule_day_end_hour ?? 7,
-          shift_notes_enabled: response.data.settings.shift_notes_enabled ?? true,
           auto_clock_out_enabled: response.data.settings.auto_clock_out_enabled ?? true,
           auto_clock_out_grace_hours: Math.min(
             12,
@@ -455,6 +463,7 @@ export default function AdminSettingsPage() {
         resetMarketplace({
           marketplace_enabled:
             response.data.settings.marketplace_enabled ?? items.length > 0,
+          disable_company_kiosk: !(response.data.kiosk_enabled ?? true),
         })
         resetGeofence({
           geofence_enabled: response.data.settings.geofence_enabled ?? false,
@@ -464,6 +473,9 @@ export default function AdminSettingsPage() {
         })
         setKioskNetworkRestrictionEnabled(response.data.settings.kiosk_network_restriction_enabled ?? false)
         setKioskAllowedIpsText((response.data.settings.kiosk_allowed_ips || []).join('\n'))
+        setKioskAllowedRoles(
+          response.data.settings.kiosk_allowed_roles ?? [...DEFAULT_KIOSK_ALLOWED_ROLES],
+        )
         
         setValueName('name', response.data.name)
       }
@@ -510,7 +522,6 @@ export default function AdminSettingsPage() {
         breaks_paid: data.breaks_paid,
         schedule_day_start_hour: data.schedule_day_start_hour,
         schedule_day_end_hour: data.schedule_day_end_hour,
-        shift_notes_enabled: data.shift_notes_enabled,
         auto_clock_out_enabled: data.auto_clock_out_enabled,
         auto_clock_out_grace_minutes: data.auto_clock_out_grace_hours * 60,
         punch_allowed_roles: data.punch_allowed_roles || [],
@@ -540,7 +551,6 @@ export default function AdminSettingsPage() {
           breaks_paid: response.data.settings.breaks_paid ?? false,
           schedule_day_start_hour: response.data.settings.schedule_day_start_hour ?? 7,
           schedule_day_end_hour: response.data.settings.schedule_day_end_hour ?? 7,
-          shift_notes_enabled: response.data.settings.shift_notes_enabled ?? true,
           auto_clock_out_enabled: response.data.settings.auto_clock_out_enabled ?? true,
           auto_clock_out_grace_hours: Math.min(
             12,
@@ -632,13 +642,17 @@ export default function AdminSettingsPage() {
           return
         }
       }
-      const updateData = {
+      const updateData: Record<string, unknown> = {
         marketplace_enabled: data.marketplace_enabled,
         marketplace_items: marketplaceItems.map((i) => ({
           id: i.id,
           label: i.label.trim(),
           price_cents: Math.max(0, Math.round(Number(i.price_cents) || 0)),
         })),
+      }
+      // When marketplace is on, optionally turn off company kiosk (FD must use portal)
+      if (data.marketplace_enabled && data.disable_company_kiosk) {
+        updateData.kiosk_enabled = false
       }
       const response = await api.put('/admin/company/settings', updateData)
       setCompanyInfo(response.data)
@@ -647,8 +661,17 @@ export default function AdminSettingsPage() {
       resetMarketplace({
         marketplace_enabled:
           response.data.settings.marketplace_enabled ?? items.length > 0,
+        disable_company_kiosk: !(response.data.kiosk_enabled ?? true),
       })
-      toast.success('Marketplace settings updated successfully!')
+      if (data.marketplace_enabled && data.disable_company_kiosk) {
+        toast.success('Marketplace enabled. Company kiosk disabled — Front Desk must punch via portal.')
+      } else if (data.marketplace_enabled) {
+        toast.success(
+          'Marketplace enabled. Front Desk is blocked from kiosk and must punch via portal.'
+        )
+      } else {
+        toast.success('Marketplace settings updated successfully!')
+      }
     } catch (error: any) {
       logger.error('Failed to update marketplace settings', error as Error, {
         endpoint: '/admin/company/settings',
@@ -703,14 +726,18 @@ export default function AdminSettingsPage() {
       const response = await api.put('/admin/company/settings', {
         kiosk_network_restriction_enabled: kioskNetworkRestrictionEnabled,
         kiosk_allowed_ips: ips,
+        kiosk_allowed_roles: kioskAllowedRoles,
       })
       setCompanyInfo(response.data)
       setKioskNetworkRestrictionEnabled(response.data.settings.kiosk_network_restriction_enabled ?? false)
       setKioskAllowedIpsText((response.data.settings.kiosk_allowed_ips || []).join('\n'))
-      toast.success('Kiosk network settings updated successfully!')
+      setKioskAllowedRoles(
+        response.data.settings.kiosk_allowed_roles ?? [...DEFAULT_KIOSK_ALLOWED_ROLES],
+      )
+      toast.success('Kiosk settings updated successfully!')
     } catch (error: any) {
-      logger.error('Failed to update kiosk network settings', error as Error)
-      toast.error(error.response?.data?.detail || 'Failed to update kiosk network settings')
+      logger.error('Failed to update kiosk settings', error as Error)
+      toast.error(error.response?.data?.detail || 'Failed to update kiosk settings')
     } finally {
       setSaving(false)
     }
@@ -1304,7 +1331,7 @@ export default function AdminSettingsPage() {
           <div className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm">
             <SectionTitle
               as="h2"
-              tip="Timezone, overtime, rounding, breaks, punch access, shift notes, auto clock-out, and schedule day hours. These affect time tracking and payroll."
+              tip="Timezone, overtime, rounding, breaks, punch access, auto clock-out, and schedule day hours. These affect time tracking and payroll."
             >
               General Settings
             </SectionTitle>
@@ -1619,32 +1646,6 @@ export default function AdminSettingsPage() {
               </div>
 
               <div className="border-t border-slate-200 pt-6">
-                <SectionTitle tip="Employee shift notepad and admin Shift Log. When off, employee Shift log and admin Shift Log are hidden; Punch Log stays available. Drawer Log follows Cash Drawer settings.">
-                  Shift notes
-                </SectionTitle>
-                <Controller
-                  name="shift_notes_enabled"
-                  control={controlSettings}
-                  render={({ field }) => (
-                    <label className="flex items-center gap-1.5 mt-4">
-                      <input
-                        type="checkbox"
-                        checked={field.value}
-                        onChange={(e) => field.onChange(e.target.checked)}
-                        onBlur={field.onBlur}
-                        className="rounded border-slate-300 text-slate-900 focus:ring-slate-900/20"
-                      />
-                      <span className="ml-1 text-sm text-slate-700">Enable shift notes (shift notepad)</span>
-                      <InfoTip
-                        label="Enable shift notes"
-                        content="Lets employees use the shift notepad on punch and share recent notes. Disabling hides those features and related APIs."
-                      />
-                    </label>
-                  )}
-                />
-              </div>
-
-              <div className="border-t border-slate-200 pt-6">
                 <SectionTitle tip="If someone forgets to punch out, the system waits past their scheduled end, then clocks them out using the scheduled end time (not the later real time). Example: end 3 PM, wait 2 hours → at 5 PM they are clocked out for 3 PM.">
                   Auto clock-out
                 </SectionTitle>
@@ -1925,7 +1926,7 @@ export default function AdminSettingsPage() {
 
               <div>
                 <label className="block">
-                  <FieldLabel tip="If the difference between expected and counted cash exceeds this amount, the session is flagged for review.">
+                  <FieldLabel tip="Used when “Require Manager Review” is on. If |counted − expected| exceeds this amount, the session is flagged for review in Drawer Log. Within the threshold, the session closes normally (delta is still recorded).">
                     Variance Threshold ($)
                   </FieldLabel>
                 </label>
@@ -1991,7 +1992,7 @@ export default function AdminSettingsPage() {
                       <span className="ml-1 text-sm text-slate-700">Require Manager Review for Variances</span>
                       <InfoTip
                         label="Manager review"
-                        content="When enabled, sessions over the variance threshold need manager approval in Drawer Log."
+                        content="When enabled, clock-out sessions whose |delta| exceeds the variance threshold are marked Review Needed until verified in Drawer Log. When off, sessions close normally and delta is still shown."
                       />
                     </label>
                   )}
@@ -2045,6 +2046,58 @@ export default function AdminSettingsPage() {
                     </label>
                   )}
                 />
+                {marketplaceEnabled && !cashDrawerEnabled && (
+                  <p
+                    role="alert"
+                    className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-sm text-amber-900"
+                  >
+                    Cash drawer required. Enable Cash Drawer in Settings before marketplace
+                    sales can run — Front Desk needs an open drawer to take payments.
+                  </p>
+                )}
+                {marketplaceEnabled && (
+                  <div
+                    role="alert"
+                    className="mt-3 space-y-3 rounded-xl border border-sky-200 bg-sky-50 px-3 py-3 text-sm text-sky-950"
+                  >
+                    <p>
+                      <span className="font-semibold">Front Desk portal only.</span> While
+                      Marketplace is on, Front Desk cannot punch at the kiosk — they must log
+                      in and punch from the dashboard so cart and drawer stay on one device.
+                    </p>
+                    <Controller
+                      name="disable_company_kiosk"
+                      control={controlMarketplace}
+                      render={({ field }) => (
+                        <label className="flex items-start gap-2">
+                          <input
+                            type="checkbox"
+                            checked={!!field.value}
+                            onChange={(e) => field.onChange(e.target.checked)}
+                            onBlur={field.onBlur}
+                            className="mt-0.5 rounded border-slate-300 text-slate-900 focus:ring-slate-900/20"
+                          />
+                          <span>
+                            <span className="font-medium">Disable company kiosk</span>
+                            <span className="mt-0.5 block text-sky-900/80">
+                              Recommended. Turns off the PIN pad for everyone when you save.
+                              Leave unchecked only if other roles still need the kiosk (Front
+                              Desk will still be blocked).
+                            </span>
+                          </span>
+                        </label>
+                      )}
+                    />
+                    {marketplaceEnabled &&
+                      !disableCompanyKiosk &&
+                      companyInfo?.kiosk_enabled && (
+                        <p className="text-xs text-sky-900/70">
+                          Company kiosk is currently enabled. Front Desk PIN punches will be
+                          rejected until they use the portal.
+                        </p>
+                      )}
+                  </div>
+                )}
               </div>
 
               <div className={!marketplaceEnabled ? 'pointer-events-none opacity-50' : ''}>
@@ -2304,81 +2357,120 @@ export default function AdminSettingsPage() {
           </div>
         )}
 
-        {/* Kiosk Network Tab - Admin Only */}
+        {/* Kiosk Tab - Admin Only */}
         {activeTab === 'kiosk' && user?.role === 'ADMIN' && (
-          <div className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm">
-            <SectionTitle
-              as="h2"
-              tip="Restrict the kiosk so it only works on the office network. Requests from other IPs are blocked."
-            >
-              Kiosk Network
-            </SectionTitle>
-            <div className="space-y-6 px-5 py-5 sm:px-6">
-              <label className="flex items-center gap-1.5">
-                <input
-                  type="checkbox"
-                  checked={kioskNetworkRestrictionEnabled}
-                  onChange={(e) => setKioskNetworkRestrictionEnabled(e.target.checked)}
-                  className="rounded border-slate-300 text-slate-900 focus:ring-slate-900/20"
-                />
-                <span className="text-sm font-medium text-slate-700">Restrict kiosk to office network only</span>
-                <InfoTip
-                  label="Restrict kiosk network"
-                  content="When enabled, the kiosk page and clock-in/out only work from the IPs or CIDR ranges listed below."
-                />
-              </label>
-              <div>
-                <div className="flex items-center justify-between gap-2 mb-1">
-                  <label className="block">
-                    <FieldLabel tip="One IP or CIDR range per line (e.g. 203.0.113.10 or 203.0.113.0/24). Use “Add my current IP” while on the office network.">
-                      Allowed IPs or CIDR ranges (one per line)
-                    </FieldLabel>
-                  </label>
-                  <button
-                    type="button"
-                    disabled={kioskFetchingMyIp}
-                    onClick={async () => {
-                      setKioskFetchingMyIp(true)
-                      try {
-                        const res = await api.get('/company/my-ip')
-                        const ip = res.data?.ip
-                        if (ip && ip !== 'unknown') {
-                          setKioskAllowedIpsText((prev) => (prev.trim() ? `${prev.trim()}\n${ip}` : ip))
-                          toast.success(`Added ${ip}`)
+          <div className="space-y-6">
+            <div className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm">
+              <SectionTitle
+                as="h2"
+                tip="Choose which employee types can clock in/out on the company kiosk PIN pad. Unchecked roles are blocked at the kiosk."
+              >
+                Kiosk access by role
+              </SectionTitle>
+              <div className="space-y-2 px-5 py-5 sm:px-6">
+                {PUNCH_ROLE_OPTIONS.map((role) => (
+                  <label key={role.value} className="flex items-center">
+                    <input
+                      type="checkbox"
+                      checked={kioskAllowedRoles.includes(role.value)}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          setKioskAllowedRoles((prev) =>
+                            prev.includes(role.value) ? prev : [...prev, role.value],
+                          )
                         } else {
-                          toast.error('Could not get current IP')
+                          setKioskAllowedRoles((prev) => prev.filter((r) => r !== role.value))
                         }
-                      } catch (e: any) {
-                        toast.error(e.response?.data?.detail || 'Could not get current IP')
-                      } finally {
-                        setKioskFetchingMyIp(false)
-                      }
-                    }}
-                    className="rounded-xl border border-slate-200 bg-slate-100 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-200 disabled:opacity-50"
-                  >
-                    {kioskFetchingMyIp ? 'Getting…' : 'Add my current IP'}
-                  </button>
+                      }}
+                      className="rounded border-slate-300 text-slate-900 focus:ring-slate-900/20"
+                    />
+                    <span className="ml-2 text-sm text-slate-700">{role.label}</span>
+                  </label>
+                ))}
+                {companyInfo?.settings?.marketplace_enabled && (
+                  <p className="mt-3 text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                    Marketplace is enabled: Front Desk cannot use the kiosk even if checked above
+                    (portal punch only).
+                  </p>
+                )}
+              </div>
+            </div>
+
+            <div className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm">
+              <SectionTitle
+                as="h2"
+                tip="Restrict the kiosk so it only works on the office network. Requests from other IPs are blocked."
+              >
+                Kiosk Network
+              </SectionTitle>
+              <div className="space-y-6 px-5 py-5 sm:px-6">
+                <label className="flex items-center gap-1.5">
+                  <input
+                    type="checkbox"
+                    checked={kioskNetworkRestrictionEnabled}
+                    onChange={(e) => setKioskNetworkRestrictionEnabled(e.target.checked)}
+                    className="rounded border-slate-300 text-slate-900 focus:ring-slate-900/20"
+                  />
+                  <span className="text-sm font-medium text-slate-700">Restrict kiosk to office network only</span>
+                  <InfoTip
+                    label="Restrict kiosk network"
+                    content="When enabled, the kiosk page and clock-in/out only work from the IPs or CIDR ranges listed below."
+                  />
+                </label>
+                <div>
+                  <div className="flex items-center justify-between gap-2 mb-1">
+                    <label className="block">
+                      <FieldLabel tip="One IP or CIDR range per line (e.g. 203.0.113.10 or 203.0.113.0/24). Use “Add my current IP” while on the office network.">
+                        Allowed IPs or CIDR ranges (one per line)
+                      </FieldLabel>
+                    </label>
+                    <button
+                      type="button"
+                      disabled={kioskFetchingMyIp}
+                      onClick={async () => {
+                        setKioskFetchingMyIp(true)
+                        try {
+                          const res = await api.get('/company/my-ip')
+                          const ip = res.data?.ip
+                          if (ip && ip !== 'unknown') {
+                            setKioskAllowedIpsText((prev) => (prev.trim() ? `${prev.trim()}\n${ip}` : ip))
+                            toast.success(`Added ${ip}`)
+                          } else {
+                            toast.error('Could not get current IP')
+                          }
+                        } catch (e: any) {
+                          toast.error(e.response?.data?.detail || 'Could not get current IP')
+                        } finally {
+                          setKioskFetchingMyIp(false)
+                        }
+                      }}
+                      className="rounded-xl border border-slate-200 bg-slate-100 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-200 disabled:opacity-50"
+                    >
+                      {kioskFetchingMyIp ? 'Getting…' : 'Add my current IP'}
+                    </button>
+                  </div>
+                  <textarea
+                    value={kioskAllowedIpsText}
+                    onChange={(e) => setKioskAllowedIpsText(e.target.value)}
+                    placeholder={'192.168.1.0/24\n10.0.0.1'}
+                    rows={5}
+                    className="mt-1.5 block w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-900/10 font-mono"
+                  />
+                  <p className="mt-1 text-xs text-slate-500">Examples: 192.168.1.0/24 (entire subnet), 10.0.0.1 (single IP). Use “Add my current IP” when at the office to add this device.</p>
+                  <p className="mt-1 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1">If the same IP is added from different networks, configure your reverse proxy to send the real client IP (e.g. nginx: <code className="bg-amber-100 px-1">proxy_set_header X-Real-IP $remote_addr</code>; Cloudflare uses CF-Connecting-IP automatically).</p>
                 </div>
-                <textarea
-                  value={kioskAllowedIpsText}
-                  onChange={(e) => setKioskAllowedIpsText(e.target.value)}
-                  placeholder={'192.168.1.0/24\n10.0.0.1'}
-                  rows={5}
-                  className="mt-1.5 block w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-900/10 font-mono"
-                />
-                <p className="mt-1 text-xs text-slate-500">Examples: 192.168.1.0/24 (entire subnet), 10.0.0.1 (single IP). Use “Add my current IP” when at the office to add this device.</p>
-                <p className="mt-1 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1">If the same IP is added from different networks, configure your reverse proxy to send the real client IP (e.g. nginx: <code className="bg-amber-100 px-1">proxy_set_header X-Real-IP $remote_addr</code>; Cloudflare uses CF-Connecting-IP automatically).</p>
               </div>
-              <div className="flex justify-end">
-                <button
-                  type="button"
-                  onClick={onSubmitKioskNetwork}
-                  disabled={saving}
-                  className="rounded-xl bg-slate-900 px-4 py-2 text-white hover:bg-slate-800 disabled:opacity-50"
-                >
-                  {saving ? 'Saving...' : 'Save Settings'}
-                </button>
-              </div>
+            </div>
+
+            <div className="flex justify-end">
+              <button
+                type="button"
+                onClick={onSubmitKioskNetwork}
+                disabled={saving}
+                className="rounded-xl bg-slate-900 px-4 py-2 text-white hover:bg-slate-800 disabled:opacity-50"
+              >
+                {saving ? 'Saving...' : 'Save Settings'}
+              </button>
             </div>
           </div>
         )}

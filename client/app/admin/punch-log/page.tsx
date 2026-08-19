@@ -121,7 +121,7 @@ export default function AdminTimePage() {
     } catch (error: any) {
       logger.error('Failed to fetch time entries', error as Error, { endpoint: '/time/admin/time' })
       if (error.response?.status === 403) {
-        setError('Access denied. Admin privileges required.')
+        setError('Access denied. Admin or manager privileges required.')
         router.push('/dashboard')
       } else {
         setError('Failed to load time entries. Please try again.')
@@ -135,7 +135,7 @@ export default function AdminTimePage() {
     const checkAdmin = async () => {
       try {
         const user = await getCurrentUser()
-        if (user.role !== 'ADMIN') {
+        if (user.role !== 'ADMIN' && user.role !== 'MANAGER') {
           router.push('/dashboard')
           return
         }

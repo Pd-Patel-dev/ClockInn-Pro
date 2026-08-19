@@ -1,5 +1,5 @@
 from fastapi import APIRouter
-from app.api.v1.endpoints import auth, users, time, leave, reports, payroll, company, health, shifts, kiosk, gmail, admin, developer, cash_drawer, cash_management, permissions, shift_notes, app_stubs, me
+from app.api.v1.endpoints import auth, users, time, leave, reports, payroll, company, health, shifts, kiosk, gmail, admin, developer, cash_drawer, permissions, app_stubs, me
 
 api_router = APIRouter()
 
@@ -8,7 +8,6 @@ api_router.include_router(auth.router, prefix="/auth", tags=["auth"])
 api_router.include_router(me.router, prefix="/me", tags=["me"])
 api_router.include_router(users.router, prefix="/users", tags=["users"])
 api_router.include_router(time.router, prefix="/time", tags=["time"])
-api_router.include_router(shift_notes.router, tags=["shift-notes"])
 api_router.include_router(leave.router, prefix="/leave", tags=["leave"])
 api_router.include_router(reports.router, prefix="/reports", tags=["reports"])
 api_router.include_router(gmail.router, prefix="/admin/gmail", tags=["gmail-admin"])
@@ -24,12 +23,6 @@ api_router.include_router(
     prefix="/cash-drawer",
     tags=["cash-drawer-employee"],
 )
-api_router.include_router(
-    cash_management.router,
-    prefix="/admin/cash-management",
-    tags=["cash-management"],
-)
 api_router.include_router(permissions.router, prefix="/admin", tags=["permissions"])
 api_router.include_router(app_stubs.notifications_router, prefix="/notifications", tags=["notifications"])
 api_router.include_router(app_stubs.feedback_router, prefix="/feedback", tags=["feedback"])
-

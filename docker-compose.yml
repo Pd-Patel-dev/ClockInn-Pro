@@ -37,23 +37,26 @@ services:
       - REFRESH_TOKEN_EXPIRE_DAYS=${REFRESH_TOKEN_EXPIRE_DAYS:-7}
       - FRONTEND_URL=${FRONTEND_URL:-http://localhost:3000}
       - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:3000}
+      # Local self-serve signup (production should leave unset/false and use developer portal)
+      - ALLOW_PUBLIC_REGISTER=${ALLOW_PUBLIC_REGISTER:-true}
       # Local Next.js HMR remounts fire many API calls; default 60/min is easy to hit in Docker.
       - RATE_LIMIT_PER_MINUTE=${RATE_LIMIT_PER_MINUTE:-300}
       - RATE_LIMIT_AUTH_KIOSK_PER_MINUTE=${RATE_LIMIT_AUTH_KIOSK_PER_MINUTE:-60}
+      # Shared login lockout + API rate limits across API workers/replicas
+      - REDIS_URL=${REDIS_URL:-redis://redis:6379/0}
       # Set to "true" to run migrations on API startup (optional)
       - RUN_MIGRATIONS=${RUN_MIGRATIONS:-false}
     depends_on:
       db:
         condition: service_healthy
+      redis:
+        condition: service_healthy
     restart: unless-stopped
 
-  # Optional: shared login lockout across API replicas — `docker compose --profile redis up -d`
-  # and set REDIS_URL=redis://redis:6379/0 on the api service (e.g. in .env).
+  # Shared store for login lockout + API rate limits (required in production; used by local compose too)
   redis:
     image: redis:7-alpine
     container_name: clockinn_redis
-    profiles:
-      - redis
     ports:
       - "6379:6379"
     healthcheck:

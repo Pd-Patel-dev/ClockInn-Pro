@@ -331,40 +331,6 @@ class BulkShiftUpdateResponse(BaseModel):
     failed: List[BulkShiftFailure] = Field(default_factory=list)
 
 
-class ScheduleSwapCreate(BaseModel):
-    """Schema for creating a shift swap request."""
-    original_shift_id: UUID
-    requested_shift_id: Optional[UUID] = None  # Null for open swap request
-    notes: Optional[str] = None
-
-
-class ScheduleSwapUpdate(BaseModel):
-    """Schema for updating a shift swap request."""
-    status: Optional[str] = Field(None, pattern="^(pending|approved|rejected|cancelled)$")
-    notes: Optional[str] = None
-
-
-class ScheduleSwapResponse(BaseModel):
-    """Schema for shift swap response."""
-    id: UUID
-    company_id: UUID
-    original_shift_id: UUID
-    requested_shift_id: Optional[UUID] = None
-    requester_id: UUID
-    requester_name: Optional[str] = None
-    offerer_id: Optional[UUID] = None
-    offerer_name: Optional[str] = None
-    status: str
-    approved_by: Optional[UUID] = None
-    approved_at: Optional[datetime] = None
-    notes: Optional[str] = None
-    created_at: datetime
-    updated_at: datetime
-
-    class Config:
-        from_attributes = True
-
-
 class SendScheduleRequest(BaseModel):
     """Schema for sending schedule email to an employee for a week.
     week_start_date must be a Monday (ISO week start)."""

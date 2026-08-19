@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
+import Link from 'next/link'
 import api from '@/lib/api'
 import logger from '@/lib/logger'
 
@@ -15,15 +16,12 @@ const setPasswordSchema = z.object({
   message: "Passwords don't match",
   path: ["confirmPassword"],
 }).refine((data) => {
-  // Check for at least one uppercase letter
   if (!/[A-Z]/.test(data.password)) return false
-  // Check for at least one lowercase letter
   if (!/[a-z]/.test(data.password)) return false
-  // Check for at least one number
   if (!/[0-9]/.test(data.password)) return false
   return true
 }, {
-  message: "Password must contain at least one uppercase letter, one lowercase letter, and one number",
+  message: "Password must contain at least one uppercase letter, one lowercase letter, and a number",
   path: ["password"],
 })
 
@@ -35,6 +33,7 @@ function SetPasswordContent() {
   const [token, setToken] = useState<string>('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [linkInvalid, setLinkInvalid] = useState(false)
   const [success, setSuccess] = useState(false)
   const [userName, setUserName] = useState<string>('')
   const [loadingUserInfo, setLoadingUserInfo] = useState(true)
@@ -51,10 +50,10 @@ function SetPasswordContent() {
     const tokenParam = searchParams?.get('token')
     if (tokenParam) {
       setToken(tokenParam)
-      // Fetch user info from token
       fetchUserInfo(tokenParam)
     } else {
-      setError('Invalid or missing token. Please check your email link.')
+      setError('Invalid or missing link. Ask your administrator to send a new invite.')
+      setLinkInvalid(true)
       setLoadingUserInfo(false)
     }
   }, [searchParams])
@@ -62,20 +61,27 @@ function SetPasswordContent() {
   const fetchUserInfo = async (tokenParam: string) => {
     try {
       const response = await api.get('/auth/set-password/info', {
-        params: { token: tokenParam }
+        params: { token: tokenParam },
       })
       setUserName(response.data.name || '')
+      setLinkInvalid(false)
       setLoadingUserInfo(false)
     } catch (err: any) {
       logger.error('Failed to fetch user info', err as Error)
+      const detail = err.response?.data?.detail
+      setError(
+        typeof detail === 'string'
+          ? detail
+          : 'This link is invalid or has expired. Ask your administrator to resend the invite.',
+      )
+      setLinkInvalid(true)
       setLoadingUserInfo(false)
-      // Don't show error here, let the form submission handle it
     }
   }
 
   const onSubmit = async (data: SetPasswordForm) => {
-    if (!token) {
-      setError('Invalid or missing token. Please check your email link.')
+    if (!token || linkInvalid) {
+      setError('Invalid or missing link. Ask your administrator to send a new invite.')
       return
     }
 
@@ -87,24 +93,25 @@ function SetPasswordContent() {
         token,
         password: data.password,
       })
-      
+
       setSuccess(true)
       logger.info('Password set successfully')
-      
-      // Redirect to login after 2 seconds
+
       setTimeout(() => {
         router.push('/login')
       }, 2000)
     } catch (err: any) {
       logger.error('Failed to set password', err as Error)
-      
-      // Handle network errors
+
       if (!err.response) {
         setError('Network error. Please check your connection and try again.')
       } else {
-        // Handle API errors
-        const errorMessage = err.response?.data?.detail || 'Failed to set password. Please try again.'
-        setError(errorMessage)
+        const errorMessage =
+          err.response?.data?.detail || 'Failed to set password. Please try again.'
+        setError(typeof errorMessage === 'string' ? errorMessage : 'Failed to set password.')
+        if (err.response?.status === 400 || err.response?.status === 401) {
+          setLinkInvalid(true)
+        }
       }
     } finally {
       setLoading(false)
@@ -144,6 +151,26 @@ function SetPasswordContent() {
     )
   }
 
+  if (linkInvalid) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-50 py-12 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-md w-full rounded-lg border border-slate-200 bg-white p-8 shadow-sm text-center">
+          <h1 className="text-xl font-semibold text-slate-900 mb-2">Link unavailable</h1>
+          <p className="text-sm text-slate-600 mb-6">
+            {error ||
+              'This invite link is invalid or has expired (links are valid for 48 hours). Ask your administrator to resend it.'}
+          </p>
+          <Link
+            href="/login"
+            className="inline-flex rounded-xl bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800"
+          >
+            Back to login
+          </Link>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-slate-50 py-12 px-4 sm:px-6 lg:px-8">
       <div className="max-w-md w-full space-y-8">
@@ -153,10 +180,7 @@ function SetPasswordContent() {
               {userName ? `Welcome, ${userName}!` : 'Set Your Password'}
             </h1>
             <p className="text-slate-600">
-              {userName 
-                ? `Please set a password for your account to get started.`
-                : 'Please set a password for your account to get started.'
-              }
+              Please set a password for your account to get started.
             </p>
           </div>
 
@@ -215,7 +239,8 @@ function SetPasswordContent() {
 
           <div className="mt-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
             <p className="text-xs text-blue-800">
-              <strong>Note:</strong> This link will expire in 7 days. If you need a new link, please contact your administrator.
+              <strong>Note:</strong> This link expires in 48 hours and can only be used once. If you
+              need a new link, contact your administrator (Employees → Resend invite).
             </p>
           </div>
         </div>
@@ -226,11 +251,13 @@ function SetPasswordContent() {
 
 export default function SetPasswordPage() {
   return (
-    <Suspense fallback={
-      <div className="min-h-screen flex items-center justify-center bg-slate-50">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-teal-600"></div>
-      </div>
-    }>
+    <Suspense
+      fallback={
+        <div className="min-h-screen flex items-center justify-center bg-slate-50">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-teal-600"></div>
+        </div>
+      }
+    >
       <SetPasswordContent />
     </Suspense>
   )

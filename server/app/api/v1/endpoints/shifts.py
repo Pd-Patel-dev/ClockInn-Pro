@@ -11,7 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
 from app.core.database import get_db
-from app.core.dependencies import get_current_admin, get_current_user, require_permission
+from app.core.dependencies import get_current_user, require_permission
 from app.core.error_handling import handle_endpoint_errors, parse_uuid
 from app.models.user import User, UserRole
 from app.models.shift import Shift, ShiftStatus
@@ -26,8 +26,6 @@ from app.schemas.shift import (
     ShiftTemplateResponse,
     GenerateShiftsFromTemplate,
     GenerateShiftsFromTemplateBody,
-    ScheduleSwapCreate,
-    ScheduleSwapResponse,
     SendScheduleRequest,
     BulkShiftIdsRequest,
     BulkShiftUpdateRequest,
@@ -58,10 +56,10 @@ logger = logging.getLogger(__name__)
 @handle_endpoint_errors(operation_name="create_shift")
 async def create_shift_endpoint(
     data: ShiftCreate,
-    current_user: User = Depends(get_current_admin),
+    current_user: User = Depends(require_permission("schedule_edit")),
     db: AsyncSession = Depends(get_db),
 ):
-    """Create a new shift (admin only). No email is sent on create; use Send schedule to email employee.
+    """Create a new shift (requires schedule_edit). No email is sent on create; use Send schedule to email employee.
     Returns the created shift and any overlapping conflicts (shift is still created)."""
     shift, conflicts = await create_shift(
         db,
@@ -191,10 +189,10 @@ async def get_schedule_page_context_endpoint(
 @handle_endpoint_errors(operation_name="preview_bulk_week_shifts")
 async def preview_bulk_week_shifts_endpoint(
     data: BulkWeekShiftCreate,
-    current_user: User = Depends(get_current_admin),
+    current_user: User = Depends(require_permission("schedule_edit")),
     db: AsyncSession = Depends(get_db),
 ):
-    """Preview shifts that would be created for a whole week (admin only)."""
+    """Preview shifts that would be created for a whole week (requires schedule_edit)."""
     preview_shifts, conflicts = await preview_bulk_week_shifts(
         db,
         current_user.company_id,
@@ -213,10 +211,10 @@ async def preview_bulk_week_shifts_endpoint(
 @handle_endpoint_errors(operation_name="create_bulk_week_shifts")
 async def create_bulk_week_shifts_endpoint(
     data: BulkWeekShiftCreate,
-    current_user: User = Depends(get_current_admin),
+    current_user: User = Depends(require_permission("schedule_edit")),
     db: AsyncSession = Depends(get_db),
 ):
-    """Create shifts for a whole week for multiple employees (admin only). No email is sent; use Send schedule to email employees."""
+    """Create shifts for a whole week for multiple employees (requires schedule_edit). No email is sent; use Send schedule to email employees."""
     created_count, skipped_count, overwritten_count, created_shift_ids, skipped_shifts, conflicts, series_id = await create_bulk_week_shifts(
         db,
         current_user.company_id,
@@ -239,10 +237,10 @@ async def create_bulk_week_shifts_endpoint(
 @handle_endpoint_errors(operation_name="bulk_delete_shifts")
 async def bulk_delete_shifts_endpoint(
     data: BulkShiftIdsRequest,
-    current_user: User = Depends(get_current_admin),
+    current_user: User = Depends(require_permission("schedule_edit")),
     db: AsyncSession = Depends(get_db),
 ):
-    """Soft-delete many shifts (admin only). Continues on per-shift errors."""
+    """Soft-delete many shifts (requires schedule_edit). Continues on per-shift errors."""
     deleted = 0
     failed: list[BulkShiftFailure] = []
     seen: set[UUID] = set()
@@ -270,10 +268,10 @@ async def bulk_delete_shifts_endpoint(
 @handle_endpoint_errors(operation_name="bulk_update_shifts")
 async def bulk_update_shifts_endpoint(
     data: BulkShiftUpdateRequest,
-    current_user: User = Depends(get_current_admin),
+    current_user: User = Depends(require_permission("schedule_edit")),
     db: AsyncSession = Depends(get_db),
 ):
-    """Apply shared fields to many shifts (admin only). Continues on per-shift errors."""
+    """Apply shared fields to many shifts (requires schedule_edit). Continues on per-shift errors."""
     update_payload = ShiftUpdate(
         start_time=data.start_time,
         end_time=data.end_time,
@@ -307,10 +305,10 @@ async def bulk_update_shifts_endpoint(
 @handle_endpoint_errors(operation_name="send_schedule")
 async def send_schedule_endpoint(
     data: SendScheduleRequest,
-    current_user: User = Depends(get_current_admin),
+    current_user: User = Depends(require_permission("schedule_edit")),
     db: AsyncSession = Depends(get_db),
 ):
-    """Send the schedule email for an employee for the given week (admin only).
+    """Send the schedule email for an employee for the given week (requires schedule_edit).
     week_start_date must be a Monday; week is Monday through Sunday."""
     from app.services.email_service import email_service
     from sqlalchemy import and_
@@ -423,10 +421,10 @@ async def get_shift_endpoint(
 async def update_shift_endpoint(
     shift_id: str,
     data: ShiftUpdate,
-    current_user: User = Depends(get_current_admin),
+    current_user: User = Depends(require_permission("schedule_edit")),
     db: AsyncSession = Depends(get_db),
 ):
-    """Update a shift (admin only). Returns the updated shift and any overlapping conflicts (shift is still updated)."""
+    """Update a shift (requires schedule_edit). Returns the updated shift and any overlapping conflicts (shift is still updated)."""
     parsed_shift_id = parse_uuid(shift_id, "Shift ID")
     shift, conflicts = await update_shift(
         db,
@@ -462,10 +460,10 @@ async def update_shift_endpoint(
 @handle_endpoint_errors(operation_name="approve_shift")
 async def approve_shift_endpoint(
     shift_id: str,
-    current_user: User = Depends(get_current_admin),
+    current_user: User = Depends(require_permission("schedule_edit")),
     db: AsyncSession = Depends(get_db),
 ):
-    """Approve a shift (admin only)."""
+    """Approve a shift (requires schedule_edit)."""
     parsed_shift_id = parse_uuid(shift_id, "Shift ID")
     shift = await approve_shift(
         db,
@@ -500,10 +498,10 @@ async def approve_shift_endpoint(
 @handle_endpoint_errors(operation_name="delete_shift")
 async def delete_shift_endpoint(
     shift_id: str,
-    current_user: User = Depends(get_current_admin),
+    current_user: User = Depends(require_permission("schedule_edit")),
     db: AsyncSession = Depends(get_db),
 ):
-    """Delete a shift (soft delete: sets status to CANCELLED and records audit note; admin only)."""
+    """Delete a shift (soft delete: sets status to CANCELLED and records audit note; requires schedule_edit)."""
     parsed_shift_id = parse_uuid(shift_id, "Shift ID")
     await delete_shift(
         db,
@@ -517,10 +515,10 @@ async def delete_shift_endpoint(
 @handle_endpoint_errors(operation_name="create_shift_template")
 async def create_shift_template_endpoint(
     data: ShiftTemplateCreate,
-    current_user: User = Depends(get_current_admin),
+    current_user: User = Depends(require_permission("schedule_edit")),
     db: AsyncSession = Depends(get_db),
 ):
-    """Create a shift template (admin only)."""
+    """Create a shift template (requires schedule_edit)."""
     template = await create_shift_template(
         db,
         current_user.company_id,
@@ -568,10 +566,10 @@ async def create_shift_template_endpoint(
 async def generate_shifts_from_template_endpoint(
     template_id: str,
     data: GenerateShiftsFromTemplateBody,
-    current_user: User = Depends(get_current_admin),
+    current_user: User = Depends(require_permission("schedule_edit")),
     db: AsyncSession = Depends(get_db),
 ):
-    """Generate shifts from a template (admin only). template_id is from the URL path."""
+    """Generate shifts from a template (requires schedule_edit). template_id is from the URL path."""
     parsed_template_id = parse_uuid(template_id, "Template ID")
     payload = GenerateShiftsFromTemplate(
         template_id=parsed_template_id,

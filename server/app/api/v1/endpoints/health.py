@@ -154,8 +154,10 @@ async def health_check(db: Optional[AsyncSession] = Depends(get_db)):
             "rate_limit_auth_kiosk_per_minute": settings.RATE_LIMIT_AUTH_KIOSK_PER_MINUTE,
             "login_lockout_store": "redis" if settings.REDIS_URL else "memory",
             "login_lockout_use_ip": settings.LOGIN_LOCKOUT_USE_IP,
+            "redis_configured": bool((settings.REDIS_URL or "").strip()),
             "database_ssl": "supabase" in settings.DATABASE_URL.lower() or "pooler.supabase.com" in settings.DATABASE_URL,
         },
+        "redis": {},
         "dependencies": {
             "fastapi": "0.104.1",
             "sqlalchemy": "2.0.23",
@@ -183,7 +185,30 @@ async def health_check(db: Optional[AsyncSession] = Depends(get_db)):
             "error": "Database session not available"
         }
         health_status["status"] = "degraded"
-    
+
+    # Redis: used for shared rate limits + login lockout
+    redis_info: Dict[str, Any] = {"configured": bool((settings.REDIS_URL or "").strip())}
+    if redis_info["configured"]:
+        try:
+            from app.core.login_attempts import ping_login_attempts_redis
+
+            await ping_login_attempts_redis()
+            redis_info["status"] = "connected"
+        except Exception as e:
+            redis_info["status"] = "unreachable"
+            redis_info["error"] = str(e)
+            if health_status["status"] == "healthy":
+                health_status["status"] = "degraded"
+            from app.core.environment import is_production_environment
+
+            if is_production_environment():
+                health_status["status"] = "unhealthy"
+                health_status["error"] = "Redis unreachable"
+                http_code = http_status.HTTP_503_SERVICE_UNAVAILABLE
+    else:
+        redis_info["status"] = "not_configured"
+    health_status["redis"] = redis_info
+
     return JSONResponse(
         status_code=http_code,
         content=health_status
@@ -195,22 +220,12 @@ async def readiness_check(db: Optional[AsyncSession] = Depends(get_db)):
     """
     Readiness check endpoint.
     Verifies that the service is ready to accept traffic.
-    More strict than /health - requires database connection.
-    
-    Returns:
-        - 200 OK: Service is ready
-        - 503 Service Unavailable: Service is not ready
+    Requires database. When REDIS_URL is set (always in production), also requires Redis.
     """
+    from app.core.environment import is_production_environment
+
     try:
-        # Verify database connection
         await db.execute(text("SELECT 1"))
-        return JSONResponse(
-            status_code=http_status.HTTP_200_OK,
-            content={
-                "status": "ready",
-                "service": "ClockInn API"
-            }
-        )
     except Exception as e:
         logger.error(f"Readiness check failed: {str(e)}", exc_info=True)
         return JSONResponse(
@@ -218,9 +233,44 @@ async def readiness_check(db: Optional[AsyncSession] = Depends(get_db)):
             content={
                 "status": "not_ready",
                 "service": "ClockInn API",
-                "error": "Database connection failed"
-            }
+                "error": "Database connection failed",
+            },
         )
+
+    redis_url = (settings.REDIS_URL or "").strip()
+    if is_production_environment() and not redis_url:
+        return JSONResponse(
+            status_code=http_status.HTTP_503_SERVICE_UNAVAILABLE,
+            content={
+                "status": "not_ready",
+                "service": "ClockInn API",
+                "error": "REDIS_URL is required in production",
+            },
+        )
+
+    if redis_url:
+        try:
+            from app.core.login_attempts import ping_login_attempts_redis
+
+            await ping_login_attempts_redis()
+        except Exception as e:
+            logger.error(f"Readiness Redis check failed: {str(e)}", exc_info=True)
+            return JSONResponse(
+                status_code=http_status.HTTP_503_SERVICE_UNAVAILABLE,
+                content={
+                    "status": "not_ready",
+                    "service": "ClockInn API",
+                    "error": "Redis connection failed",
+                },
+            )
+
+    return JSONResponse(
+        status_code=http_status.HTTP_200_OK,
+        content={
+            "status": "ready",
+            "service": "ClockInn API",
+        },
+    )
 
 
 @router.get("/health/live")

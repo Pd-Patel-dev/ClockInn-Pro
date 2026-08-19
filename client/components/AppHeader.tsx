@@ -173,18 +173,18 @@ export function AppHeader({
   const notifMeta = (type: string) => {
     switch (type) {
       case 'leave_pending':
-        return { label: 'Leave', className: 'bg-amber-100 text-amber-800' }
+        return { label: 'Leave', className: 'bg-amber-100 text-amber-800 dark:bg-amber-500/15 dark:text-amber-200' }
       case 'auto_clock_out':
-        return { label: 'Auto clock-out', className: 'bg-amber-100 text-amber-800' }
+        return { label: 'Auto clock-out', className: 'bg-amber-100 text-amber-800 dark:bg-amber-500/15 dark:text-amber-200' }
       case 'missing_punch':
       case 'forgot_punch_out':
-        return { label: 'Missing punch', className: 'bg-red-100 text-red-800' }
+        return { label: 'Missing punch', className: 'bg-red-100 text-red-800 dark:bg-red-500/15 dark:text-red-200' }
       case 'clock_in':
-        return { label: 'Clock in', className: 'bg-emerald-100 text-emerald-800' }
+        return { label: 'Clock in', className: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-500/15 dark:text-emerald-200' }
       case 'clock_out':
-        return { label: 'Clock out', className: 'bg-slate-100 text-slate-700' }
+        return { label: 'Clock out', className: 'bg-slate-100 text-slate-700 dark:bg-slate-500/20 dark:text-slate-200' }
       default:
-        return { label: 'Update', className: 'bg-slate-100 text-slate-600' }
+        return { label: 'Update', className: 'bg-slate-100 text-slate-600 dark:bg-slate-500/20 dark:text-slate-300' }
     }
   }
 
@@ -228,11 +228,17 @@ export function AppHeader({
 
   const navLinkClass = (active: boolean) =>
     cn(
-      'inline-flex items-center rounded-control px-3 py-1.5 text-sm font-medium transition-colors',
+      'inline-flex h-8 items-center rounded-md px-2.5 text-[13px] font-medium tracking-tight transition-colors duration-150',
       active
-        ? 'bg-border-subtle text-foreground'
-        : 'text-foreground-muted hover:bg-border-subtle/80 hover:text-foreground'
+        ? 'bg-white text-foreground shadow-sm ring-1 ring-border/80 dark:bg-surface dark:ring-border'
+        : 'text-foreground-muted hover:bg-white/70 hover:text-foreground dark:hover:bg-white/5'
     )
+
+  const iconBtnClass = cn(
+    'relative inline-flex h-9 w-9 items-center justify-center rounded-lg text-foreground-muted',
+    'transition-colors duration-150 hover:bg-border-subtle hover:text-foreground',
+    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-surface'
+  )
 
   const modKey = typeof navigator !== 'undefined' && /Mac/i.test(navigator.platform) ? '⌘' : 'Ctrl'
 
@@ -240,102 +246,142 @@ export function AppHeader({
     <header
       ref={headerRef}
       className={cn(
-        'sticky top-0 z-40 h-14 border-b border-border bg-surface transition-shadow',
-        scrolled && 'shadow-subtle'
+        'sticky top-0 z-40 border-b border-border/80 bg-surface/80 backdrop-blur-xl transition-[box-shadow,background-color] duration-200',
+        scrolled && 'bg-surface/95 shadow-[0_1px_0_0_rgb(15_23_42/0.04),0_8px_24px_-12px_rgb(15_23_42/0.12)]'
       )}
     >
-      <div className="mx-auto flex h-full max-w-7xl items-center gap-3 px-4 sm:px-6 lg:px-8">
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-x-0 bottom-0 h-px bg-gradient-to-r from-transparent via-accent/25 to-transparent opacity-70"
+      />
+
+      <div className="mx-auto flex h-[3.75rem] max-w-7xl items-center gap-3 px-4 sm:px-6 lg:px-8">
         <div className="flex min-w-0 flex-1 items-center gap-3">
           {showMobileNavButton && (
             <button
               type="button"
               onClick={onMobileMenuToggle}
-              className="min-[950px]:hidden inline-flex rounded-control p-2 text-foreground-muted hover:bg-border-subtle hover:text-foreground"
+              className={cn(iconBtnClass, 'min-[950px]:hidden')}
               aria-label="Open navigation menu"
             >
-              <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+              <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M4 7h16M4 12h16M4 17h10" />
               </svg>
             </button>
           )}
 
-          <Link href="/dashboard" className="inline-flex shrink-0 items-center gap-2 text-base font-semibold text-foreground">
-            <span className="inline-block h-2 w-2 rounded-full bg-accent" aria-hidden />
-            ClockInn Pro
+          <Link
+            href="/dashboard"
+            className="group inline-flex shrink-0 items-center rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-surface"
+          >
+            <span className="flex flex-col leading-none">
+              <span className="text-[15px] font-semibold tracking-tight text-foreground">
+                ClockInn
+                <span className="font-medium text-foreground-muted"> Pro</span>
+              </span>
+              <span className="mt-0.5 hidden text-[10px] font-medium uppercase tracking-[0.14em] text-foreground-subtle sm:block">
+                Time & attendance
+              </span>
+            </span>
           </Link>
 
           {breadcrumbs.length > 0 && (
-            <div className="hidden min-w-0 sm:block border-l border-border pl-3">
+            <div className="hidden min-w-0 sm:block border-l border-border/80 pl-3">
               <Breadcrumbs items={breadcrumbs} />
             </div>
           )}
 
           {!isDeveloper && (
-            <div className="hidden min-[950px]:ml-2 min-[950px]:flex min-[950px]:items-center min-[950px]:gap-1">
-              {isAdmin
-                ? adminNavGroups.map((group, idx) => {
-                    if (group.type === 'single') {
-                      return group.items.map((item) => (
-                        <Link key={item.href} href={item.href} className={navLinkClass(isActive(item.href))}>
-                          {item.label}
-                        </Link>
-                      ))
-                    }
-                    const dropdownId = `header-dropdown-${idx}`
-                    const activeGroup = isDropdownActive(group.items)
-                    return (
-                      <div
-                        key={dropdownId}
-                        ref={(el) => {
-                          if (el) dropdownRefs.current[dropdownId] = el
-                          else delete dropdownRefs.current[dropdownId]
-                        }}
-                        className="relative"
-                      >
-                        <button
-                          type="button"
-                          onClick={() => setOpenDropdown(openDropdown === dropdownId ? null : dropdownId)}
-                          className={navLinkClass(activeGroup)}
+            <nav
+              className="ml-1 hidden min-[950px]:flex min-[950px]:items-center min-[950px]:gap-0.5"
+              aria-label="Primary"
+            >
+              <div className="flex items-center gap-0.5 rounded-xl border border-border/70 bg-border-subtle/40 p-1 dark:bg-border-subtle/20">
+                {isAdmin
+                  ? adminNavGroups.map((group, idx) => {
+                      if (group.type === 'single') {
+                        return group.items.map((item) => (
+                          <Link key={item.href} href={item.href} className={navLinkClass(isActive(item.href))}>
+                            {item.label}
+                          </Link>
+                        ))
+                      }
+                      const dropdownId = `header-dropdown-${idx}`
+                      const activeGroup = isDropdownActive(group.items)
+                      return (
+                        <div
+                          key={dropdownId}
+                          ref={(el) => {
+                            if (el) dropdownRefs.current[dropdownId] = el
+                            else delete dropdownRefs.current[dropdownId]
+                          }}
+                          className="relative"
                         >
-                          {group.label}
-                          <svg
-                            className={cn('ml-1 h-4 w-4 transition-transform', openDropdown === dropdownId && 'rotate-180')}
-                            fill="none"
-                            stroke="currentColor"
-                            viewBox="0 0 24 24"
-                            aria-hidden
+                          <button
+                            type="button"
+                            onClick={() => setOpenDropdown(openDropdown === dropdownId ? null : dropdownId)}
+                            className={navLinkClass(activeGroup || openDropdown === dropdownId)}
+                            aria-expanded={openDropdown === dropdownId}
+                            aria-haspopup="menu"
                           >
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                          </svg>
-                        </button>
-                        {openDropdown === dropdownId && (
-                          <div className="absolute left-0 top-full z-50 mt-1 w-52 surface-elevated py-1">
-                            {group.items.map((item) => (
-                              <Link
-                                key={item.href}
-                                href={item.href}
-                                onClick={() => setOpenDropdown(null)}
-                                className={cn(
-                                  'block px-3 py-2 text-sm',
-                                  isActive(item.href)
-                                    ? 'bg-border-subtle font-medium text-foreground'
-                                    : 'text-foreground-muted hover:bg-border-subtle/70 hover:text-foreground'
-                                )}
-                              >
-                                {item.label}
-                              </Link>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    )
-                  })
-                : tenantLinks.map((link) => (
-                    <Link key={link.href} href={link.href} className={navLinkClass(isActive(link.href))}>
-                      {link.label}
-                    </Link>
-                  ))}
-            </div>
+                            {group.label}
+                            <svg
+                              className={cn(
+                                'ml-1 h-3.5 w-3.5 opacity-60 transition-transform duration-150',
+                                openDropdown === dropdownId && 'rotate-180'
+                              )}
+                              fill="none"
+                              stroke="currentColor"
+                              viewBox="0 0 24 24"
+                              aria-hidden
+                            >
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth={2}
+                                d="M19 9l-7 7-7-7"
+                              />
+                            </svg>
+                          </button>
+                          {openDropdown === dropdownId && (
+                            <div
+                              role="menu"
+                              className="absolute left-0 top-full z-50 mt-2 w-56 overflow-hidden rounded-xl border border-border bg-surface-elevated py-1.5 shadow-lifted animate-in-ui"
+                            >
+                              <p className="px-3 pb-1.5 pt-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-foreground-subtle">
+                                {group.label}
+                              </p>
+                              {group.items.map((item) => (
+                                <Link
+                                  key={item.href}
+                                  href={item.href}
+                                  role="menuitem"
+                                  onClick={() => setOpenDropdown(null)}
+                                  className={cn(
+                                    'mx-1 flex items-center justify-between rounded-lg px-2.5 py-2 text-sm transition-colors',
+                                    isActive(item.href)
+                                      ? 'bg-accent/10 font-medium text-accent'
+                                      : 'text-foreground-muted hover:bg-border-subtle hover:text-foreground'
+                                  )}
+                                >
+                                  {item.label}
+                                  {isActive(item.href) && (
+                                    <span className="h-1.5 w-1.5 rounded-full bg-accent" aria-hidden />
+                                  )}
+                                </Link>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )
+                    })
+                  : tenantLinks.map((link) => (
+                      <Link key={link.href} href={link.href} className={navLinkClass(isActive(link.href))}>
+                        {link.label}
+                      </Link>
+                    ))}
+              </div>
+            </nav>
           )}
         </div>
 
@@ -344,17 +390,25 @@ export function AppHeader({
             <button
               type="button"
               onClick={() => chrome.openCommandPalette()}
-              className="flex h-9 w-full max-w-md items-center gap-2 rounded-control border border-border bg-border-subtle/40 px-3 text-sm text-foreground-muted hover:border-border hover:bg-border-subtle/70"
+              className="flex h-9 w-full max-w-md items-center gap-2 rounded-xl border border-border/80 bg-border-subtle/50 px-3 text-sm text-foreground-muted shadow-sm transition-colors hover:border-border hover:bg-border-subtle hover:text-foreground"
             >
               <svg className="h-4 w-4 shrink-0 opacity-60" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                />
               </svg>
-              <span className="truncate">Search users, companies, logs… ({modKey}K)</span>
+              <span className="truncate">Search users, companies, logs…</span>
+              <kbd className="ml-auto hidden rounded-md border border-border bg-surface px-1.5 py-0.5 text-[10px] font-medium text-foreground-subtle sm:inline-block">
+                {modKey}K
+              </kbd>
             </button>
           </div>
         )}
 
-        <div className="flex shrink-0 items-center gap-1 sm:gap-2">
+        <div className="flex shrink-0 items-center gap-1">
           {isDeveloper && (
             <Button
               variant="ghost"
@@ -364,181 +418,193 @@ export function AppHeader({
               onClick={() => chrome.openCommandPalette()}
             >
               <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-              </svg>
-            </Button>
-          )}
-
-          <div className="relative" ref={notifRef}>
-            <button
-              type="button"
-              className="relative rounded-control p-2 text-foreground-muted hover:bg-border-subtle hover:text-foreground"
-              aria-label="Notifications"
-              aria-expanded={notifOpen}
-              onClick={() => {
-                const next = !notifOpen
-                setNotifOpen(next)
-                setOpenDropdown(null)
-                if (next) {
-                  setUnread(0)
-                  markNotifsSeen(user.id)
-                  void loadNotifications()
-                }
-              }}
-            >
-              <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
                 <path
                   strokeLinecap="round"
                   strokeLinejoin="round"
                   strokeWidth={2}
-                  d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"
+                  d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
                 />
               </svg>
-              {unread > 0 && (
-                <Badge variant="danger" className="absolute -right-0.5 -top-0.5 min-w-[1.1rem] justify-center px-1 py-0 text-[10px]">
-                  {unread > 99 ? '99+' : unread}
-                </Badge>
-              )}
-            </button>
-            {notifOpen && (
-              <div className="absolute right-0 top-full z-50 mt-1 w-80 overflow-hidden rounded-xl border border-border bg-surface shadow-lg sm:w-96">
-                <div className="flex items-center justify-between border-b border-border px-3 py-2">
-                  <p className="text-sm font-semibold text-foreground">Notifications</p>
-                  {unread > 0 && (
-                    <span className="text-[11px] font-medium text-foreground-muted">{unread} need review</span>
-                  )}
-                </div>
-                <div className="max-h-96 overflow-y-auto">
-                  {loadingNotifs ? (
-                    <div className="space-y-2 p-3">
-                      <div className="h-14 animate-pulse rounded-lg bg-border-subtle" />
-                      <div className="h-14 animate-pulse rounded-lg bg-border-subtle" />
-                      <div className="h-14 animate-pulse rounded-lg bg-border-subtle" />
-                    </div>
-                  ) : notifications.length === 0 ? (
-                    <p className="px-4 py-8 text-center text-sm text-foreground-muted">No notifications</p>
-                  ) : (
-                    <ul className="divide-y divide-border">
-                      {notifications.map((n) => {
-                        const meta = notifMeta(n.type)
-                        return (
-                          <li key={n.id}>
-                            <Link
-                              href={n.href}
-                              onClick={() => setNotifOpen(false)}
-                              className={cn(
-                                'block px-3 py-3 transition-colors hover:bg-border-subtle/70',
-                                n.actionable && 'bg-amber-50/40'
-                              )}
-                            >
-                              <div className="flex items-start justify-between gap-2">
-                                <div className="min-w-0 flex-1">
-                                  <div className="flex flex-wrap items-center gap-1.5">
-                                    <span
-                                      className={cn(
-                                        'inline-flex rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide',
-                                        meta.className
-                                      )}
-                                    >
-                                      {meta.label}
-                                    </span>
-                                    {n.actionable && (
-                                      <span className="text-[10px] font-semibold uppercase tracking-wide text-amber-700">
-                                        Review
+            </Button>
+          )}
+
+          <div className="flex items-center gap-0.5 rounded-xl border border-border/70 bg-border-subtle/30 p-0.5 dark:bg-border-subtle/15">
+            <div className="relative" ref={notifRef}>
+              <button
+                type="button"
+                className={iconBtnClass}
+                aria-label="Notifications"
+                aria-expanded={notifOpen}
+                onClick={() => {
+                  const next = !notifOpen
+                  setNotifOpen(next)
+                  setOpenDropdown(null)
+                  if (next) {
+                    setUnread(0)
+                    markNotifsSeen(user.id)
+                    void loadNotifications()
+                  }
+                }}
+              >
+                <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={1.75}
+                    d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"
+                  />
+                </svg>
+                {unread > 0 && (
+                  <Badge
+                    variant="danger"
+                    className="absolute -right-0.5 -top-0.5 min-w-[1.1rem] justify-center px-1 py-0 text-[10px] shadow-sm"
+                  >
+                    {unread > 99 ? '99+' : unread}
+                  </Badge>
+                )}
+              </button>
+              {notifOpen && (
+                <div className="absolute right-0 top-full z-50 mt-2 w-80 overflow-hidden rounded-xl border border-border bg-surface shadow-lifted animate-in-ui sm:w-96">
+                  <div className="flex items-center justify-between border-b border-border bg-border-subtle/40 px-3.5 py-2.5">
+                    <p className="text-sm font-semibold tracking-tight text-foreground">Notifications</p>
+                    {unread > 0 && (
+                      <span className="text-[11px] font-medium text-foreground-muted">{unread} need review</span>
+                    )}
+                  </div>
+                  <div className="max-h-96 overflow-y-auto">
+                    {loadingNotifs ? (
+                      <div className="space-y-2 p-3">
+                        <div className="h-14 animate-pulse rounded-lg bg-border-subtle" />
+                        <div className="h-14 animate-pulse rounded-lg bg-border-subtle" />
+                        <div className="h-14 animate-pulse rounded-lg bg-border-subtle" />
+                      </div>
+                    ) : notifications.length === 0 ? (
+                      <p className="px-4 py-10 text-center text-sm text-foreground-muted">No notifications</p>
+                    ) : (
+                      <ul className="divide-y divide-border">
+                        {notifications.map((n) => {
+                          const meta = notifMeta(n.type)
+                          return (
+                            <li key={n.id}>
+                              <Link
+                                href={n.href}
+                                onClick={() => setNotifOpen(false)}
+                                className={cn(
+                                  'block px-3.5 py-3 transition-colors hover:bg-border-subtle/70',
+                                  n.actionable && 'bg-amber-50/50 dark:bg-amber-500/5'
+                                )}
+                              >
+                                <div className="flex items-start justify-between gap-2">
+                                  <div className="min-w-0 flex-1">
+                                    <div className="flex flex-wrap items-center gap-1.5">
+                                      <span
+                                        className={cn(
+                                          'inline-flex rounded-md px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide',
+                                          meta.className
+                                        )}
+                                      >
+                                        {meta.label}
                                       </span>
-                                    )}
+                                      {n.actionable && (
+                                        <span className="text-[10px] font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-300">
+                                          Review
+                                        </span>
+                                      )}
+                                    </div>
+                                    <p className="mt-1 truncate text-sm font-medium text-foreground">
+                                      {n.employee_name || n.title}
+                                    </p>
+                                    <p className="truncate text-xs text-foreground-muted">
+                                      {n.employee_name ? n.title : n.message || ''}
+                                      {n.employee_name && n.message ? ` · ${n.message}` : ''}
+                                    </p>
                                   </div>
-                                  <p className="mt-1 truncate text-sm font-medium text-foreground">
-                                    {n.employee_name || n.title}
-                                  </p>
-                                  <p className="truncate text-xs text-foreground-muted">
-                                    {n.employee_name ? n.title : n.message || ''}
-                                    {n.employee_name && n.message ? ` · ${n.message}` : ''}
-                                  </p>
+                                  <span className="shrink-0 text-[10px] tabular-nums text-foreground-muted">
+                                    {relativeWhen(n.created_at)}
+                                  </span>
                                 </div>
-                                <span className="shrink-0 text-[10px] tabular-nums text-foreground-muted">
-                                  {relativeWhen(n.created_at)}
-                                </span>
-                              </div>
-                            </Link>
-                          </li>
-                        )
-                      })}
-                    </ul>
-                  )}
-                </div>
-                {(isAdmin || notifications.length > 0) && (
-                  <div className="flex flex-wrap gap-x-3 gap-y-1 border-t border-border px-3 py-2">
-                    {isAdmin ? (
-                      <>
-                        <Link
-                          href="/leave-requests"
-                          onClick={() => setNotifOpen(false)}
-                          className="text-xs font-medium text-blue-600 hover:text-blue-700"
-                        >
-                          Leave
-                        </Link>
-                        {cashDrawerEnabled && (
-                          <>
+                              </Link>
+                            </li>
+                          )
+                        })}
+                      </ul>
+                    )}
+                  </div>
+                  {(isAdmin || notifications.length > 0) && (
+                    <div className="flex flex-wrap gap-x-3 gap-y-1 border-t border-border bg-border-subtle/30 px-3.5 py-2.5">
+                      {isAdmin ? (
+                        <>
+                          <Link
+                            href="/leave-requests"
+                            onClick={() => setNotifOpen(false)}
+                            className="text-xs font-medium text-accent hover:text-accent-hover"
+                          >
+                            Leave
+                          </Link>
+                          {cashDrawerEnabled && (
                             <Link
-                              href="/admin/shift-log"
+                              href="/admin/drawer-log"
                               onClick={() => setNotifOpen(false)}
-                              className="text-xs font-medium text-blue-600 hover:text-blue-700"
+                              className="text-xs font-medium text-accent hover:text-accent-hover"
                             >
                               Drawer Log
                             </Link>
-                            <Link
-                              href="/admin/cash-management"
-                              onClick={() => setNotifOpen(false)}
-                              className="text-xs font-medium text-blue-600 hover:text-blue-700"
-                            >
-                              Cash
-                            </Link>
-                          </>
-                        )}
+                          )}
+                          <Link
+                            href="/admin/punch-log"
+                            onClick={() => setNotifOpen(false)}
+                            className="text-xs font-medium text-accent hover:text-accent-hover"
+                          >
+                            Punch Log
+                          </Link>
+                        </>
+                      ) : (
                         <Link
-                          href="/time-entries"
+                          href="/my-schedule"
                           onClick={() => setNotifOpen(false)}
-                          className="text-xs font-medium text-blue-600 hover:text-blue-700"
+                          className="text-xs font-medium text-accent hover:text-accent-hover"
                         >
-                          Punch Log
+                          My Schedule
                         </Link>
-                      </>
-                    ) : (
-                      <Link
-                        href="/my-schedule"
-                        onClick={() => setNotifOpen(false)}
-                        className="text-xs font-medium text-blue-600 hover:text-blue-700"
-                      >
-                        My Schedule
-                      </Link>
-                    )}
-                  </div>
-                )}
-              </div>
-            )}
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            <Menu>
+              <MenuRoot>
+                <MenuTrigger>
+                  <button type="button" className={cn(iconBtnClass, 'hidden sm:inline-flex')} aria-label="Help">
+                    <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={1.75}
+                        d="M8.228 9c.549-1.165 1.81-2 3.272-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                      />
+                    </svg>
+                  </button>
+                </MenuTrigger>
+                <MenuContent align="end">
+                  <MenuSection>
+                    <MenuItem onClick={() => chrome.openShortcuts()} shortcut="?">
+                      Keyboard shortcuts
+                    </MenuItem>
+                    <MenuItem
+                      onClick={() => window.open('https://docs.clockinn.pro', '_blank', 'noopener,noreferrer')}
+                    >
+                      Documentation
+                    </MenuItem>
+                    <MenuItem onClick={() => chrome.openFeedback({ kind: 'feedback' })}>Contact support</MenuItem>
+                  </MenuSection>
+                </MenuContent>
+              </MenuRoot>
+            </Menu>
           </div>
 
-          <Menu>
-            <MenuRoot>
-              <MenuTrigger>
-                <Button variant="ghost" size="sm" aria-label="Help">
-                  Help
-                </Button>
-              </MenuTrigger>
-              <MenuContent align="end">
-                <MenuSection>
-                  <MenuItem onClick={() => chrome.openShortcuts()} shortcut="?">
-                    Keyboard shortcuts
-                  </MenuItem>
-                  <MenuItem onClick={() => window.open('https://docs.clockinn.pro', '_blank', 'noopener,noreferrer')}>
-                    Documentation
-                  </MenuItem>
-                  <MenuItem onClick={() => chrome.openFeedback({ kind: 'feedback' })}>Contact support</MenuItem>
-                </MenuSection>
-              </MenuContent>
-            </MenuRoot>
-          </Menu>
+          <div className="mx-1 hidden h-6 w-px bg-border sm:block" aria-hidden />
 
           <ProfileMenu user={user} onLogout={onLogout} />
         </div>

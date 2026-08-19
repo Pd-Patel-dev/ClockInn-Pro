@@ -162,7 +162,7 @@ async def get_admin_notifications(
                 message=session.review_note or FORGOT_PUNCH_OUT_REVIEW_NOTE,
                 employee_name=name or "Employee",
                 employee_id=session.employee_id,
-                href="/admin/shift-log",
+                href="/admin/drawer-log",
                 created_at=session.updated_at or session.created_at,
                 actionable=True,
             )
@@ -197,7 +197,7 @@ async def get_admin_notifications(
                 message="Auto clocked out at scheduled end",
                 employee_name=name or "Employee",
                 employee_id=entry.employee_id,
-                href="/time-entries",
+                href="/admin/punch-log",
                 created_at=entry.clock_out_at or entry.updated_at,
                 actionable=False,
             )
@@ -226,7 +226,7 @@ async def get_admin_notifications(
                 title="Clocked in",
                 employee_name=name or "Employee",
                 employee_id=entry.employee_id,
-                href="/time-entries",
+                href="/admin/punch-log",
                 created_at=entry.clock_in_at,
                 actionable=False,
             )
@@ -263,7 +263,7 @@ async def get_admin_notifications(
                 title="Clocked out",
                 employee_name=name or "Employee",
                 employee_id=entry.employee_id,
-                href="/time-entries",
+                href="/admin/punch-log",
                 created_at=entry.clock_out_at,
                 actionable=False,
             )

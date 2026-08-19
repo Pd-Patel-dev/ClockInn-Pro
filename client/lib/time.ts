@@ -58,7 +58,7 @@ export function fromTime12h(t: Time12h): string {
 }
 
 /**
- * Safely format an ISO date-time string for display (shift notes, common log).
+ * Safely format an ISO date-time string for display.
  * Uses the browser's local timezone. Returns fallback if value is null, undefined, or invalid.
  */
 export function formatDateTimeForDisplay(

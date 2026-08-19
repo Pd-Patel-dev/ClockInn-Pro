@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
+import { createPortal } from 'react-dom'
 import Layout from '@/components/Layout'
 import api from '@/lib/api'
 import { useToast } from '@/components/Toast'
@@ -101,6 +102,8 @@ export default function AdminLeavePage() {
   const [processing, setProcessing] = useState<string | null>(null)
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
   const [searchQuery, setSearchQuery] = useState('')
+  const [rejectTarget, setRejectTarget] = useState<LeaveRequest | null>(null)
+  const [rejectComment, setRejectComment] = useState('')
 
   useEffect(() => {
     fetchRequests()
@@ -115,6 +118,7 @@ export default function AdminLeavePage() {
       logger.error('Failed to fetch leave requests', error as Error, {
         endpoint: '/leave/admin/leave',
       })
+      toast.error('Could not load leave requests')
     } finally {
       setLoading(false)
     }
@@ -123,7 +127,7 @@ export default function AdminLeavePage() {
   const handleApprove = async (id: string) => {
     setProcessing(id)
     try {
-      await api.put(`/leave/admin/leave/${id}/approve`)
+      await api.put(`/leave/admin/leave/${id}/approve`, {})
       toast.success('Leave request approved')
       fetchRequests()
     } catch (error: any) {
@@ -133,16 +137,29 @@ export default function AdminLeavePage() {
     }
   }
 
-  const handleReject = async (id: string) => {
-    const comment = prompt('Enter rejection reason (optional):')
-    if (comment === null) return
+  const openReject = (request: LeaveRequest) => {
+    setRejectTarget(request)
+    setRejectComment('')
+  }
 
+  const closeReject = () => {
+    if (processing) return
+    setRejectTarget(null)
+    setRejectComment('')
+  }
+
+  const confirmReject = async () => {
+    if (!rejectTarget) return
+    const id = rejectTarget.id
     setProcessing(id)
     try {
+      const comment = rejectComment.trim()
       await api.put(`/leave/admin/leave/${id}/reject`, {
         review_comment: comment || null,
       })
       toast.success('Leave request rejected')
+      setRejectTarget(null)
+      setRejectComment('')
       fetchRequests()
     } catch (error: any) {
       toast.error(error.response?.data?.detail || 'Failed to reject request')
@@ -435,7 +452,7 @@ export default function AdminLeavePage() {
                                 </button>
                                 <button
                                   type="button"
-                                  onClick={() => handleReject(request.id)}
+                                  onClick={() => openReject(request)}
                                   disabled={busy}
                                   className="px-2.5 py-1.5 rounded-lg text-xs font-semibold text-red-600 hover:bg-red-50 border border-transparent hover:border-red-100 disabled:opacity-50 transition-all"
                                 >
@@ -456,6 +473,65 @@ export default function AdminLeavePage() {
           </div>
         </div>
       </div>
+
+      {rejectTarget &&
+        typeof document !== 'undefined' &&
+        createPortal(
+          <div
+            className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/40 p-4"
+            role="presentation"
+            onClick={closeReject}
+          >
+            <div
+              className="w-full max-w-sm rounded-xl border border-slate-200 bg-white p-5 shadow-lg"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="reject-leave-title"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <h3 id="reject-leave-title" className="text-sm font-semibold text-slate-900">
+                Reject leave request
+              </h3>
+              <p className="mt-1 text-xs leading-relaxed text-slate-500">
+                Reject {rejectTarget.employee_name}&apos;s {formatLeaveType(rejectTarget.type)}{' '}
+                request ({formatDate(rejectTarget.start_date)} – {formatDate(rejectTarget.end_date)}
+                ). An optional note is sent to the employee.
+              </p>
+              <label className="mt-4 block">
+                <span className="text-[11px] font-medium uppercase tracking-wide text-slate-400">
+                  Reason (optional)
+                </span>
+                <textarea
+                  value={rejectComment}
+                  onChange={(e) => setRejectComment(e.target.value)}
+                  rows={3}
+                  maxLength={1000}
+                  placeholder="e.g. Overlapping coverage needed that week"
+                  className="mt-1.5 w-full resize-none rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-200"
+                />
+              </label>
+              <div className="mt-4 flex gap-2">
+                <button
+                  type="button"
+                  onClick={closeReject}
+                  disabled={processing === rejectTarget.id}
+                  className="flex-1 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-600 transition-colors hover:bg-slate-50 disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={confirmReject}
+                  disabled={processing === rejectTarget.id}
+                  className="flex-1 rounded-lg bg-red-600 px-3 py-2 text-xs font-medium text-white transition-colors hover:bg-red-700 disabled:opacity-50"
+                >
+                  {processing === rejectTarget.id ? 'Rejecting…' : 'Reject'}
+                </button>
+              </div>
+            </div>
+          </div>,
+          document.body,
+        )}
     </Layout>
   )
 }

@@ -134,6 +134,18 @@ async def get_current_admin(
     return current_user
 
 
+async def get_current_admin_or_manager(
+    current_user: User = Depends(get_current_verified_user),
+) -> User:
+    """Require ADMIN or MANAGER role (tenant ops pages like Punch Log / Drawer Log)."""
+    if current_user.role not in (UserRole.ADMIN, UserRole.MANAGER):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin or manager access required",
+        )
+    return current_user
+
+
 async def get_current_developer(
     current_user: User = Depends(get_current_verified_user),
 ) -> User:

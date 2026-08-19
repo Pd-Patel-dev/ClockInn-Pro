@@ -2,7 +2,8 @@
 Login attempt tracking and lockout.
 
 - **In-memory** (default): per-process dict. Lost on restart / not shared across workers.
-- **Redis** (when `REDIS_URL` is set): shared across instances; set `REDIS_URL` in production with multiple API replicas.
+- **Redis** (when `REDIS_URL` is set): shared across instances. **Required in production**
+  (`ENVIRONMENT=production|prod`); set `REDIS_URL` so lockout and rate limits work across API replicas.
 
 Optional `LOGIN_LOCKOUT_USE_IP`: key by normalized email + client IP (reduces shared-account false lockouts;
   slightly weaker against distributed attacks on one email).
@@ -104,6 +105,18 @@ async def _get_redis():
         socket_timeout=5,
     )
     return _redis_client
+
+
+async def ping_login_attempts_redis() -> None:
+    """Verify Redis is reachable when REDIS_URL is set. Raises on failure."""
+    if not (settings.REDIS_URL or "").strip():
+        raise RuntimeError("REDIS_URL is not set")
+    r = await _get_redis()
+    if r is None:
+        raise RuntimeError("REDIS_URL set but Redis client was not created")
+    pong = await r.ping()
+    if not pong:
+        raise RuntimeError("Redis PING returned falsy")
 
 
 async def close_login_attempts_redis() -> None:

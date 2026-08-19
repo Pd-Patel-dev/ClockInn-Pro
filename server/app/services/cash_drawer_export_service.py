@@ -14,7 +14,10 @@ import re
 from app.models.cash_drawer import CashDrawerSession
 from app.models.user import User
 from app.models.company import Company
-from app.services.company_service import get_company_settings
+from app.services.cash_drawer_service import (
+    expected_balance_cents,
+    resolve_current_cash_cents,
+)
 
 
 def sanitize_html(text: str) -> str:
@@ -28,8 +31,6 @@ def sanitize_html(text: str) -> str:
     text = re.sub(r'&(?!\w+;)', '&amp;', text)
     # Remove path-like characters that might confuse reportlab (but keep / for dates)
     text = re.sub(r'[<>:"|?*\\]', '', text)
-    # Ensure no leading/trailing spaces that could cause issues
-    text = text.strip()
     return text
 
 
@@ -41,41 +42,49 @@ async def generate_cash_drawer_pdf(
     to_date: date,
 ) -> BytesIO:
     """Generate PDF report for cash drawer sessions."""
-    import logging
-    logger = logging.getLogger(__name__)
-    
     from reportlab.lib import colors
-    from reportlab.lib.pagesizes import letter
-    from reportlab.lib.units import inch
-    from reportlab.lib.enums import TA_LEFT, TA_RIGHT, TA_CENTER
-    from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+    from reportlab.lib.pagesizes import letter, landscape
     from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.lib.units import inch
+    from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+    from reportlab.lib.enums import TA_CENTER
     
-    # Get company info
-    result = await db.execute(select(Company).where(Company.id == company_id))
-    company = result.scalar_one_or_none()
-    company_name = str(company.name) if company and company.name else "Company"
-    company_name = re.sub(r'[<>:"|?*\\]', '', company_name).strip() or "Company"
-    
-    # Create buffer and document
     buffer = BytesIO()
+    
+    # Get company name
+    company_result = await db.execute(select(Company).where(Company.id == company_id))
+    company = company_result.scalar_one_or_none()
+    company_name = company.name if company else "Company"
+    
+    # Create PDF
     doc = SimpleDocTemplate(
         buffer,
-        pagesize=letter,
-        leftMargin=0.5*inch,
-        rightMargin=0.5*inch,
-        topMargin=0.5*inch,
-        bottomMargin=0.5*inch,
+        pagesize=landscape(letter),
+        rightMargin=0.4*inch,
+        leftMargin=0.4*inch,
+        topMargin=0.4*inch,
+        bottomMargin=0.4*inch
     )
-    story = []
+    
     styles = getSampleStyleSheet()
+    title_style = ParagraphStyle(
+        'CustomTitle',
+        parent=styles['Heading1'],
+        fontSize=14,
+        alignment=TA_CENTER,
+        spaceAfter=6
+    )
+    subtitle_style = ParagraphStyle(
+        'Subtitle',
+        parent=styles['Normal'],
+        fontSize=9,
+        alignment=TA_CENTER,
+        textColor=colors.grey,
+        spaceAfter=12
+    )
     
-    # Simple colors
     header_bg = colors.HexColor('#374151')
-    
-    # Simple header
-    title_style = ParagraphStyle('Title', fontSize=14, fontName='Helvetica-Bold')
-    subtitle_style = ParagraphStyle('Subtitle', fontSize=9, textColor=colors.gray)
+    story = []
     
     period_str = f"{from_date.strftime('%m/%d/%Y')} - {to_date.strftime('%m/%d/%Y')}"
     
@@ -83,10 +92,9 @@ async def generate_cash_drawer_pdf(
     story.append(Paragraph(f"Period: {period_str} | Generated: {datetime.utcnow().strftime('%m/%d/%Y %I:%M %p')}", subtitle_style))
     story.append(Spacer(1, 0.2*inch))
     
-    # Simple table with fewer columns
+    # Balance / Expected = current − drop (cash after drop)
     if sessions:
-        # Header row - simple text, no Paragraph objects
-        table_data = [["Date", "Employee", "Start", "Room Sale", "Drop", "Balance", "End", "+/-", "Status"]]
+        table_data = [["Date", "Employee", "Start", "Current", "Drop", "After Drop", "End", "+/-", "Status"]]
         
         total_delta = 0
         total_start = 0
@@ -100,12 +108,11 @@ async def generate_cash_drawer_pdf(
             
             date_str = session.start_counted_at.strftime("%m/%d/%y")
             start_cash = f"${session.start_cash_cents / 100:.0f}"
-            collected_cash = f"${(session.collected_cash_cents or 0) / 100:.0f}"
+            current = resolve_current_cash_cents(session)
+            current_str = f"${current / 100:.0f}" if current is not None else "-"
             drop_cash = f"${(session.drop_amount_cents or 0) / 100:.0f}"
-            expected_balance = (
-                session.start_cash_cents + (session.collected_cash_cents or 0) - (session.drop_amount_cents or 0)
-            )
-            balance_str = f"${expected_balance / 100:.0f}" if session.end_cash_cents is not None else "-"
+            expected = expected_balance_cents(session)
+            after_drop_str = f"${expected / 100:.0f}" if expected is not None and session.end_cash_cents is not None else "-"
             end_cash = f"${session.end_cash_cents / 100:.0f}" if session.end_cash_cents else "-"
             
             delta_val = session.delta_cents or 0
@@ -123,55 +130,53 @@ async def generate_cash_drawer_pdf(
             if session.end_cash_cents:
                 total_end += session.end_cash_cents
             
-            table_data.append([date_str, emp_name, start_cash, collected_cash, drop_cash, balance_str, end_cash, delta_str, status])
+            table_data.append([
+                date_str, emp_name, start_cash, current_str, drop_cash,
+                after_drop_str, end_cash, delta_str, status,
+            ])
         
         # Totals row
         total_delta_str = f"+${total_delta / 100:.0f}" if total_delta >= 0 else f"-${abs(total_delta) / 100:.0f}"
-        table_data.append(["TOTAL", f"{len(sessions)} sessions", f"${total_start / 100:.0f}", "-", "-", "-", f"${total_end / 100:.0f}", total_delta_str, ""])
+        table_data.append([
+            "TOTAL", f"{len(sessions)} sessions", f"${total_start / 100:.0f}",
+            "-", "-", "-", f"${total_end / 100:.0f}", total_delta_str, "",
+        ])
         
-        # Create compact table
-        col_widths = [0.7*inch, 1.2*inch, 0.65*inch, 0.65*inch, 0.55*inch, 0.65*inch, 0.65*inch, 0.55*inch, 0.55*inch]
+        col_widths = [0.65*inch, 1.1*inch, 0.6*inch, 0.65*inch, 0.55*inch, 0.7*inch, 0.55*inch, 0.55*inch, 0.55*inch]
         table = Table(table_data, colWidths=col_widths)
         
         table.setStyle(TableStyle([
-            # Header
             ('BACKGROUND', (0, 0), (-1, 0), header_bg),
             ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
             ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-            ('FONTSIZE', (0, 0), (-1, 0), 9),
+            ('FONTSIZE', (0, 0), (-1, 0), 8),
             ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
-            
-            # Data rows
             ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
             ('FONTSIZE', (0, 1), (-1, -1), 8),
             ('ALIGN', (2, 1), (7, -1), 'RIGHT'),
             ('ALIGN', (8, 1), (8, -1), 'CENTER'),
-            
-            # Totals row
             ('BACKGROUND', (0, -1), (-1, -1), header_bg),
             ('TEXTCOLOR', (0, -1), (-1, -1), colors.white),
             ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'),
-            
-            # Grid and padding
             ('GRID', (0, 0), (-1, -1), 0.5, colors.lightgrey),
             ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
             ('TOPPADDING', (0, 0), (-1, -1), 4),
             ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
-            ('LEFTPADDING', (0, 0), (-1, -1), 4),
-            ('RIGHTPADDING', (0, 0), (-1, -1), 4),
+            ('LEFTPADDING', (0, 0), (-1, -1), 3),
+            ('RIGHTPADDING', (0, 0), (-1, -1), 3),
         ]))
         
         story.append(table)
     else:
         story.append(Paragraph("No cash drawer sessions found for this period", styles['Normal']))
     
-    # Build PDF
     try:
         doc.build(story)
         buffer.seek(0)
         return buffer
     except Exception as e:
-        logger.error(f"Error building PDF: {str(e)}", exc_info=True)
+        import logging
+        logging.getLogger(__name__).error(f"Error building PDF: {str(e)}", exc_info=True)
         raise ValueError(f"Failed to generate PDF: {str(e)}")
 
 
@@ -190,11 +195,9 @@ async def generate_cash_drawer_excel(
     ws = wb.active
     ws.title = "Cash Drawer"
     
-    # Simple header
-    headers = ["Date", "Employee", "Start", "Room Sale", "Drop", "Balance", "End", "+/-", "Status"]
+    headers = ["Date", "Employee", "Start", "Current", "Drop", "After Drop", "End", "+/-", "Status"]
     ws.append(headers)
     
-    # Style header
     header_fill = PatternFill(start_color="374151", end_color="374151", fill_type="solid")
     header_font = Font(bold=True, color="FFFFFF", size=9)
     
@@ -203,36 +206,33 @@ async def generate_cash_drawer_excel(
         cell.font = header_font
         cell.alignment = Alignment(horizontal="center")
     
-    # Data rows
     for session in sessions:
         emp_result = await db.execute(select(User).where(User.id == session.employee_id))
         employee = emp_result.scalar_one_or_none()
         emp_name = employee.name if employee else "Unknown"
         
         status = "Open" if session.status.value == "OPEN" else "OK" if session.status.value == "CLOSED" else "Review"
-        expected_balance = (
-            session.start_cash_cents + (session.collected_cash_cents or 0) - (session.drop_amount_cents or 0)
-        ) if session.end_cash_cents is not None else None
+        current = resolve_current_cash_cents(session) if session.end_cash_cents is not None else None
+        expected = expected_balance_cents(session) if session.end_cash_cents is not None else None
         
         ws.append([
             session.start_counted_at.strftime("%m/%d/%y"),
             emp_name,
             session.start_cash_cents / 100,
-            (session.collected_cash_cents or 0) / 100,
+            current / 100 if current is not None else None,
             (session.drop_amount_cents or 0) / 100,
-            expected_balance / 100 if expected_balance is not None else None,
+            expected / 100 if expected is not None else None,
             session.end_cash_cents / 100 if session.end_cash_cents else None,
             session.delta_cents / 100 if session.delta_cents else 0,
             status,
         ])
     
-    # Set column widths
     ws.column_dimensions['A'].width = 10
     ws.column_dimensions['B'].width = 15
     ws.column_dimensions['C'].width = 8
-    ws.column_dimensions['D'].width = 8
+    ws.column_dimensions['D'].width = 9
     ws.column_dimensions['E'].width = 8
-    ws.column_dimensions['F'].width = 8
+    ws.column_dimensions['F'].width = 10
     ws.column_dimensions['G'].width = 8
     ws.column_dimensions['H'].width = 8
     ws.column_dimensions['I'].width = 8

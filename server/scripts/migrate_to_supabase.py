@@ -25,7 +25,7 @@ from app.core.config import settings
 from app.models import (
     Company, User, Session, TimeEntry, LeaveRequest,
     PayrollRun, PayrollLineItem, PayrollAdjustment,
-    Shift, ShiftTemplate, ScheduleSwap,
+    Shift, ShiftTemplate,
     CashDrawerSession, CashDrawerAudit, AuditLog,
 )
 
@@ -192,7 +192,6 @@ async def migrate_data(source_url: str, target_url: str, skip_existing: bool = T
         (PayrollRun, "payroll_runs", "created_at"),
         (PayrollLineItem, "payroll_line_items", "id"),
         (PayrollAdjustment, "payroll_adjustments", "id"),
-        (ScheduleSwap, "schedule_swaps", "id"),
         (AuditLog, "audit_logs", "created_at"),
     ]
     

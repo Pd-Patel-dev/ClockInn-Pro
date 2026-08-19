@@ -37,7 +37,8 @@ class CashDrawerSession(Base):
     end_count_source = Column(Enum(CashCountSource, values_callable=lambda x: [e.value for e in x]), nullable=True, default=CashCountSource.KIOSK)
     
     # Cash collection details (for punch-out)
-    collected_cash_cents = Column(BigInteger, nullable=True)  # Total cash collected from customers
+    current_cash_cents = Column(BigInteger, nullable=True)  # Counted cash in drawer before drop
+    collected_cash_cents = Column(BigInteger, nullable=True)  # Legacy; unused by current clock-out UI
     drop_amount_cents = Column(BigInteger, nullable=True)  # Cash dropped/removed from drawer during shift
     beverages_cash_cents = Column(BigInteger, nullable=True)  # Marketplace sales total (cash + card)
     # Live marketplace sales during open shift:
@@ -46,7 +47,7 @@ class CashDrawerSession(Base):
     # In-progress guest cart (not yet paid): [{id, label, price_cents, qty}]
     marketplace_cart_json = Column(JSONB, nullable=True)
     
-    # Computed delta (end - start)
+    # Computed delta (end − expected after drop)
     delta_cents = Column(BigInteger, nullable=True)  # Computed in service layer
     
     # Status and review

@@ -28,6 +28,13 @@ class Settings(BaseSettings):
     REFRESH_TOKEN_COOKIE_NAME: str = "refresh_token"
     # If set, must match on set_cookie and delete_cookie (e.g. .example.com for subdomains).
     COOKIE_DOMAIN: Optional[str] = None
+
+    # Self-serve company signup (POST /auth/register-company). Prefer False in production;
+    # create tenants via the developer portal instead.
+    ALLOW_PUBLIC_REGISTER: bool = Field(
+        default=False,
+        description="If True, public /register and POST /auth/register-company are enabled.",
+    )
     
     # CORS: must be explicit origin(s), not "*", when allow_credentials=True (see main.py)
     FRONTEND_URL: str = "http://localhost:3000"
@@ -103,10 +110,20 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def enforce_cookie_secure_in_production(self) -> "Settings":
-        """Refresh-token cookies must be Secure when ENVIRONMENT is production (HTTPS-only sites)."""
+        """Refresh-token cookies must be Secure on HTTPS (production or https FRONTEND_URL)."""
         env = (self.ENVIRONMENT or "").strip().lower()
-        if env in ("prod", "production"):
+        fe = (self.FRONTEND_URL or "").strip().lower()
+        if env in ("prod", "production") or fe.startswith("https://"):
             self.COOKIE_SECURE = True
+        samesite = (self.COOKIE_SAMESITE or "lax").strip().lower()
+        self.COOKIE_SAMESITE = samesite
+        if samesite == "none" and not self.COOKIE_SECURE:
+            raise ValueError(
+                "COOKIE_SAMESITE=none requires COOKIE_SECURE=true (cross-site cookies over HTTPS)."
+            )
+        if self.COOKIE_DOMAIN and not str(self.COOKIE_DOMAIN).startswith("."):
+            # Leading-dot domains are conventional for sharing across subdomains
+            pass
         return self
     
     # Rate Limiting (global middleware by IP; see app.middleware.rate_limit)
@@ -126,7 +143,8 @@ class Settings(BaseSettings):
     LOGIN_ATTEMPTS_LIMIT: int = 5
     PIN_ATTEMPTS_LIMIT: int = 5
     LOCKOUT_DURATION_MINUTES: int = 10
-    # Shared Redis: login lockout (login_attempts) + optional API rate limit buckets (rate_limit middleware).
+    # Shared Redis: login lockout (login_attempts) + API rate limit buckets (rate_limit middleware).
+    # Required when ENVIRONMENT is production/prod.
     REDIS_URL: Optional[str] = Field(
         default=None,
         description="e.g. redis://localhost:6379/0 — Redis-backed login lockout and per-IP rate limits across API replicas.",
@@ -139,6 +157,15 @@ class Settings(BaseSettings):
         default=86400,
         description="Redis TTL for keys that track failed attempts before lockout (sliding window).",
     )
+
+    @model_validator(mode="after")
+    def redis_required_in_production(self) -> "Settings":
+        env = (self.ENVIRONMENT or "").strip().lower()
+        if env in ("prod", "production") and not (self.REDIS_URL or "").strip():
+            raise ValueError(
+                "REDIS_URL is required in production for shared API rate limits and login lockout."
+            )
+        return self
 
     # Shift assignment: roles that can be assigned shifts (add new roles here or via env without code change)
     SHIFT_ELIGIBLE_ROLES: Union[str, List[str]] = "MAINTENANCE,FRONTDESK,HOUSEKEEPING"

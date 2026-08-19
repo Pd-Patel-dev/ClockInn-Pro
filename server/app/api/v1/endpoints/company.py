@@ -20,6 +20,7 @@ from app.services.company_service import (
     update_company_name,
     update_company_settings,
     DEFAULT_PUNCH_ALLOWED_ROLES,
+    DEFAULT_KIOSK_ALLOWED_ROLES,
 )
 
 router = APIRouter()
@@ -57,9 +58,6 @@ def _settings_response(settings: dict) -> CompanySettingsResponse:
         cash_drawer_require_manager_review=settings.get("cash_drawer_require_manager_review", False),
         schedule_day_start_hour=settings.get("schedule_day_start_hour", 7),
         schedule_day_end_hour=settings.get("schedule_day_end_hour", 7),
-        shift_notes_enabled=settings.get("shift_notes_enabled", True),
-        shift_notes_required_on_clock_out=settings.get("shift_notes_required_on_clock_out", False),
-        shift_notes_allow_edit_after_clock_out=settings.get("shift_notes_allow_edit_after_clock_out", False),
         email_verification_required=settings.get("email_verification_required", True),
         geofence_enabled=settings.get("geofence_enabled", False),
         office_latitude=settings.get("office_latitude"),
@@ -68,6 +66,7 @@ def _settings_response(settings: dict) -> CompanySettingsResponse:
         kiosk_network_restriction_enabled=settings.get("kiosk_network_restriction_enabled", False),
         kiosk_allowed_ips=settings.get("kiosk_allowed_ips") or [],
         punch_allowed_roles=settings.get("punch_allowed_roles", list(DEFAULT_PUNCH_ALLOWED_ROLES)),
+        kiosk_allowed_roles=settings.get("kiosk_allowed_roles", list(DEFAULT_KIOSK_ALLOWED_ROLES)),
         marketplace_items=settings.get("marketplace_items") or [],
         marketplace_enabled=settings.get(
             "marketplace_enabled",

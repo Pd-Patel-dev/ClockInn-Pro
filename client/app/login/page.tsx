@@ -6,7 +6,7 @@ import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { login, getCurrentUser } from '@/lib/auth'
-import { startTokenRefreshInterval } from '@/lib/api'
+import api, { startTokenRefreshInterval } from '@/lib/api'
 import Link from 'next/link'
 
 const loginSchema = z.object({
@@ -24,9 +24,25 @@ function LoginContent() {
   const [sessionExpired, setSessionExpired] = useState(false)
   const [currentYear, setCurrentYear] = useState<number | null>(null)
   const [mounted, setMounted] = useState(false)
+  const [allowPublicRegister, setAllowPublicRegister] = useState(false)
 
   useEffect(() => {
     setMounted(true)
+  }, [])
+
+  useEffect(() => {
+    let cancelled = false
+    api
+      .get('/auth/public-config')
+      .then((res) => {
+        if (!cancelled) setAllowPublicRegister(Boolean(res.data?.allow_public_register))
+      })
+      .catch(() => {
+        if (!cancelled) setAllowPublicRegister(false)
+      })
+    return () => {
+      cancelled = true
+    }
   }, [])
 
   useEffect(() => {
@@ -324,14 +340,16 @@ function LoginContent() {
                 </button>
               </div>
 
-              <div className="text-center pt-2">
-                <p className="text-sm text-slate-600">
-                  New company?{' '}
-                  <Link href="/register" className="font-medium text-blue-600 hover:text-blue-700">
-                    Create an account
-                  </Link>
-                </p>
-              </div>
+              {allowPublicRegister && (
+                <div className="text-center pt-2">
+                  <p className="text-sm text-slate-600">
+                    New company?{' '}
+                    <Link href="/register" className="font-medium text-blue-600 hover:text-blue-700">
+                      Create an account
+                    </Link>
+                  </p>
+                </div>
+              )}
             </form>
           </div>
 

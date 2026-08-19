@@ -51,11 +51,16 @@ def _safe_session_attr(session, name, default=None):
 def _session_response_kwargs(session, employee_name: str, time_entry=None) -> dict:
     collected = _safe_session_attr(session, "collected_cash_cents")
     drop = _safe_session_attr(session, "drop_amount_cents")
+    current = _safe_session_attr(session, "current_cash_cents")
     from app.services.marketplace_service import (
         marketplace_card_cents,
         marketplace_cash_cents,
         marketplace_total_cents,
         normalize_sales,
+    )
+    from app.services.cash_drawer_service import (
+        expected_balance_cents,
+        resolve_current_cash_cents,
     )
 
     sales = normalize_sales(_safe_session_attr(session, "marketplace_sales_json"))
@@ -66,6 +71,12 @@ def _session_response_kwargs(session, employee_name: str, time_entry=None) -> di
     card_mkt = marketplace_card_cents(sales)
     if total is not None and int(total) > cash_mkt + card_mkt:
         cash_mkt = int(total) - card_mkt
+    resolved_current = resolve_current_cash_cents(session) if session.end_cash_cents is not None else current
+    expected = (
+        expected_balance_cents(session)
+        if session.end_cash_cents is not None
+        else None
+    )
     return {
         "id": session.id,
         "company_id": session.company_id,
@@ -78,17 +89,14 @@ def _session_response_kwargs(session, employee_name: str, time_entry=None) -> di
         "end_cash_cents": session.end_cash_cents,
         "end_counted_at": session.end_counted_at,
         "end_count_source": session.end_count_source.value if session.end_count_source else None,
+        "current_cash_cents": resolved_current,
         "collected_cash_cents": collected,
         "drop_amount_cents": drop,
         "beverages_cash_cents": total,
         "marketplace_cash_cents": cash_mkt if sales or total else None,
         "marketplace_card_cents": card_mkt if sales or total else None,
         "marketplace_sales": [s for s in sales if int(s.get("qty") or 0) > 0] if sales else None,
-        "expected_balance_cents": (
-            session.start_cash_cents + (collected or 0) - (drop or 0)
-        )
-        if session.end_cash_cents is not None
-        else None,
+        "expected_balance_cents": expected,
         "delta_cents": _safe_session_attr(session, "delta_cents"),
         "status": session.status.value,
         "reviewed_by": session.reviewed_by,

@@ -38,9 +38,6 @@ interface CompanySettings {
   cash_drawer_enabled?: boolean
   schedule_day_start_hour?: number
   schedule_day_end_hour?: number
-  shift_notes_enabled?: boolean
-  shift_notes_required_on_clock_out?: boolean
-  shift_notes_allow_edit_after_clock_out?: boolean
   email_verification_required?: boolean
   geofence_enabled?: boolean
   office_latitude?: number | null
@@ -660,9 +657,6 @@ export default function DeveloperCompanyPage() {
             <div><dt className="text-slate-600">Breaks paid</dt><dd className="font-medium">{s.breaks_paid ? 'Yes' : 'No'}</dd></div>
             {s.cash_drawer_enabled != null && (
               <div><dt className="text-slate-600">Cash drawer</dt><dd className="font-medium">{s.cash_drawer_enabled ? 'Yes' : 'No'}</dd></div>
-            )}
-            {s.shift_notes_enabled != null && (
-              <div><dt className="text-slate-600">Shift notes</dt><dd className="font-medium">{s.shift_notes_enabled ? 'Yes' : 'No'}</dd></div>
             )}
           </dl>
           </CardBody>

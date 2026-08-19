@@ -341,7 +341,7 @@ export default function DashboardPage() {
                   </div>
                 </div>
                 <Link
-                  href="/admin/shift-log"
+                  href="/admin/drawer-log"
                   className="shrink-0 rounded-xl bg-slate-900 px-3.5 py-2 text-sm font-semibold text-white hover:bg-slate-800 transition-colors"
                 >
                   Review now
@@ -394,7 +394,7 @@ export default function DashboardPage() {
                       tone={forgotPunchOut > 0 ? 'warning' : 'default'}
                       href={
                         forgotPunchOut > 0 && cashDrawerEnabled
-                          ? '/admin/shift-log'
+                          ? '/admin/drawer-log'
                           : undefined
                       }
                     />
@@ -409,7 +409,7 @@ export default function DashboardPage() {
                     { href: '/schedules', label: 'Schedules' },
                     { href: '/leave-requests', label: 'Leave requests' },
                     ...(cashDrawerEnabled
-                      ? [{ href: '/admin/shift-log', label: 'Drawer Log' }]
+                      ? [{ href: '/admin/drawer-log', label: 'Drawer Log' }]
                       : []),
                     { href: '/settings', label: 'Settings' },
                   ].map((action) => (
@@ -482,7 +482,7 @@ export default function DashboardPage() {
                                 onClick={() =>
                                   router.push(
                                     needsReview && cashDrawerEnabled
-                                      ? '/admin/shift-log'
+                                      ? '/admin/drawer-log'
                                       : `/employees/${employee.id}`
                                   )
                                 }
@@ -535,7 +535,7 @@ export default function DashboardPage() {
                               {needsReview && (
                                 <InfoTip
                                   label="Auto clock-out"
-                                  content="Missed punch-out — reviewed in Shift Log."
+                                  content="Missed punch-out — reviewed in Drawer Log."
                                 />
                               )}
                             </div>

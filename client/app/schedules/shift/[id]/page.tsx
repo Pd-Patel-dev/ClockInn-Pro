@@ -5,6 +5,7 @@ import { useRouter, useParams } from 'next/navigation'
 import Layout from '@/components/Layout'
 import api from '@/lib/api'
 import { getCurrentUser, User } from '@/lib/auth'
+import { usePermissions } from '@/hooks/usePermissions'
 import { format, parseISO, addDays } from 'date-fns'
 import logger from '@/lib/logger'
 import { parseTime24 } from '@/lib/time'
@@ -170,7 +171,8 @@ export default function ShiftDetailPage() {
   const durationHours = (endAt.getTime() - startAt.getTime()) / (1000 * 60 * 60)
   const workHours = durationHours - (shift.break_minutes / 60)
 
-  const isAdmin = user?.role === 'ADMIN'
+  const { can } = usePermissions(user)
+  const canEditSchedule = can('schedule_edit')
 
   return (
     <Layout>
@@ -185,7 +187,7 @@ export default function ShiftDetailPage() {
               <h1 className="text-2xl font-bold text-slate-900">Shift Details</h1>
               <p className="text-sm text-slate-600 mt-1">{shift.employee_name}</p>
             </div>
-            {isAdmin && (
+            {canEditSchedule && (
               <div className="flex space-x-2">
                 <button
                   onClick={() => router.push(`/schedules/shift/${shiftId}/edit`)}

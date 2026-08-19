@@ -62,6 +62,15 @@ def _clear_refresh_cookie(response: Response) -> None:
     )
 
 
+@router.get("/public-config")
+@handle_endpoint_errors(operation_name="auth_public_config")
+async def auth_public_config():
+    """Unauthenticated flags for login/register UI (no secrets)."""
+    return {
+        "allow_public_register": bool(settings.ALLOW_PUBLIC_REGISTER),
+    }
+
+
 @router.post("/register-company", response_model=TokenResponse, status_code=status.HTTP_201_CREATED)
 @handle_endpoint_errors(operation_name="register_company")
 async def register_company_endpoint(
@@ -70,6 +79,11 @@ async def register_company_endpoint(
     db: AsyncSession = Depends(get_db),
 ):
     """Register a new company and create the first admin user. Sets refresh token in HttpOnly cookie."""
+    if not settings.ALLOW_PUBLIC_REGISTER:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Public company registration is disabled. Contact your administrator.",
+        )
     user, access_token, refresh_token = await register_company(db, request)
     _set_refresh_cookie(response, refresh_token)
     return TokenResponse(
@@ -201,16 +215,26 @@ async def forgot_password_endpoint(
     request: ForgotPasswordRequest,
     db: AsyncSession = Depends(get_db),
 ):
-    """Request a 6-digit OTP to be sent to the given email for password reset.
-    Returns an error if the email is not registered."""
+    """Request a 6-digit OTP for password reset.
+
+    Always returns a generic success message (anti-enumeration). When email delivery
+    fails for a known account, returns 503 so the user can retry or contact an admin.
+    """
     normalized_email = normalize_email(request.email)
-    success, error_msg = await send_password_reset_otp(db, normalized_email)
-    if not success:
+    success, error_msg, email_failed = await send_password_reset_otp(db, normalized_email)
+    if email_failed:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=error_msg or "No account is registered with this email.",
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=error_msg
+            or "We could not send the email right now. Try again in a few minutes or contact your administrator.",
         )
-    return {"message": "A verification code has been sent to your email."}
+    # success is True for unknown emails and for successful/cooldown paths
+    if not success and error_msg:
+        # Unexpected hard failure (e.g. lock contention) — still avoid leaking existence
+        logger.warning("forgot_password soft-fail: %s", error_msg)
+    return {
+        "message": "If an account exists for that email, a verification code has been sent. Check your inbox and spam folder.",
+    }
 
 
 @router.post("/reset-password")

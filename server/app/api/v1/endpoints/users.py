@@ -303,6 +303,23 @@ async def reset_password_endpoint(
     return {"message": "Password reset successfully"}
 
 
+@router.post("/admin/employees/{employee_id}/resend-password-setup")
+@handle_endpoint_errors(operation_name="resend_password_setup")
+async def resend_password_setup_endpoint(
+    employee_id: str,
+    current_user: User = Depends(require_permission("user_management")),
+    company_id: UUIDType = Depends(get_current_tenant_company_id),
+    db: AsyncSession = Depends(get_db),
+):
+    """Re-send invite / set-password email when the previous link expired or never arrived."""
+    from app.services.user_service import resend_password_setup_as_admin
+
+    emp_id = parse_uuid(employee_id, "Employee ID")
+    return await resend_password_setup_as_admin(
+        db, emp_id, company_id, actor_user_id=current_user.id
+    )
+
+
 @router.delete("/admin/employees/{employee_id}", status_code=status.HTTP_204_NO_CONTENT)
 @handle_endpoint_errors(operation_name="delete_employee")
 async def delete_employee_endpoint(

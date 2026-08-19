@@ -6,6 +6,7 @@ import Layout from '@/components/Layout'
 import ConfirmationDialog from '@/components/ConfirmationDialog'
 import api from '@/lib/api'
 import { getCurrentUser, User } from '@/lib/auth'
+import { DEFAULT_PUNCH_ALLOWED_ROLES, isPunchAllowed } from '@/lib/punch'
 
 export default function MyPunchPage() {
   const router = useRouter()
@@ -17,8 +18,10 @@ export default function MyPunchPage() {
   const [loadingStatus, setLoadingStatus] = useState(true)
   const [cashDrawerRequired, setCashDrawerRequired] = useState(false)
   const [cashAmount, setCashAmount] = useState('')
-  const [collectedCash, setCollectedCash] = useState('')
+  const [currentCashAmount, setCurrentCashAmount] = useState('')
   const [dropAmount, setDropAmount] = useState('')
+  const [startCashCents, setStartCashCents] = useState(0)
+  const [marketplaceCashCents, setMarketplaceCashCents] = useState(0)
   const [cashError, setCashError] = useState<string | null>(null)
   const [includeCashOnPunch, setIncludeCashOnPunch] = useState(false)
   const [drawerActiveNote, setDrawerActiveNote] = useState<string | null>(null)
@@ -59,6 +62,45 @@ export default function MyPunchPage() {
     getLocation()
   }, [])
 
+  // Prefill drop = current − starting; after drop = current − drop
+  useEffect(() => {
+    if (currentStatus !== 'in' || !showCashDialog) return
+    const current = parseFloat(currentCashAmount)
+    if (!Number.isFinite(current) || current < 0) {
+      setDropAmount('')
+      return
+    }
+    const suggestedCents = Math.max(0, Math.round(current * 100) - startCashCents)
+    setDropAmount((suggestedCents / 100).toFixed(2))
+  }, [currentStatus, showCashDialog, currentCashAmount, startCashCents])
+
+  useEffect(() => {
+    if (currentStatus !== 'in' || !showCashDialog) return
+    const current = parseFloat(currentCashAmount)
+    const drop = parseFloat(dropAmount)
+    if (!Number.isFinite(current) || current < 0 || !Number.isFinite(drop) || drop < 0 || drop > current) {
+      setCashAmount('')
+      return
+    }
+    const endCents = Math.max(0, Math.round(current * 100) - Math.round(drop * 100))
+    setCashAmount((endCents / 100).toFixed(2))
+  }, [currentStatus, showCashDialog, currentCashAmount, dropAmount])
+
+  useEffect(() => {
+    if (!showCashDialog || currentStatus !== 'in') return
+    const loadStart = async () => {
+      try {
+        const res = await api.get('/cash-drawer/marketplace')
+        setStartCashCents(Number(res.data?.start_cash_cents) || 0)
+        setMarketplaceCashCents(Number(res.data?.cash_cents) || 0)
+      } catch {
+        setStartCashCents(0)
+        setMarketplaceCashCents(0)
+      }
+    }
+    void loadStart()
+  }, [showCashDialog, currentStatus])
+
   useEffect(() => {
     const fetchUserAndStatus = async () => {
       try {
@@ -70,6 +112,33 @@ export default function MyPunchPage() {
           router.push(`/verify-email?email=${encodeURIComponent(currentUser.email)}`)
           return
         }
+
+        try {
+          const companyResponse = await api.get('/company/info')
+          const settings = companyResponse.data?.settings || {}
+          const roles =
+            (settings.punch_allowed_roles as string[] | undefined) ??
+            [...DEFAULT_PUNCH_ALLOWED_ROLES]
+          if (!isPunchAllowed(currentUser.role, roles)) {
+            setMessage('Your employee type is not allowed to punch in/out. Contact your administrator.')
+            setLoadingStatus(false)
+            return
+          }
+
+          const cashEnabled = settings.cash_drawer_enabled || false
+          const requiredForAll = settings.cash_drawer_required_for_all === true
+          const requiredRoles = settings.cash_drawer_required_roles || ['FRONTDESK']
+          setCashDrawerRequired(
+            Boolean(cashEnabled && (requiredForAll || requiredRoles.includes(currentUser.role))),
+          )
+        } catch {
+          if (!isPunchAllowed(currentUser.role, null)) {
+            setMessage('Your employee type is not allowed to punch in/out. Contact your administrator.')
+            setLoadingStatus(false)
+            return
+          }
+          setCashDrawerRequired(false)
+        }
         
         try {
           const response = await api.get('/time/my?limit=1')
@@ -80,27 +149,8 @@ export default function MyPunchPage() {
           } else {
             setCurrentStatus('out')
           }
-          
-          // Check if cash drawer is required
-          try {
-            const companyResponse = await api.get('/company/info')
-            const settings = companyResponse.data?.settings || {}
-            const cashEnabled = settings.cash_drawer_enabled || false
-            const requiredForAll = settings.cash_drawer_required_for_all === true
-            const requiredRoles = settings.cash_drawer_required_roles || ['FRONTDESK']
-            
-            if (cashEnabled && (requiredForAll || requiredRoles.includes(currentUser.role))) {
-              setCashDrawerRequired(true)
-            } else {
-              setCashDrawerRequired(false)
-            }
-          } catch (err) {
-            // If we can't get company settings, assume not required
-            setCashDrawerRequired(false)
-          }
         } catch (err) {
           setCurrentStatus('out')
-          setCashDrawerRequired(false)
         }
       } catch (error) {
         router.push('/login')
@@ -122,6 +172,10 @@ export default function MyPunchPage() {
   }
 
   const handlePunch = async () => {
+    if (!currentStatus) {
+      setMessage('Your employee type is not allowed to punch in/out. Contact your administrator.')
+      return
+    }
     if (pinDisplay.length !== 4) {
       setMessage('Please enter a 4-digit PIN')
       return
@@ -161,7 +215,7 @@ export default function MyPunchPage() {
       setIncludeCashOnPunch(true)
       setShowCashDialog(true)
       setCashAmount('')
-      setCollectedCash('')
+      setCurrentCashAmount('')
       setDropAmount('')
       setCashError(null)
       return
@@ -234,9 +288,9 @@ export default function MyPunchPage() {
         includeCashOnPunch && cashDrawerRequired && currentStatus === 'in'
           ? Math.round(parseFloat(cashAmount) * 100)
           : undefined
-      const collectedCashCents =
+      const currentCashCents =
         includeCashOnPunch && cashDrawerRequired && currentStatus === 'in'
-          ? Math.round(parseFloat(collectedCash || '0') * 100)
+          ? Math.round(parseFloat(currentCashAmount || '0') * 100)
           : undefined
       const dropAmountCents =
         includeCashOnPunch && cashDrawerRequired && currentStatus === 'in'
@@ -249,7 +303,7 @@ export default function MyPunchPage() {
         pin: pinDisplay,
         cash_start_cents: cashStartCents,
         cash_end_cents: cashEndCents,
-        collected_cash_cents: collectedCashCents,
+        current_cash_cents: currentCashCents,
         drop_amount_cents: dropAmountCents,
         latitude: currentLocation?.latitude,
         longitude: currentLocation?.longitude,
@@ -268,7 +322,7 @@ export default function MyPunchPage() {
       }
       clearPin()
       setCashAmount('')
-      setCollectedCash('')
+      setCurrentCashAmount('')
       setDropAmount('')
       setCashError(null)
       setPendingPunch(false)
@@ -297,7 +351,7 @@ export default function MyPunchPage() {
         setPendingPunch(true)
         setShowCashDialog(true)
         setCashAmount('')
-        setCollectedCash('')
+        setCurrentCashAmount('')
         setDropAmount('')
         setCashError(null)
         setMessage(null) // Clear error message since we're showing dialog
@@ -313,21 +367,30 @@ export default function MyPunchPage() {
   }
 
   const handleCashDialogSubmit = () => {
-    const cashValue = parseFloat(cashAmount)
-    if (isNaN(cashValue) || cashValue < 0) {
-      setCashError('Please enter a valid cash amount')
-      return
-    }
-    // On clock-out, also validate collected and drop
-    if (currentStatus === 'in') {
-      const collectedValue = parseFloat(collectedCash)
-      const dropValue = parseFloat(dropAmount)
-      if (isNaN(collectedValue) || collectedValue < 0) {
-        setCashError('Please enter a valid room sale amount')
+    if (currentStatus === 'out') {
+      const cashValue = parseFloat(cashAmount)
+      if (isNaN(cashValue) || cashValue < 0) {
+        setCashError('Please enter a valid cash amount')
         return
       }
+    } else if (currentStatus === 'in') {
+      const currentValue = parseFloat(currentCashAmount)
+      if (isNaN(currentValue) || currentValue < 0) {
+        setCashError('Please enter the current cash in drawer')
+        return
+      }
+      const dropValue = parseFloat(dropAmount)
       if (isNaN(dropValue) || dropValue < 0) {
         setCashError('Please enter a valid drop amount')
+        return
+      }
+      if (dropValue > currentValue) {
+        setCashError('Drop amount cannot exceed current cash in drawer')
+        return
+      }
+      const endValue = parseFloat(cashAmount)
+      if (isNaN(endValue) || endValue < 0) {
+        setCashError('Enter current cash and drop to calculate cash after drop')
         return
       }
     }
@@ -343,7 +406,7 @@ export default function MyPunchPage() {
     setPendingPunch(false)
     setPunchConfirmAfterCash(false)
     setCashAmount('')
-    setCollectedCash('')
+    setCurrentCashAmount('')
     setDropAmount('')
     setCashError(null)
     clearPin()
@@ -354,6 +417,26 @@ export default function MyPunchPage() {
       <Layout>
         <div className="flex min-h-screen items-center justify-center bg-slate-50">
           <div className="h-8 w-8 animate-spin rounded-full border-2 border-slate-300 border-t-blue-600" />
+        </div>
+      </Layout>
+    )
+  }
+
+  if (!currentStatus && message?.includes('not allowed to punch')) {
+    return (
+      <Layout>
+        <div className="flex min-h-screen items-center justify-center bg-slate-50 px-4">
+          <div className="max-w-sm rounded-2xl border border-slate-200 bg-white p-6 text-center shadow-sm">
+            <h1 className="text-lg font-semibold text-slate-900">Punch unavailable</h1>
+            <p className="mt-2 text-sm text-slate-600">{message}</p>
+            <button
+              type="button"
+              onClick={() => router.push('/dashboard')}
+              className="mt-5 rounded-xl bg-slate-900 px-4 py-2 text-sm text-white hover:bg-slate-800"
+            >
+              Back to dashboard
+            </button>
+          </div>
         </div>
       </Layout>
     )
@@ -576,23 +659,25 @@ export default function MyPunchPage() {
                       </p>
                     </div>
                   ) : (
-                    /* Clock-out: collected, drop, cash in drawer */
+                    /* Clock-out: current cash, drop, after drop */
                     <div className="space-y-4 mb-8">
                       <div>
-                        <label className="block text-sm font-semibold text-slate-700 mb-2">Room Sale <span className="text-red-500">*</span></label>
+                        <label className="block text-sm font-semibold text-slate-700 mb-2">Current Cash in Drawer <span className="text-red-500">*</span></label>
                         <div className="relative">
                           <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">$</span>
                           <input
                             type="number"
                             step="0.01"
                             min="0"
-                            value={collectedCash}
-                            onChange={(e) => { setCollectedCash(e.target.value); setCashError(null) }}
+                            value={currentCashAmount}
+                            onChange={(e) => { setCurrentCashAmount(e.target.value); setCashError(null) }}
+                            autoFocus
                             className={`block w-full rounded-xl border py-3 pl-8 pr-4 text-sm text-slate-900 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500 ${cashError ? 'border-red-300 bg-red-50' : 'border-slate-200 bg-white'}`}
                             placeholder="0.00"
                             disabled={loading}
                           />
                         </div>
+                        <p className="mt-1 text-xs text-slate-500">Count of cash currently in the drawer</p>
                       </div>
                       <div>
                         <label className="block text-sm font-semibold text-slate-700 mb-2">Drop Amount <span className="text-red-500">*</span></label>
@@ -602,16 +687,38 @@ export default function MyPunchPage() {
                             type="number"
                             step="0.01"
                             min="0"
+                            max={
+                              Number.isFinite(parseFloat(currentCashAmount)) && parseFloat(currentCashAmount) >= 0
+                                ? parseFloat(currentCashAmount)
+                                : undefined
+                            }
                             value={dropAmount}
-                            onChange={(e) => { setDropAmount(e.target.value); setCashError(null) }}
+                            onChange={(e) => {
+                              const v = e.target.value
+                              const current = parseFloat(currentCashAmount)
+                              const next = parseFloat(v)
+                              if (
+                                Number.isFinite(current) &&
+                                current >= 0 &&
+                                Number.isFinite(next) &&
+                                next > current
+                              ) {
+                                setDropAmount(current.toFixed(2))
+                                setCashError('Drop amount cannot exceed current cash in drawer')
+                                return
+                              }
+                              setDropAmount(v)
+                              setCashError(null)
+                            }}
                             className={`block w-full rounded-xl border py-3 pl-8 pr-4 text-sm text-slate-900 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500 ${cashError ? 'border-red-300 bg-red-50' : 'border-slate-200 bg-white'}`}
                             placeholder="0.00"
                             disabled={loading}
                           />
                         </div>
+                        <p className="mt-1 text-xs text-slate-500">Prefills as current − starting; cannot exceed current cash</p>
                       </div>
                       <div>
-                        <label className="block text-sm font-semibold text-slate-700 mb-2">Cash in Drawer <span className="text-red-500">*</span></label>
+                        <label className="block text-sm font-semibold text-slate-700 mb-2">Cash in Drawer After Drop</label>
                         <div className="relative">
                           <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">$</span>
                           <input
@@ -619,16 +726,13 @@ export default function MyPunchPage() {
                             step="0.01"
                             min="0"
                             value={cashAmount}
-                            onChange={(e) => {
-                              setCashAmount(e.target.value)
-                              setCashError(null)
-                            }}
-                            onKeyPress={(e) => { if (e.key === 'Enter') handleCashDialogSubmit() }}
-                            className={`block w-full rounded-xl border-2 py-5 pl-12 pr-5 text-center text-2xl font-semibold text-slate-900 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500 ${cashError ? 'border-red-300 bg-red-50' : 'border-slate-200 bg-white'}`}
+                            readOnly
+                            className="block w-full cursor-default rounded-xl border border-slate-200 bg-slate-50 py-3 pl-8 pr-4 text-sm tabular-nums text-slate-700"
                             placeholder="0.00"
                             disabled={loading}
                           />
                         </div>
+                        <p className="mt-1 text-xs text-slate-500">Auto: current cash − drop</p>
                       </div>
                       {cashError && (
                         <div className="flex items-center justify-center gap-2 text-sm text-red-600">
@@ -644,13 +748,16 @@ export default function MyPunchPage() {
                       onClick={handleCashDialogSubmit}
                       disabled={
                         loading ||
-                        !cashAmount ||
-                        parseFloat(cashAmount) < 0 ||
+                        (currentStatus === 'out' &&
+                          (!cashAmount || parseFloat(cashAmount) < 0)) ||
                         (currentStatus === 'in' &&
-                          (!collectedCash ||
-                            parseFloat(collectedCash) < 0 ||
+                          (!currentCashAmount ||
+                            parseFloat(currentCashAmount) < 0 ||
                             !dropAmount ||
-                            parseFloat(dropAmount) < 0))
+                            parseFloat(dropAmount) < 0 ||
+                            parseFloat(dropAmount) > parseFloat(currentCashAmount) ||
+                            !cashAmount ||
+                            parseFloat(cashAmount) < 0))
                       }
                       className="flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 py-3 text-sm font-medium text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
                     >

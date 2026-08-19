@@ -184,9 +184,9 @@ def _build_shift_summary_email_html(
     if cash_drawer:
         rows = [
             ("Start", cash_drawer.get("start_cash")),
-            ("End", cash_drawer.get("end_cash")),
-            ("Room Sale", cash_drawer.get("collected_cash")),
+            ("Current cash", cash_drawer.get("current_cash")),
             ("Drop", cash_drawer.get("drop_amount")),
+            ("After drop", cash_drawer.get("end_cash")),
             ("Variance", cash_drawer.get("delta")),
         ]
         cash_rows = "".join(

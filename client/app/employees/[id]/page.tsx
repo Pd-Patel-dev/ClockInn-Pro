@@ -131,6 +131,7 @@ export default function EmployeeDetailPage() {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [updating, setUpdating] = useState(false)
   const [resettingPassword, setResettingPassword] = useState(false)
+  const [resendingSetup, setResendingSetup] = useState(false)
   const pageSize = 20
 
   const manualForm = useForm<ManualEntryForm>({
@@ -409,6 +410,19 @@ export default function EmployeeDetailPage() {
     }
   }
 
+  const handleResendPasswordSetup = async () => {
+    setResendingSetup(true)
+    try {
+      const res = await api.post(`/users/admin/employees/${employeeId}/resend-password-setup`)
+      toast.success(res.data?.message || 'Invite / set-password email sent')
+    } catch (err: any) {
+      logger.error('Failed to resend password setup', err as Error)
+      toast.error(err.response?.data?.detail || 'Failed to send setup email')
+    } finally {
+      setResendingSetup(false)
+    }
+  }
+
   const calculateHours = (entry: TimeEntry) => {
     if (entry.rounded_hours !== null && entry.rounded_hours !== undefined) {
       return entry.rounded_hours.toFixed(2)
@@ -570,6 +584,14 @@ export default function EmployeeDetailPage() {
                         className="px-4 py-2 rounded-lg bg-white/10 text-white text-sm font-medium ring-1 ring-inset ring-white/20 hover:bg-white/15 transition-colors disabled:opacity-50"
                       >
                         {resettingPassword ? 'Resetting…' : 'Reset password'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleResendPasswordSetup}
+                        disabled={resendingSetup}
+                        className="px-4 py-2 rounded-lg bg-white/10 text-white text-sm font-medium ring-1 ring-inset ring-white/20 hover:bg-white/15 transition-colors disabled:opacity-50"
+                      >
+                        {resendingSetup ? 'Sending…' : 'Resend invite'}
                       </button>
                     </div>
                   )}

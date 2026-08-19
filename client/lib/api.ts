@@ -353,24 +353,12 @@ api.interceptors.response.use(
       error.response?.status === 401 &&
       !originalRequest._retry &&
       !originalRequest.url?.includes('/auth/refresh')
-    // Shift notes return 403 when company disables the feature — not an app error
-    const isShiftNotesDisabled403 =
-      error.response?.status === 403 &&
-      typeof originalRequest.url === 'string' &&
-      originalRequest.url.includes('shift-notes')
-    // Drawer log may request note by time entry; wrong/unknown id can 404 — not a session error
-    const isShiftNoteByTimeEntry404 =
-      error.response?.status === 404 &&
-      typeof originalRequest.url === 'string' &&
-      originalRequest.url.includes('/admin/shift-notes/by-time-entry/')
     if (
       process.env.NODE_ENV === 'development' &&
       error.response &&
       !error.config?.url?.includes('/auth/refresh') &&
       !isExpected401 &&
-      !willRetryAuth &&
-      !isShiftNotesDisabled403 &&
-      !isShiftNoteByTimeEntry404
+      !willRetryAuth
     ) {
       if (!(window as any).__errorLogCount) {
         (window as any).__errorLogCount = 0

@@ -76,7 +76,7 @@ export default function EditShiftPage() {
       try {
         const currentUser = await getCurrentUser()
         setUser(currentUser)
-        if (currentUser.role !== 'ADMIN') {
+        if (!(currentUser.permissions ?? []).includes('schedule_edit')) {
           setError('You do not have permission to edit shifts')
           setLoading(false)
           return

@@ -1,11 +1,12 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { register } from '@/lib/auth'
+import api from '@/lib/api'
 import Link from 'next/link'
 
 const registerSchema = z.object({
@@ -45,6 +46,29 @@ export default function RegisterPage() {
   const router = useRouter()
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
+  const [checking, setChecking] = useState(true)
+  const [allowed, setAllowed] = useState(false)
+
+  useEffect(() => {
+    let cancelled = false
+    api
+      .get('/auth/public-config')
+      .then((res) => {
+        if (cancelled) return
+        const ok = Boolean(res.data?.allow_public_register)
+        setAllowed(ok)
+        if (!ok) router.replace('/login')
+      })
+      .catch(() => {
+        if (!cancelled) router.replace('/login')
+      })
+      .finally(() => {
+        if (!cancelled) setChecking(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [router])
 
   const {
     register: registerField,
@@ -69,6 +93,14 @@ export default function RegisterPage() {
     } finally {
       setLoading(false)
     }
+  }
+
+  if (checking || !allowed) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-50">
+        <div className="h-8 w-8 animate-spin rounded-full border-2 border-slate-300 border-t-blue-600" />
+      </div>
+    )
   }
 
   return (

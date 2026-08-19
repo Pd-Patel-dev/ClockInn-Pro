@@ -29,7 +29,7 @@ const emptyForm = () => ({
   address: '',
   phone: '',
   email: '',
-  email_verification_required: false,
+  email_verification_required: true,
   admin_name: '',
   admin_email: '',
   admin_pin: '',

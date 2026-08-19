@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { createPortal } from 'react-dom'
 import Link from 'next/link'
 import ConfirmationDialog from '@/components/ConfirmationDialog'
@@ -9,7 +9,6 @@ import { InfoTip } from '@/components/ui/InfoTip'
 import api from '@/lib/api'
 import type { User } from '@/lib/auth'
 import { addDays, format, parseISO } from 'date-fns'
-import type { ShiftNoteCurrent } from '@/lib/shiftNotes'
 import { toTime12h } from '@/lib/time'
 
 type TimeEntry = {
@@ -178,9 +177,8 @@ export default function PunchInOutPanel({ user, compact = false }: PunchInOutPan
   const [error, setError] = useState<string | null>(null)
   const [cashDrawerRequired, setCashDrawerRequired] = useState(false)
   const [geofenceRequired, setGeofenceRequired] = useState(false)
-  const [shiftNotesEnabled, setShiftNotesEnabled] = useState(true)
   const [cashAmount, setCashAmount] = useState('')
-  const [collectedCash, setCollectedCash] = useState('')
+  const [currentCashAmount, setCurrentCashAmount] = useState('')
   const [dropAmount, setDropAmount] = useState('')
   const [marketplace, setMarketplace] = useState<MarketplaceState | null>(null)
   const [marketplaceBusyId, setMarketplaceBusyId] = useState<string | null>(null)
@@ -207,15 +205,6 @@ export default function PunchInOutPanel({ user, compact = false }: PunchInOutPan
     const id = setInterval(() => setClockNow(new Date()), 1000)
     return () => clearInterval(id)
   }, [])
-
-  const [shiftNote, setShiftNote] = useState<ShiftNoteCurrent | null>(null)
-  const [shiftNoteContent, setShiftNoteContent] = useState('')
-  const [shiftNoteLoading, setShiftNoteLoading] = useState(false)
-  const [shiftNoteSaveStatus, setShiftNoteSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle')
-  const [shiftNoteSavedAt, setShiftNoteSavedAt] = useState<Date | null>(null)
-  const shiftNoteSaveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const lastSavedContentRef = useRef('')
-  const SHIFT_NOTE_DEBOUNCE_MS = 800
 
   const fetchMarketplace = useCallback(async () => {
     if (user.role !== 'FRONTDESK') {
@@ -288,56 +277,6 @@ export default function PunchInOutPanel({ user, compact = false }: PunchInOutPan
     }
   }, [])
 
-  const fetchShiftNote = useCallback(async () => {
-    setShiftNoteLoading(true)
-    try {
-      const res = await api.get('/shift-notes/current')
-      const data = res.data as ShiftNoteCurrent
-      setShiftNote(data)
-      setShiftNoteContent(data.content ?? '')
-      lastSavedContentRef.current = data.content ?? ''
-    } catch {
-      setShiftNote(null)
-      setShiftNoteContent('')
-    } finally {
-      setShiftNoteLoading(false)
-    }
-  }, [])
-
-  const saveShiftNote = useCallback(async (content: string) => {
-    if (content === lastSavedContentRef.current) return
-    setShiftNoteSaveStatus('saving')
-    try {
-      await api.put('/shift-notes/current', { content })
-      lastSavedContentRef.current = content
-      setShiftNoteSavedAt(new Date())
-      setShiftNoteSaveStatus('saved')
-    } catch {
-      setShiftNoteSaveStatus('idle')
-    }
-  }, [])
-
-  useEffect(() => {
-    if (currentStatus === 'in' && shiftNotesEnabled) {
-      fetchShiftNote()
-    } else {
-      setShiftNote(null)
-      setShiftNoteContent('')
-    }
-  }, [currentStatus, shiftNotesEnabled, fetchShiftNote])
-
-  useEffect(() => {
-    if (!shiftNote?.can_edit || shiftNoteSaveStatus === 'saving') return
-    if (shiftNoteSaveTimeoutRef.current) clearTimeout(shiftNoteSaveTimeoutRef.current)
-    shiftNoteSaveTimeoutRef.current = setTimeout(() => {
-      saveShiftNote(shiftNoteContent)
-      shiftNoteSaveTimeoutRef.current = null
-    }, SHIFT_NOTE_DEBOUNCE_MS)
-    return () => {
-      if (shiftNoteSaveTimeoutRef.current) clearTimeout(shiftNoteSaveTimeoutRef.current)
-    }
-  }, [shiftNoteContent, shiftNote?.can_edit, saveShiftNote, shiftNoteSaveStatus])
-
   useEffect(() => {
     if (!navigator.geolocation) return
     setLocationLoading(true)
@@ -365,7 +304,6 @@ export default function PunchInOutPanel({ user, compact = false }: PunchInOutPan
         cashEnabled && (requiredForAll || requiredRoles.includes(user.role))
       setCashDrawerRequired(cashRequired)
       setGeofenceRequired(settings.geofence_enabled === true)
-      setShiftNotesEnabled(settings.shift_notes_enabled !== false)
       return cashRequired
     },
     [user.role],
@@ -451,6 +389,39 @@ export default function PunchInOutPanel({ user, compact = false }: PunchInOutPan
     () => assignMarketplaceButtonColors(marketplaceRowIdsKey ? marketplaceRowIdsKey.split(',') : []),
     [marketplaceRowIdsKey]
   )
+
+  /** Prefill drop = current − starting; after drop = current − drop */
+  const startCashForEndCents = marketplace?.start_cash_cents ?? 0
+
+  useEffect(() => {
+    if (currentStatus !== 'in') return
+    const current = parseFloat(currentCashAmount)
+    if (!Number.isFinite(current) || current < 0) {
+      setDropAmount('')
+      return
+    }
+    const suggestedCents = Math.max(0, Math.round(current * 100) - startCashForEndCents)
+    setDropAmount((suggestedCents / 100).toFixed(2))
+  }, [currentStatus, currentCashAmount, startCashForEndCents])
+
+  const autoEndCashCents = useMemo(() => {
+    if (currentStatus !== 'in') return null
+    const current = parseFloat(currentCashAmount)
+    const drop = parseFloat(dropAmount)
+    if (!Number.isFinite(current) || current < 0) return null
+    if (!Number.isFinite(drop) || drop < 0) return null
+    if (drop > current) return null
+    return Math.max(0, Math.round(current * 100) - Math.round(drop * 100))
+  }, [currentStatus, currentCashAmount, dropAmount])
+
+  useEffect(() => {
+    if (currentStatus !== 'in') return
+    if (autoEndCashCents == null) {
+      setCashAmount('')
+      return
+    }
+    setCashAmount((autoEndCashCents / 100).toFixed(2))
+  }, [currentStatus, autoEndCashCents])
   const todayDateStr = format(new Date(), 'yyyy-MM-dd')
 
   const ownsActiveDrawer = Boolean(
@@ -487,9 +458,9 @@ export default function PunchInOutPanel({ user, compact = false }: PunchInOutPan
         includeCashOnPunch && cashDrawerRequired && currentStatus === 'in'
           ? Math.round(parseFloat(cashAmount || '0') * 100)
           : undefined
-      const collectedCashCents =
+      const currentCashCents =
         includeCashOnPunch && cashDrawerRequired && currentStatus === 'in'
-          ? Math.round(parseFloat(collectedCash || '0') * 100)
+          ? Math.round(parseFloat(currentCashAmount || '0') * 100)
           : undefined
       const dropAmountCents =
         includeCashOnPunch && cashDrawerRequired && currentStatus === 'in'
@@ -505,7 +476,7 @@ export default function PunchInOutPanel({ user, compact = false }: PunchInOutPan
       const res = await api.post('/time/punch-me-simple', {
         cash_start_cents: cashStartCents,
         cash_end_cents: cashEndCents,
-        collected_cash_cents: collectedCashCents,
+        current_cash_cents: currentCashCents,
         drop_amount_cents: dropAmountCents,
         beverages_cash_cents: marketplaceSalesCents,
         latitude: currentLocation?.latitude,
@@ -527,6 +498,8 @@ export default function PunchInOutPanel({ user, compact = false }: PunchInOutPan
         setActiveClockInAt(entry.clock_in_at)
       }
       setCashAmount('')
+      setCurrentCashAmount('')
+      setDropAmount('')
       setCashError(null)
       setPendingPunch(false)
       setIncludeCashOnPunch(false)
@@ -561,7 +534,7 @@ export default function PunchInOutPanel({ user, compact = false }: PunchInOutPan
         setPendingPunch(true)
         setShowCashDialog(true)
         setCashAmount('')
-        setCollectedCash('')
+        setCurrentCashAmount('')
         setDropAmount('')
         setCashError(null)
         setError(null)
@@ -581,10 +554,11 @@ export default function PunchInOutPanel({ user, compact = false }: PunchInOutPan
     drawerActiveNote,
     currentStatus,
     cashAmount,
-    collectedCash,
+    currentCashAmount,
     dropAmount,
     marketplaceConfigured,
     marketplaceTotalCents,
+    marketplaceCashCents,
     fetchStatusAndEntries,
   ])
 
@@ -641,7 +615,7 @@ export default function PunchInOutPanel({ user, compact = false }: PunchInOutPan
       setIncludeCashOnPunch(true)
       setShowCashDialog(true)
       setCashAmount('')
-      setCollectedCash('')
+      setCurrentCashAmount('')
       setDropAmount('')
       setCashError(null)
       // Always refresh last-shift balance before clock-in / sales total before clock-out
@@ -819,20 +793,29 @@ export default function PunchInOutPanel({ user, compact = false }: PunchInOutPan
   }
 
   const handleCashDialogSubmit = () => {
-    const cashValue = parseFloat(cashAmount)
-    if (isNaN(cashValue) || cashValue < 0) {
-      setCashError('Please enter a valid cash amount')
-      return
-    }
-    if (currentStatus === 'in') {
-      const collectedValue = parseFloat(collectedCash)
-      const dropValue = parseFloat(dropAmount)
-      if (isNaN(collectedValue) || collectedValue < 0) {
-        setCashError('Please enter a valid room sale amount')
+    if (currentStatus === 'out') {
+      const cashValue = parseFloat(cashAmount)
+      if (isNaN(cashValue) || cashValue < 0) {
+        setCashError('Please enter a valid cash amount')
         return
       }
+    } else {
+      const currentValue = parseFloat(currentCashAmount)
+      if (isNaN(currentValue) || currentValue < 0) {
+        setCashError('Please enter the current cash in drawer')
+        return
+      }
+      const dropValue = parseFloat(dropAmount)
       if (isNaN(dropValue) || dropValue < 0) {
         setCashError('Please enter a valid drop amount')
+        return
+      }
+      if (dropValue > currentValue) {
+        setCashError('Drop amount cannot exceed current cash in drawer')
+        return
+      }
+      if (autoEndCashCents == null || autoEndCashCents < 0) {
+        setCashError('Enter current cash and drop to calculate cash after drop')
         return
       }
     }
@@ -850,7 +833,7 @@ export default function PunchInOutPanel({ user, compact = false }: PunchInOutPan
     setIncludeCashOnPunch(false)
     setDrawerActiveNote(null)
     setCashAmount('')
-    setCollectedCash('')
+    setCurrentCashAmount('')
     setDropAmount('')
     setCashError(null)
   }
@@ -1174,42 +1157,6 @@ export default function PunchInOutPanel({ user, compact = false }: PunchInOutPan
         </div>
       )}
 
-      {shiftNotesEnabled && currentStatus === 'in' && (
-        <div className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm sm:p-5">
-          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-            <div>
-              <h3 className="text-sm font-semibold text-slate-900">Shift note</h3>
-              <p className="mt-0.5 text-xs text-slate-400">Saves as you type</p>
-            </div>
-            <div className="flex items-center gap-3">
-              {shiftNoteSaveStatus === 'saving' && (
-                <span className="text-xs text-slate-400">Saving…</span>
-              )}
-              {shiftNoteSaveStatus === 'saved' && shiftNoteSavedAt && (
-                <span className="text-xs text-emerald-600">Saved {format(shiftNoteSavedAt, 'h:mm a')}</span>
-              )}
-              <Link href="/shift-notes" className="text-xs font-medium text-blue-600 hover:text-blue-700">
-                Full notepad →
-              </Link>
-            </div>
-          </div>
-          {shiftNoteLoading ? (
-            <div className="h-20 animate-pulse rounded-xl bg-slate-100" />
-          ) : shiftNote ? (
-            <textarea
-              value={shiftNoteContent}
-              onChange={(e) => setShiftNoteContent(e.target.value)}
-              disabled={!shiftNote.can_edit}
-              placeholder="Add notes about your shift..."
-              rows={2}
-              className="min-h-[72px] w-full resize-none rounded-xl border border-slate-200 bg-slate-50/80 px-3 py-2.5 text-sm text-slate-700 placeholder:text-slate-400 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:cursor-not-allowed disabled:bg-slate-100"
-            />
-          ) : (
-            <p className="text-sm text-slate-500">Shift note will appear here after refresh if it doesn’t load.</p>
-          )}
-        </div>
-      )}
-
       {/* Bottom row — Recent activity | Schedule */}
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
         <div className="flex min-h-[260px] flex-col overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm">
@@ -1520,35 +1467,61 @@ export default function PunchInOutPanel({ user, compact = false }: PunchInOutPan
                     {(
                       [
                         {
-                          label: 'Room sale',
-                          value: collectedCash,
-                          set: setCollectedCash,
-                          hint: 'Total cash collected from customers',
+                          label: 'Current cash in drawer',
+                          value: currentCashAmount,
+                          set: setCurrentCashAmount,
+                          hint: 'Count of cash currently in the drawer',
+                          readOnly: false,
+                          max: undefined as number | undefined,
                         },
                         {
                           label: 'Drop amount',
                           value: dropAmount,
-                          set: setDropAmount,
-                          hint: 'Cash removed from drawer during shift',
+                          set: (v: string) => {
+                            const current = parseFloat(currentCashAmount)
+                            const next = parseFloat(v)
+                            if (
+                              Number.isFinite(current) &&
+                              current >= 0 &&
+                              Number.isFinite(next) &&
+                              next > current
+                            ) {
+                              setDropAmount(current.toFixed(2))
+                              setCashError('Drop amount cannot exceed current cash in drawer')
+                              return
+                            }
+                            setDropAmount(v)
+                            setCashError(null)
+                          },
+                          hint: 'Prefills as current − starting; cannot exceed current cash',
+                          readOnly: false,
+                          max: (() => {
+                            const n = parseFloat(currentCashAmount)
+                            return Number.isFinite(n) && n >= 0 ? n : undefined
+                          })(),
                         },
                         {
-                          label: 'Cash in drawer',
+                          label: 'Cash in drawer after drop',
                           value: cashAmount,
                           set: setCashAmount,
-                          hint: 'Final cash remaining in drawer',
+                          hint: 'Auto: current cash − drop',
+                          readOnly: true,
+                          max: undefined as number | undefined,
                         },
                       ] as Array<{
                         label: string
                         value: string
                         set: (v: string) => void
                         hint: string
+                        readOnly: boolean
+                        max?: number
                       }>
                     ).map((field) => (
                       <div
                         key={field.label}
                         className="grid grid-cols-1 items-center gap-2 sm:grid-cols-[minmax(0,1fr)_9.5rem] sm:gap-4"
                       >
-                        <CashInfoLabel label={field.label} hint={field.hint} required />
+                        <CashInfoLabel label={field.label} hint={field.hint} required={!field.readOnly} />
                         <div className="relative">
                           <span className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-sm text-slate-400">
                             $
@@ -1557,13 +1530,20 @@ export default function PunchInOutPanel({ user, compact = false }: PunchInOutPan
                             type="number"
                             step="0.01"
                             min="0"
+                            max={field.max}
                             value={field.value}
+                            readOnly={field.readOnly}
                             onChange={(e) => {
+                              if (field.readOnly) return
                               field.set(e.target.value)
-                              setCashError(null)
+                              if (field.label !== 'Drop amount') setCashError(null)
                             }}
                             className={`block w-full rounded-xl border py-2.5 pl-7 pr-3 text-sm tabular-nums text-slate-900 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                              cashError ? 'border-red-300' : 'border-slate-200'
+                              field.readOnly
+                                ? 'cursor-default border-slate-200 bg-slate-50 text-slate-700'
+                                : cashError
+                                  ? 'border-red-300'
+                                  : 'border-slate-200'
                             }`}
                             placeholder="0.00"
                             disabled={loading}
@@ -1615,13 +1595,15 @@ export default function PunchInOutPanel({ user, compact = false }: PunchInOutPan
                   onClick={handleCashDialogSubmit}
                   disabled={
                     loading ||
-                    !cashAmount ||
-                    parseFloat(cashAmount) < 0 ||
+                    (currentStatus === 'out' &&
+                      (!cashAmount || parseFloat(cashAmount) < 0)) ||
                     (currentStatus === 'in' &&
-                      (!collectedCash ||
-                        parseFloat(collectedCash) < 0 ||
+                      (!currentCashAmount ||
+                        parseFloat(currentCashAmount) < 0 ||
                         !dropAmount ||
-                        parseFloat(dropAmount) < 0))
+                        parseFloat(dropAmount) < 0 ||
+                        parseFloat(dropAmount) > parseFloat(currentCashAmount) ||
+                        autoEndCashCents == null))
                   }
                   className="flex w-full items-center justify-center rounded-xl bg-blue-600 py-3 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
                 >

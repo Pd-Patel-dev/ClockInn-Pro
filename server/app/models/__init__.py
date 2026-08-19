@@ -5,10 +5,8 @@ from app.models.time_entry import TimeEntry
 from app.models.leave_request import LeaveRequest
 from app.models.audit_log import AuditLog
 from app.models.payroll import PayrollRun, PayrollLineItem, PayrollAdjustment
-from app.models.shift import Shift, ShiftTemplate, ScheduleSwap
+from app.models.shift import Shift, ShiftTemplate
 from app.models.cash_drawer import CashDrawerSession, CashDrawerAudit
-from app.models.cash_management import CashTransaction
-from app.models.shift_note import ShiftNote, ShiftNoteComment
 from app.models.email_delivery_log import EmailDeliveryLog, EmailDeliveryStatus
 
 __all__ = [
@@ -24,12 +22,8 @@ __all__ = [
     "PayrollAdjustment",
     "Shift",
     "ShiftTemplate",
-    "ScheduleSwap",
     "CashDrawerSession",
     "CashDrawerAudit",
-    "ShiftNote",
-    "ShiftNoteComment",
     "EmailDeliveryLog",
     "EmailDeliveryStatus",
 ]
-

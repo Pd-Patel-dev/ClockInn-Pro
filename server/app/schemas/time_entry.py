@@ -18,8 +18,9 @@ class TimeEntryCreate(BaseModel):
     pin: str = Field(..., min_length=4, max_length=4, pattern="^[0-9]{4}$")
     source: TimeEntrySource = TimeEntrySource.KIOSK
     cash_start_cents: Optional[int] = Field(None, ge=0, description="Starting cash in cents (required on clock-in if cash drawer enabled)")
-    cash_end_cents: Optional[int] = Field(None, ge=0, description="Ending cash in cents (required on clock-out if cash drawer session exists)")
-    collected_cash_cents: Optional[int] = Field(None, ge=0, description="Total cash collected from customers (for punch-out)")
+    cash_end_cents: Optional[int] = Field(None, ge=0, description="Cash in drawer after drop (clock-out)")
+    current_cash_cents: Optional[int] = Field(None, ge=0, description="Current cash in drawer before drop (clock-out)")
+    collected_cash_cents: Optional[int] = Field(None, ge=0, description="Legacy; unused by current clock-out UI")
     drop_amount_cents: Optional[int] = Field(None, ge=0, description="Cash dropped from drawer during shift (for punch-out)")
     beverages_cash_cents: Optional[int] = Field(None, ge=0, description="Marketplace sales total in cents (for punch-out)")
     latitude: Optional[str] = Field(None, description="GPS latitude coordinate")
@@ -29,8 +30,9 @@ class TimeEntryCreate(BaseModel):
 class TimeEntryPunchMe(BaseModel):
     pin: str = Field(..., min_length=4, max_length=4, pattern="^[0-9]{4}$")
     cash_start_cents: Optional[int] = Field(None, ge=0, description="Starting cash in cents (required on clock-in if cash drawer enabled)")
-    cash_end_cents: Optional[int] = Field(None, ge=0, description="Ending cash in cents (required on clock-out if cash drawer session exists)")
-    collected_cash_cents: Optional[int] = Field(None, ge=0, description="Total cash collected from customers (for punch-out)")
+    cash_end_cents: Optional[int] = Field(None, ge=0, description="Cash in drawer after drop (clock-out)")
+    current_cash_cents: Optional[int] = Field(None, ge=0, description="Current cash in drawer before drop (clock-out)")
+    collected_cash_cents: Optional[int] = Field(None, ge=0, description="Legacy; unused by current clock-out UI")
     drop_amount_cents: Optional[int] = Field(None, ge=0, description="Cash dropped from drawer during shift (for punch-out)")
     beverages_cash_cents: Optional[int] = Field(None, ge=0, description="Marketplace sales total in cents (for punch-out)")
     latitude: Optional[str] = Field(None, description="GPS latitude coordinate")
@@ -45,6 +47,7 @@ class TimeEntryPunchMeSimple(BaseModel):
     """Punch in/out for authenticated user without PIN (one-tap)."""
     cash_start_cents: Optional[int] = Field(None, ge=0)
     cash_end_cents: Optional[int] = Field(None, ge=0)
+    current_cash_cents: Optional[int] = Field(None, ge=0)
     collected_cash_cents: Optional[int] = Field(None, ge=0)
     drop_amount_cents: Optional[int] = Field(None, ge=0)
     beverages_cash_cents: Optional[int] = Field(None, ge=0)

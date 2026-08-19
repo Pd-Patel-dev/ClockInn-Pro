@@ -39,7 +39,7 @@ async def notifications_unread_count(
     if not current_user.company_id:
         return {"count": 0}
     since_dt = _parse_since(since)
-    if current_user.role == UserRole.ADMIN:
+    if current_user.role in (UserRole.ADMIN, UserRole.MANAGER):
         count = await get_admin_unread_count(db, current_user.company_id, since=since_dt)
         return {"count": count}
     if current_user.role == UserRole.DEVELOPER:
@@ -70,7 +70,7 @@ async def list_notifications(
 
     since_dt = _parse_since(since)
 
-    if current_user.role == UserRole.ADMIN:
+    if current_user.role in (UserRole.ADMIN, UserRole.MANAGER):
         items = await get_admin_notifications(db, current_user.company_id, limit=limit)
         if type:
             allowed = {type, "forgot_punch_out"} if type == "missing_punch" else {type}

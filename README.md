@@ -27,7 +27,7 @@ I used Docker Compose to make it easier to run everything locally.
 
 ### `server/`
 
-FastAPI app: **`app/main.py`**, **`app/api/v1/router.py`** wires routers; **`app/models/`** (SQLAlchemy: User, Company, TimeEntry, Session, payroll, shifts, cash drawer, shift notes, etc.); **`app/services/`** business logic; **`app/schemas/`** Pydantic; **`app/core/`** (config, security, DB, rate limit, permissions); **`app/middleware/`**; **`app/pdf_templates/`**; **`alembic/`** migrations; **`tests/`**; **`scripts/`** (seed, migrate).
+FastAPI app: **`app/main.py`**, **`app/api/v1/router.py`** wires routers; **`app/models/`** (SQLAlchemy: User, Company, TimeEntry, Session, payroll, shifts, cash drawer, etc.); **`app/services/`** business logic; **`app/schemas/`** Pydantic; **`app/core/`** (config, security, DB, rate limit, permissions); **`app/middleware/`**; **`app/pdf_templates/`**; **`alembic/`** migrations; **`tests/`**; **`scripts/`** (seed, migrate).
 
 **One-off scripts at `server/` root** (not imported by the running API): **`create_developer_supabase.py`** and **`create_developer_account.py`**. They bootstrap a developer user against `DATABASE_URL`; use env `DEVELOPER_INITIAL_PASSWORD` or a generated password—see each file’s docstring. Do not treat them as part of `app/`.
 
@@ -44,7 +44,6 @@ FastAPI app: **`app/main.py`**, **`app/api/v1/router.py`** wires routers; **`app
 | 591 | `api/v1/endpoints/developer.py` |
 | 585 | `services/cash_drawer_service.py` |
 | 572 | `services/user_service.py` |
-| 524 | `services/shift_note_service.py` |
 
 ### `client/`
 
@@ -101,7 +100,7 @@ docker-compose exec api python -m scripts.seed_data
 
 Then go to http://localhost:3000. API docs are at http://localhost:8000/docs.
 
-**Migrations:** Run `docker-compose exec api alembic upgrade head` after pulling new code that adds migrations (e.g. shift notes, RLS). Optional: set `RUN_MIGRATIONS=true` in your `.env` to run migrations automatically when the API container starts.
+**Migrations:** Run `docker-compose exec api alembic upgrade head` after pulling new code that adds migrations. Optional: set `RUN_MIGRATIONS=true` in your `.env` to run migrations automatically when the API container starts.
 
 ### Without Docker
 
@@ -170,11 +169,9 @@ The seed script creates a demo company with:
 
 **Leave requests**: Employees request time off, admins approve or reject it.
 
-**Shift Notepad / Common Log**: Each shift has one continuous note (like a notepad). Employees write during their shift with autosave; admins view all notes on the Common Log page (`/admin/common-log`), filter by date/employee/status, search content, mark as reviewed, and add manager comments. Company settings control whether notes are required before clock-out and whether editing after clock-out is allowed.
-
 ## API
 
-The backend API is at `/api/v1/`. Endpoints for auth, users, time entries, leave, shifts, payroll, reports, and shift notes. Check out `/docs` when the server is running to see everything.
+The backend API is at `/api/v1/`. Endpoints for auth, users, time entries, leave, shifts, payroll, and reports. Check out `/docs` when the server is running to see everything.
 
 ## Deployment
 

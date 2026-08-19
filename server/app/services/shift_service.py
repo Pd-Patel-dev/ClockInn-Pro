@@ -1,7 +1,7 @@
 """
 Shift and Schedule Management Service
 
-Handles shift creation, conflict detection, template generation, and swap requests.
+Handles shift creation, conflict detection, and template generation.
 """
 from typing import List, Optional, Tuple
 from uuid import UUID, uuid4
@@ -11,13 +11,13 @@ from sqlalchemy import select, and_, or_, func, case
 from sqlalchemy.orm import selectinload
 from fastapi import HTTPException, status
 
-from app.models.shift import Shift, ShiftTemplate, ScheduleSwap, ShiftStatus, ShiftTemplateType
+from app.models.shift import Shift, ShiftTemplate, ShiftStatus, ShiftTemplateType
 from app.models.user import User, UserRole, UserStatus
 from app.core.config import settings
 from app.schemas.shift import (
     ShiftCreate, ShiftUpdate, ShiftConflict,
     ShiftTemplateCreate, ShiftTemplateUpdate,
-    GenerateShiftsFromTemplate, ScheduleSwapCreate, ScheduleSwapUpdate
+    GenerateShiftsFromTemplate,
 )
 
 

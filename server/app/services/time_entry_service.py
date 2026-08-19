@@ -35,6 +35,7 @@ async def punch(
     collected_cash_cents: Optional[int] = None,
     drop_amount_cents: Optional[int] = None,
     beverages_cash_cents: Optional[int] = None,
+    current_cash_cents: Optional[int] = None,
     ip_address: Optional[str] = None,
     user_agent: Optional[str] = None,
     latitude: Optional[str] = None,
@@ -130,12 +131,17 @@ async def punch(
         )
     
     company_settings = get_company_settings(company)
-    from app.services.company_service import is_punch_allowed_for_role
+    from app.services.company_service import (
+        is_punch_allowed_for_role,
+        assert_kiosk_role_allowed,
+    )
     if not is_punch_allowed_for_role(company_settings, employee.role):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Your employee type is not allowed to punch in/out. Contact your administrator.",
         )
+    if source == TimeEntrySource.KIOSK:
+        assert_kiosk_role_allowed(company_settings, employee.role)
     # Convert role to string (handles both enum and string)
     employee_role_str = employee.role.value if hasattr(employee.role, 'value') else str(employee.role)
     cash_required = requires_cash_drawer(company_settings, employee_role_str)
@@ -232,15 +238,7 @@ async def punch(
                     collected_cash_cents=collected_cash_cents,
                     drop_amount_cents=drop_amount_cents,
                     beverages_cash_cents=beverages_cash_cents,
-                )
-            
-            # Shift notepad: require note before clock-out if company setting is enabled
-            from app.services.shift_note_service import check_shift_note_required_for_clock_out
-            note_required_msg = await check_shift_note_required_for_clock_out(db, company_id, open_entry.id)
-            if note_required_msg:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=note_required_msg,
+                    current_cash_cents=current_cash_cents,
                 )
             
             open_entry.clock_out_at = now
@@ -408,8 +406,8 @@ async def _send_clock_out_shift_summary_email(
     if cash_session is not None:
         cash_drawer = {
             "start_cash": _format_cents(cash_session.start_cash_cents),
+            "current_cash": _format_cents(getattr(cash_session, "current_cash_cents", None)),
             "end_cash": _format_cents(cash_session.end_cash_cents),
-            "collected_cash": _format_cents(cash_session.collected_cash_cents),
             "drop_amount": _format_cents(cash_session.drop_amount_cents),
             "delta": _format_cents(cash_session.delta_cents),
             "status": (

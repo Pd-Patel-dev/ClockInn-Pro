@@ -801,6 +801,74 @@ async def send_password_reset_link_as_developer(
     }
 
 
+async def resend_password_setup_as_admin(
+    db: AsyncSession,
+    employee_id: UUID,
+    company_id: UUID,
+    actor_user_id: UUID,
+) -> dict:
+    """
+    Re-issue a set-password / invite link for a company employee (48h, one-time).
+    Use when the original invite expired or email was never received.
+    """
+    from app.core.config import settings
+    from app.core.security import create_password_setup_token, hash_password_setup_jti
+    from app.services.email_service import email_service
+    from datetime import datetime
+
+    user = await get_user_by_id(db, employee_id, company_id)
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Employee not found")
+
+    if user.status != UserStatus.ACTIVE:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Cannot send password setup to an inactive user.",
+        )
+
+    setup_token, jti, expires_at = create_password_setup_token(
+        str(user.id), user.email, hours=48
+    )
+    user.password_setup_token_hash = hash_password_setup_jti(jti)
+    user.password_setup_expires_at = expires_at
+    db.add(
+        AuditLog(
+            id=uuid.uuid4(),
+            company_id=company_id,
+            actor_user_id=actor_user_id,
+            action="PASSWORD_SETUP_LINK_RESENT",
+            entity_type="user",
+            entity_id=user.id,
+            metadata_json={"email": user.email, "template": "password_setup"},
+        )
+    )
+    await db.commit()
+    await db.refresh(user)
+
+    setup_link = f"{settings.FRONTEND_URL}/set-password?token={setup_token}"
+    email_sent = await email_service.send_password_setup_email(
+        user.email,
+        user.name,
+        setup_link,
+    )
+    if not email_sent:
+        logger.warning(
+            "Password setup link created for %s but email failed to send",
+            user.email,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Failed to send setup email. Check Email Service / Gmail configuration.",
+        )
+
+    return {
+        "ok": True,
+        "email": user.email,
+        "expires_at": expires_at.isoformat() if isinstance(expires_at, datetime) else str(expires_at),
+        "message": f"Password setup link sent to {user.email}",
+    }
+
+
 async def reset_password(
     db: AsyncSession,
     employee_id: UUID,

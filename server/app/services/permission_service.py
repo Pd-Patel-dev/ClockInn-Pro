@@ -98,9 +98,6 @@ async def user_has_permission(
 
     if permission_name in permission_names:
         return True
-    # Metadata-only / empty permission tables (e.g. pytest create_all) — mirror ROLE_PERMISSIONS + migration 027
-    if permission_name in ("shift_note:view:self", "shift_note:edit:self"):
-        return role_has_feature(user.role, "shift_notes")
     return False
 
 
