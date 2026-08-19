@@ -185,7 +185,7 @@ def _build_shift_summary_email_html(
         rows = [
             ("Start", cash_drawer.get("start_cash")),
             ("End", cash_drawer.get("end_cash")),
-            ("Collected", cash_drawer.get("collected_cash")),
+            ("Room Sale", cash_drawer.get("collected_cash")),
             ("Drop", cash_drawer.get("drop_amount")),
             ("Variance", cash_drawer.get("delta")),
         ]
@@ -1459,6 +1459,82 @@ ClockInn Pro"""
         )
 
 
-# Global email service instance
+    async def send_payroll_generate_reminder(
+        self,
+        to_email: str,
+        *,
+        company_name: str,
+        next_pay_date: str,
+        period_start: Optional[str],
+        period_end: Optional[str],
+        days_until: int,
+        deep_link: str,
+        payroll_type: str = "WEEKLY",
+    ) -> bool:
+        """Remind admins to generate payroll within the pay-date window."""
+        if not to_email or not str(to_email).strip():
+            return False
+
+        company = html_module.escape(company_name or "your company")
+        pay = html_module.escape(next_pay_date or "—")
+        start = html_module.escape(period_start or "—")
+        end = html_module.escape(period_end or "—")
+        link = html_module.escape(deep_link or "#")
+        cadence = html_module.escape((payroll_type or "WEEKLY").title())
+        if days_until <= 0:
+            urgency = "Pay date is today"
+        elif days_until == 1:
+            urgency = "1 day left until pay date"
+        else:
+            urgency = f"{days_until} days left until pay date"
+
+        subject = f"Generate payroll — {urgency}  —  ClockInn Pro"
+        body = f"""<!DOCTYPE html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#f1f5f9;font-family:Arial,Helvetica,sans-serif;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="padding:24px 12px;">
+<tr><td align="center">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:520px;background:#ffffff;border:1px solid #e2e8f0;border-radius:8px;">
+<tr><td style="padding:20px 24px;border-bottom:1px solid #e2e8f0;">
+<p style="margin:0;font-size:12px;color:#64748b;">ClockInn Pro</p>
+<h1 style="margin:6px 0 0 0;font-size:20px;color:#0f172a;">Payroll reminder</h1>
+</td></tr>
+<tr><td style="padding:20px 24px;font-size:14px;color:#334155;line-height:1.55;">
+<p style="margin:0 0 12px 0;">Hi,</p>
+<p style="margin:0 0 12px 0;"><strong>{urgency}</strong> for <strong>{company}</strong>.</p>
+<p style="margin:0 0 12px 0;">Next pay date: <strong>{pay}</strong> ({cadence})<br/>
+Pay period: <strong>{start}</strong> – <strong>{end}</strong></p>
+<p style="margin:0 0 20px 0;color:#64748b;font-size:13px;">Please generate payroll before payday.</p>
+<p style="margin:0;">
+<a href="{link}" style="display:inline-block;background:#0f172a;color:#ffffff;text-decoration:none;padding:12px 18px;border-radius:8px;font-weight:600;font-size:14px;">
+Generate payroll
+</a>
+</p>
+<p style="margin:16px 0 0 0;font-size:12px;color:#94a3b8;">If you are not logged in, you will be asked to sign in first.</p>
+</td></tr>
+<tr><td style="padding:16px 24px;border-top:1px solid #e2e8f0;font-size:12px;color:#94a3b8;">ClockInn Pro</td></tr>
+</table>
+</td></tr></table>
+</body></html>"""
+        if not self._refresh_token_if_needed() or not self.service:
+            await self._record_delivery(
+                to_email=to_email.strip(),
+                subject=subject,
+                template_key="payroll_generate_reminder",
+                kind="notification",
+                status="failed",
+                error_message="Gmail not configured or unavailable",
+            )
+            return False
+        return await self._dispatch_gmail(
+            to_email.strip(),
+            subject,
+            body,
+            subtype="html",
+            template_key="payroll_generate_reminder",
+            kind="notification",
+        )
+
+
 email_service = EmailService()
 

@@ -280,6 +280,57 @@ class ShiftBulkCreate(BaseModel):
     shifts: List[ShiftCreate]
 
 
+class BulkShiftIdsRequest(BaseModel):
+    """Shared list of shift IDs for bulk operations (max 100)."""
+    shift_ids: List[UUID] = Field(..., min_length=1, max_length=100)
+
+
+class BulkShiftUpdateRequest(BaseModel):
+    """Apply the same optional fields to many shifts."""
+    shift_ids: List[UUID] = Field(..., min_length=1, max_length=100)
+    start_time: Optional[time] = None
+    end_time: Optional[time] = None
+    break_minutes: Optional[int] = Field(None, ge=0, le=1440)
+    status: Optional[Literal["DRAFT", "PUBLISHED", "APPROVED", "CANCELLED"]] = None
+
+    @field_validator("start_time", "end_time", mode="before")
+    @classmethod
+    def parse_time_24h(cls, v: Any) -> Any:
+        if v is None:
+            return None
+        return _parse_time_24h(v)
+
+    @model_validator(mode="after")
+    def at_least_one_field(self):
+        if (
+            self.start_time is None
+            and self.end_time is None
+            and self.break_minutes is None
+            and self.status is None
+        ):
+            raise ValueError("Provide at least one of start_time, end_time, break_minutes, or status")
+        if self.start_time is not None and self.end_time is not None and self.start_time == self.end_time:
+            raise ValueError(
+                "start_time and end_time cannot be equal. Use distinct times; for overnight use end before start."
+            )
+        return self
+
+
+class BulkShiftFailure(BaseModel):
+    id: UUID
+    detail: str
+
+
+class BulkShiftDeleteResponse(BaseModel):
+    deleted: int
+    failed: List[BulkShiftFailure] = Field(default_factory=list)
+
+
+class BulkShiftUpdateResponse(BaseModel):
+    updated: int
+    failed: List[BulkShiftFailure] = Field(default_factory=list)
+
+
 class ScheduleSwapCreate(BaseModel):
     """Schema for creating a shift swap request."""
     original_shift_id: UUID

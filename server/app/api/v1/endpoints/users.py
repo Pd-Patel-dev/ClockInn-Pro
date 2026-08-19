@@ -128,6 +128,9 @@ async def create_employee_endpoint(
         status=employee.status,
         has_pin=employee.pin_hash is not None,
         pay_rate=float(employee.pay_rate) if employee.pay_rate is not None else None,
+        preferred_name=employee.preferred_name,
+        phone=employee.phone,
+        job_role=employee.job_role,
         created_at=employee.created_at,
         last_login_at=employee.last_login_at,
     )
@@ -167,11 +170,11 @@ async def get_employee_endpoint(
             detail="Employee not found",
         )
     
-    # Allow all non-admin, non-developer roles through this endpoint.
-    if employee.role in [UserRole.ADMIN, UserRole.DEVELOPER]:
+    # Platform developers are not tenant employees
+    if employee.role == UserRole.DEVELOPER:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Cannot view admin or developer accounts through this endpoint",
+            detail="Cannot view developer accounts through this endpoint",
         )
     
     # Get last punch time and clock status
@@ -220,6 +223,9 @@ async def get_employee_endpoint(
         status=employee.status,
         has_pin=employee.pin_hash is not None,
         pay_rate=float(employee.pay_rate) if employee.pay_rate is not None else None,
+        preferred_name=employee.preferred_name,
+        phone=employee.phone,
+        job_role=employee.job_role,
         created_at=employee.created_at,
         last_login_at=employee.last_login_at,
         last_punch_at=last_punch,
@@ -272,6 +278,9 @@ async def update_employee_endpoint(
         status=employee.status,
         has_pin=employee.pin_hash is not None,
         pay_rate=float(employee.pay_rate) if employee.pay_rate is not None else None,
+        preferred_name=employee.preferred_name,
+        phone=employee.phone,
+        job_role=employee.job_role,
         created_at=employee.created_at,
         last_login_at=employee.last_login_at,
     )

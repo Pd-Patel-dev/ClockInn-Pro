@@ -29,6 +29,10 @@ class CashDrawerSessionReview(BaseModel):
     status: Optional[str] = Field(None, pattern="^(CLOSED|REVIEW_NEEDED)$")
 
 
+class CashDrawerSessionVerify(BaseModel):
+    note: Optional[str] = Field(None, max_length=1000, description="Optional note when verifying Drop & Sales")
+
+
 class CashDrawerSessionResponse(BaseModel):
     id: UUID
     company_id: UUID
@@ -44,12 +48,17 @@ class CashDrawerSessionResponse(BaseModel):
     collected_cash_cents: Optional[int] = None
     drop_amount_cents: Optional[int] = None
     beverages_cash_cents: Optional[int] = None
+    marketplace_cash_cents: Optional[int] = None
+    marketplace_card_cents: Optional[int] = None
+    marketplace_sales: Optional[list] = None
     expected_balance_cents: Optional[int] = None  # start + collected - drop (marketplace sales not included)
     delta_cents: Optional[int]
     status: str
     reviewed_by: Optional[UUID]
     reviewed_at: Optional[datetime]
     review_note: Optional[str]
+    verified_by: Optional[UUID] = None
+    verified_at: Optional[datetime] = None
     created_at: datetime
     updated_at: datetime
     clock_in_at: Optional[datetime] = None

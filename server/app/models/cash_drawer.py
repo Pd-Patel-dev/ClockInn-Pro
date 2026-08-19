@@ -39,9 +39,12 @@ class CashDrawerSession(Base):
     # Cash collection details (for punch-out)
     collected_cash_cents = Column(BigInteger, nullable=True)  # Total cash collected from customers
     drop_amount_cents = Column(BigInteger, nullable=True)  # Cash dropped/removed from drawer during shift
-    beverages_cash_cents = Column(BigInteger, nullable=True)  # Marketplace sales total (all payment types)
-    # Live marketplace sales during open shift: [{id, label, price_cents, qty}]
+    beverages_cash_cents = Column(BigInteger, nullable=True)  # Marketplace sales total (cash + card)
+    # Live marketplace sales during open shift:
+    # [{id, label, price_cents, qty, payment: "cash"|"card"}]
     marketplace_sales_json = Column(JSONB, nullable=True)
+    # In-progress guest cart (not yet paid): [{id, label, price_cents, qty}]
+    marketplace_cart_json = Column(JSONB, nullable=True)
     
     # Computed delta (end - start)
     delta_cents = Column(BigInteger, nullable=True)  # Computed in service layer
@@ -51,6 +54,10 @@ class CashDrawerSession(Base):
     reviewed_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
     reviewed_at = Column(DateTime(timezone=True), nullable=True)
     review_note = Column(Text, nullable=True)
+
+    # Weekly Drop & Sales verification (admin)
+    verified_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+    verified_at = Column(DateTime(timezone=True), nullable=True)
     
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
@@ -60,12 +67,14 @@ class CashDrawerSession(Base):
     time_entry = relationship("TimeEntry", backref="cash_drawer_session")
     employee = relationship("User", foreign_keys=[employee_id])
     reviewer = relationship("User", foreign_keys=[reviewed_by])
+    verifier = relationship("User", foreign_keys=[verified_by])
     audit_logs = relationship("CashDrawerAudit", back_populates="cash_drawer_session", cascade="all, delete-orphan")
 
     __table_args__ = (
         Index("idx_cash_drawer_sessions_company_employee_date", "company_id", "employee_id", "start_counted_at"),
         Index("idx_cash_drawer_sessions_company_status", "company_id", "status"),
         Index("idx_cash_drawer_sessions_time_entry", "time_entry_id"),
+        Index("idx_cash_drawer_sessions_company_verified", "company_id", "verified_at"),
     )
 
 
@@ -75,6 +84,7 @@ class CashDrawerAuditAction(str, enum.Enum):
     EDIT_START = "EDIT_START"
     EDIT_END = "EDIT_END"
     REVIEW = "REVIEW"
+    VERIFY = "VERIFY"
     VOID = "VOID"
 
 

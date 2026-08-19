@@ -19,6 +19,8 @@ from app.schemas.payroll import (
     PayrollFinalizeRequest,
     PayrollVoidRequest,
     EmployeePayrollResponse,
+    PayrollReviewPreviewResponse,
+    PayrollReviewHoursUpdate,
 )
 from app.services.payroll_service import (
     generate_payroll_run,
@@ -27,15 +29,131 @@ from app.services.payroll_service import (
     finalize_payroll_run,
     void_payroll_run,
     delete_payroll_run,
+    get_company_settings,
 )
+from app.services.payroll_schedule_service import pay_date_for_run
 from app.services.export_service import (
     generate_payroll_pdf,
     generate_payroll_excel,
 )
 from app.pdf_templates.payroll_report import generate_payroll_report_pdf
+from app.models.company import Company
 import uuid
 
 router = APIRouter()
+
+
+async def _company_settings_for(db: AsyncSession, company_id, company=None) -> dict:
+    if company is None:
+        result = await db.execute(select(Company).where(Company.id == company_id))
+        company = result.scalar_one_or_none()
+    return get_company_settings(company) if company else {}
+
+
+@router.get("/admin/payroll/schedule")
+@handle_endpoint_errors(operation_name="get_payroll_schedule")
+async def get_payroll_schedule_endpoint(
+    current_user: User = Depends(require_permission("payroll")),
+    db: AsyncSession = Depends(get_db),
+):
+    """Return next pay date, generate window, and suggested period for this company."""
+    from app.models.company import Company
+    from app.services.payroll_reminder_service import get_schedule_for_company
+
+    result = await db.execute(select(Company).where(Company.id == current_user.company_id))
+    company = result.scalar_one_or_none()
+    if not company:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Company not found")
+    return await get_schedule_for_company(db, company)
+
+
+@router.get("/admin/payroll/review-preview", response_model=PayrollReviewPreviewResponse)
+@handle_endpoint_errors(operation_name="payroll_review_preview")
+async def payroll_review_preview_endpoint(
+    payroll_type: PayrollType = Query(...),
+    start_date: date = Query(...),
+    include_inactive: bool = Query(False),
+    current_user: User = Depends(require_permission("payroll")),
+    db: AsyncSession = Depends(get_db),
+):
+    """Employees + time entries for a pay period (review before generate)."""
+    from app.models.company import Company
+    from app.services.payroll_review_service import build_payroll_review_preview
+
+    result = await db.execute(select(Company).where(Company.id == current_user.company_id))
+    company = result.scalar_one_or_none()
+    if not company:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Company not found")
+    return await build_payroll_review_preview(
+        db,
+        company,
+        payroll_type,
+        start_date,
+        include_inactive,
+    )
+
+
+@router.put("/admin/payroll/review-entries/{entry_id}/hours")
+@handle_endpoint_errors(operation_name="payroll_review_update_hours")
+async def payroll_review_update_hours_endpoint(
+    entry_id: UUID,
+    body: PayrollReviewHoursUpdate,
+    current_user: User = Depends(require_permission("payroll")),
+    db: AsyncSession = Depends(get_db),
+):
+    """Adjust a time entry's paid hours during payroll review (updates clock-out)."""
+    from app.models.company import Company
+    from app.models.time_entry import TimeEntry
+    from app.schemas.time_entry import TimeEntryEdit
+    from app.services.company_service import get_company_settings
+    from app.services.payroll_review_service import clock_out_for_paid_hours
+    from app.services.time_entry_service import edit_time_entry
+
+    result = await db.execute(select(Company).where(Company.id == current_user.company_id))
+    company = result.scalar_one_or_none()
+    if not company:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Company not found")
+    settings = get_company_settings(company)
+
+    entry_result = await db.execute(
+        select(TimeEntry).where(
+            and_(
+                TimeEntry.id == entry_id,
+                TimeEntry.company_id == current_user.company_id,
+            )
+        )
+    )
+    entry = entry_result.scalar_one_or_none()
+    if not entry:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Time entry not found")
+    if not entry.clock_in_at:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Entry has no clock-in")
+
+    break_minutes = body.break_minutes if body.break_minutes is not None else (entry.break_minutes or 0)
+    new_clock_out = clock_out_for_paid_hours(
+        entry.clock_in_at,
+        body.hours,
+        break_minutes,
+        bool(settings.get("breaks_paid")),
+    )
+    updated = await edit_time_entry(
+        db,
+        entry_id,
+        current_user.company_id,
+        current_user.id,
+        TimeEntryEdit(
+            clock_out_at=new_clock_out,
+            break_minutes=break_minutes,
+            edit_reason=body.edit_reason,
+        ),
+    )
+    return {
+        "id": str(updated.id),
+        "clock_in_at": updated.clock_in_at.isoformat() if updated.clock_in_at else None,
+        "clock_out_at": updated.clock_out_at.isoformat() if updated.clock_out_at else None,
+        "break_minutes": updated.break_minutes or 0,
+        "hours": body.hours,
+    }
 
 
 @router.post("/admin/payroll/runs/generate", response_model=PayrollRunResponse, status_code=status.HTTP_201_CREATED)
@@ -55,6 +173,7 @@ async def generate_payroll_endpoint(
         request.include_inactive,
         request.employee_ids,
         allow_duplicate=False,
+        entry_hour_overrides=request.entry_hour_overrides,
     )
     
     # Load line items with employees
@@ -94,6 +213,10 @@ async def generate_payroll_endpoint(
         payroll_type=payroll_run.payroll_type,
         period_start_date=payroll_run.period_start_date,
         period_end_date=payroll_run.period_end_date,
+        pay_date=pay_date_for_run(
+            payroll_run.period_end_date,
+            await _company_settings_for(db, payroll_run.company_id),
+        ),
         timezone=payroll_run.timezone,
         status=payroll_run.status,
         generated_by=payroll_run.generated_by,
@@ -132,6 +255,8 @@ async def list_payroll_runs_endpoint(
         limit,
     )
     
+    settings = await _company_settings_for(db, current_user.company_id)
+
     # Get employee counts for each run
     summaries = []
     for run in runs:
@@ -149,6 +274,7 @@ async def list_payroll_runs_endpoint(
                 payroll_type=run.payroll_type,
                 period_start_date=run.period_start_date,
                 period_end_date=run.period_end_date,
+                pay_date=pay_date_for_run(run.period_end_date, settings),
                 status=run.status,
                 generated_at=run.generated_at,
                 total_regular_hours=run.total_regular_hours,
@@ -214,6 +340,10 @@ async def get_payroll_run_endpoint(
         payroll_type=payroll_run.payroll_type,
         period_start_date=payroll_run.period_start_date,
         period_end_date=payroll_run.period_end_date,
+        pay_date=pay_date_for_run(
+            payroll_run.period_end_date,
+            await _company_settings_for(db, payroll_run.company_id),
+        ),
         timezone=payroll_run.timezone,
         status=payroll_run.status,
         generated_by=payroll_run.generated_by,
@@ -307,6 +437,10 @@ async def get_payroll_report_pdf_endpoint(
         generated_by=generated_by_name,
         status=status_str,
         rows=rows,
+        pay_date=pay_date_for_run(
+            payroll_run.period_end_date,
+            await _company_settings_for(db, payroll_run.company_id, payroll_run.company),
+        ),
     )
     
     # Create filename
@@ -316,7 +450,7 @@ async def get_payroll_report_pdf_endpoint(
         BytesIO(pdf_bytes),
         media_type="application/pdf",
         headers={
-            "Content-Disposition": f'attachment; filename="{filename}"'
+            "Content-Disposition": f'inline; filename="{filename}"'
         }
     )
 
@@ -376,6 +510,10 @@ async def finalize_payroll_run_endpoint(
         payroll_type=payroll_run.payroll_type,
         period_start_date=payroll_run.period_start_date,
         period_end_date=payroll_run.period_end_date,
+        pay_date=pay_date_for_run(
+            payroll_run.period_end_date,
+            await _company_settings_for(db, payroll_run.company_id),
+        ),
         timezone=payroll_run.timezone,
         status=payroll_run.status,
         generated_by=payroll_run.generated_by,
@@ -445,6 +583,10 @@ async def void_payroll_run_endpoint(
         payroll_type=payroll_run.payroll_type,
         period_start_date=payroll_run.period_start_date,
         period_end_date=payroll_run.period_end_date,
+        pay_date=pay_date_for_run(
+            payroll_run.period_end_date,
+            await _company_settings_for(db, payroll_run.company_id),
+        ),
         timezone=payroll_run.timezone,
         status=payroll_run.status,
         generated_by=payroll_run.generated_by,
@@ -564,13 +706,17 @@ async def export_payroll_endpoint(
             generated_by=generated_by_name,
             status=status_str,
             rows=rows,
+            pay_date=pay_date_for_run(
+                payroll_run.period_end_date,
+                await _company_settings_for(db, payroll_run.company_id, payroll_run.company),
+            ),
         )
         
         return StreamingResponse(
             BytesIO(pdf_bytes),
             media_type="application/pdf",
             headers={
-                "Content-Disposition": f'attachment; filename="payroll_{payroll_run.period_start_date}_{payroll_run.period_end_date}.pdf"'
+                "Content-Disposition": f'inline; filename="payroll_{payroll_run.period_start_date}_{payroll_run.period_end_date}.pdf"'
             },
         )
     else:  # xlsx

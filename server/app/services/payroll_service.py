@@ -37,6 +37,9 @@ def get_company_settings(company: Company) -> Dict:
         "overtime_multiplier_default": Decimal(str(settings.get("overtime_multiplier_default", DEFAULT_OVERTIME_MULTIPLIER))),
         "rounding_policy": settings.get("rounding_policy", DEFAULT_ROUNDING_POLICY),
         "breaks_paid": settings.get("breaks_paid", False),
+        "last_pay_date": settings.get("last_pay_date"),
+        "payroll_pay_type": settings.get("payroll_pay_type"),
+        "payroll_reminder_enabled": settings.get("payroll_reminder_enabled", True),
     }
 
 
@@ -176,15 +179,19 @@ def compute_weekly_overtime_blocks(
     period_start: date,
     period_end: date,
     company_settings: Dict,
-) -> Tuple[int, int, Dict]:
+    entry_minutes_overrides: Optional[Dict[str, int]] = None,
+) -> Tuple[int, int, Dict, int]:
     """
     Compute regular and overtime minutes for a period using weekly overtime calculation.
-    Returns (regular_minutes, overtime_minutes, details_dict)
+    Returns (regular_minutes, overtime_minutes, details_dict, exceptions_count)
+
+    entry_minutes_overrides: optional map of time_entry_id -> paid minutes from payroll review.
     """
     timezone_str = company_settings["timezone"]
     week_start_day = company_settings["payroll_week_start_day"]
     overtime_threshold_minutes = company_settings["overtime_threshold_hours_per_week"] * 60
     rounding_policy = company_settings["rounding_policy"]
+    overrides = entry_minutes_overrides or {}
     
     tz = pytz.timezone(timezone_str)
     
@@ -197,6 +204,7 @@ def compute_weekly_overtime_blocks(
     daily_breakdown = {}
     time_entry_ids = []
     exceptions_count = 0
+    exceptions: List[Dict] = []
     
     for week_start, week_end in weeks:
         week_minutes = 0
@@ -206,35 +214,77 @@ def compute_weekly_overtime_blocks(
             # Convert UTC to company timezone
             clock_in_local = entry.clock_in_at.astimezone(tz)
             clock_in_date = clock_in_local.date()
+
+            # Punches can overlap the period (clock-in before start / after end).
+            # Attribute them to a day inside the pay period so hours are not dropped.
+            if clock_in_date < period_start:
+                clock_in_date = period_start
+            elif clock_in_date > period_end:
+                clock_in_date = period_end
             
             # Check if entry overlaps with this week
             if clock_in_date < week_start or clock_in_date > week_end:
                 continue
             
-            # Only count closed entries
-            if entry.clock_out_at is None:
+            entry_key = str(entry.id)
+            has_override = entry_key in overrides
+            clock_out_local = (
+                entry.clock_out_at.astimezone(tz) if entry.clock_out_at is not None else None
+            )
+
+            # Only count closed entries (unless review provided an hours override)
+            if entry.clock_out_at is None and not has_override:
                 exceptions_count += 1
+                exceptions.append(
+                    {
+                        "type": "open_punch",
+                        "entry_id": entry_key,
+                        "date": clock_in_date.isoformat(),
+                        "clock_in_local": clock_in_local.strftime("%Y-%m-%d %H:%M"),
+                        "clock_out_local": None,
+                        "message": "Open punch — missing clock-out; hours not included",
+                    }
+                )
                 continue
             
             if entry.status == TimeEntryStatus.EDITED:
                 exceptions_count += 1
-            
-            clock_out_local = entry.clock_out_at.astimezone(tz)
+                exceptions.append(
+                    {
+                        "type": "edited",
+                        "entry_id": entry_key,
+                        "date": clock_in_date.isoformat(),
+                        "clock_in_local": clock_in_local.strftime("%Y-%m-%d %H:%M"),
+                        "clock_out_local": (
+                            clock_out_local.strftime("%Y-%m-%d %H:%M") if clock_out_local else None
+                        ),
+                        "hours_overridden": has_override,
+                        "message": (
+                            "Hours adjusted during payroll review"
+                            if has_override
+                            else "Time entry was edited"
+                        ),
+                    }
+                )
             
             # Calculate minutes for this entry
-            minutes = compute_minutes_with_rounding_and_breaks(
-                entry.clock_in_at,
-                entry.clock_out_at,
-                entry.break_minutes,
-                rounding_policy,
-                company_settings["breaks_paid"],
-            )
+            if has_override:
+                minutes = max(0, int(overrides[entry_key]))
+            else:
+                minutes = compute_minutes_with_rounding_and_breaks(
+                    entry.clock_in_at,
+                    entry.clock_out_at,
+                    entry.break_minutes,
+                    rounding_policy,
+                    company_settings["breaks_paid"],
+                )
             
             week_minutes += minutes
             week_entries.append({
                 "entry_id": str(entry.id),
                 "date": clock_in_date.isoformat(),
                 "minutes": minutes,
+                "hours_overridden": has_override,
             })
             
             # Daily breakdown
@@ -269,6 +319,7 @@ def compute_weekly_overtime_blocks(
         "days": daily_breakdown,
         "week_blocks": week_blocks,
         "time_entry_ids": time_entry_ids,
+        "exceptions": exceptions,
     }
     
     return total_regular, total_overtime, details, exceptions_count
@@ -342,6 +393,7 @@ async def generate_payroll_run(
     include_inactive: bool = False,
     employee_ids: Optional[List[UUID]] = None,
     allow_duplicate: bool = False,
+    entry_hour_overrides: Optional[Dict[str, float]] = None,
 ) -> PayrollRun:
     """Generate a payroll run for a company."""
     # Get company
@@ -356,6 +408,70 @@ async def generate_payroll_run(
         )
     
     company_settings = get_company_settings(company)
+
+    # Pay-date schedule (last pay date + weekly/biweekly) — preferred constraint
+    from app.services.payroll_schedule_service import (
+        build_pay_schedule_status,
+        parse_payroll_type,
+    )
+    timezone_str = company_settings.get("timezone", DEFAULT_TIMEZONE)
+    try:
+        tz = pytz.timezone(timezone_str)
+    except Exception:
+        tz = pytz.timezone(DEFAULT_TIMEZONE)
+    today_local = datetime.now(tz).date()
+
+    last_pay_raw = company_settings.get("last_pay_date")
+    last_pay_date = None
+    if last_pay_raw:
+        try:
+            last_pay_date = date.fromisoformat(str(last_pay_raw)[:10])
+        except (TypeError, ValueError):
+            last_pay_date = None
+    configured_type = parse_payroll_type(company_settings.get("payroll_pay_type"))
+    schedule = build_pay_schedule_status(
+        last_pay_date=last_pay_date,
+        payroll_type=configured_type or payroll_type.value,
+        today=today_local,
+        reminder_enabled=bool(company_settings.get("payroll_reminder_enabled", True)),
+        week_start_day=int(company_settings.get("payroll_week_start_day") or 0),
+    )
+
+    if schedule.configured and last_pay_date and configured_type:
+        if configured_type != payroll_type.value:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Payroll type must be {configured_type} (configured in Settings).",
+            )
+        if not schedule.can_generate:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=schedule.message,
+            )
+        if schedule.period_start and start_date != schedule.period_start:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=(
+                    f"Period start must be {schedule.period_start.isoformat()} "
+                    f"for the upcoming pay date {schedule.next_pay_date.isoformat()}."
+                ),
+            )
+    else:
+        # Fallback when pay schedule is not configured: last 14 days only
+        earliest_start = today_local - timedelta(days=14)
+        if start_date > today_local:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Period start date cannot be in the future",
+            )
+        if start_date < earliest_start:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=(
+                    "Set last pay date and payroll type in Settings, or choose a period "
+                    f"start within the last two weeks (on or after {earliest_start.isoformat()})."
+                ),
+            )
     
     # Compute pay period
     period_start, period_end, warning = compute_pay_period(
@@ -462,6 +578,21 @@ async def generate_payroll_run(
             period_end,
             company_settings["timezone"],
         )
+
+        entry_minutes_overrides: Dict[str, int] = {}
+        if entry_hour_overrides:
+            # Accept both dashed and plain UUID string keys from the review UI
+            normalized_overrides = {
+                str(k).strip().lower(): v for k, v in entry_hour_overrides.items()
+            }
+            for entry in time_entries:
+                key = str(entry.id).strip().lower()
+                if key in normalized_overrides:
+                    try:
+                        hours_val = float(normalized_overrides[key])
+                    except (TypeError, ValueError):
+                        continue
+                    entry_minutes_overrides[str(entry.id)] = max(0, int(round(hours_val * 60)))
         
         # Calculate minutes and pay
         regular_minutes, overtime_minutes, details, exceptions_count = compute_weekly_overtime_blocks(
@@ -469,7 +600,13 @@ async def generate_payroll_run(
             period_start,
             period_end,
             company_settings,
+            entry_minutes_overrides=entry_minutes_overrides if entry_minutes_overrides else None,
         )
+        if entry_minutes_overrides:
+            details = {
+                **(details or {}),
+                "hour_overrides_applied": entry_minutes_overrides,
+            }
         
         total_minutes = regular_minutes + overtime_minutes
         
@@ -617,6 +754,19 @@ async def finalize_payroll_run(
     
     payroll_run.status = PayrollStatus.FINALIZED
     payroll_run.updated_at = datetime.utcnow()
+
+    # Advance last pay date reference for the next cycle
+    try:
+        from app.models.company import Company
+        from app.services.payroll_reminder_service import advance_last_pay_date_after_finalize
+
+        company_result = await db.execute(select(Company).where(Company.id == company_id))
+        company = company_result.scalar_one_or_none()
+        if company:
+            await advance_last_pay_date_after_finalize(db, company, payroll_run)
+    except Exception:
+        # Non-fatal: finalize should still succeed
+        pass
     
     # Create audit log
     audit_log = AuditLog(

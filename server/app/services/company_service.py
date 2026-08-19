@@ -120,10 +120,17 @@ def get_company_settings(company: Company) -> Dict:
         "kiosk_allowed_ips": settings.get("kiosk_allowed_ips") or [],
         "punch_allowed_roles": settings.get("punch_allowed_roles", list(DEFAULT_PUNCH_ALLOWED_ROLES)),
         "marketplace_items": settings.get("marketplace_items", list(DEFAULT_MARKETPLACE_ITEMS)),
+        "marketplace_enabled": settings.get(
+            "marketplace_enabled",
+            bool(settings.get("marketplace_items")),
+        ),
         "auto_clock_out_enabled": settings.get("auto_clock_out_enabled", DEFAULT_AUTO_CLOCK_OUT_ENABLED),
         "auto_clock_out_grace_minutes": settings.get(
             "auto_clock_out_grace_minutes", DEFAULT_AUTO_CLOCK_OUT_GRACE_MINUTES
         ),
+        "last_pay_date": settings.get("last_pay_date"),
+        "payroll_pay_type": settings.get("payroll_pay_type"),
+        "payroll_reminder_enabled": settings.get("payroll_reminder_enabled", True),
     }
 
 
@@ -267,10 +274,23 @@ async def update_company_settings(
             item.model_dump() if hasattr(item, "model_dump") else dict(item)
             for item in data.marketplace_items
         ]
+    if data.marketplace_enabled is not None:
+        current_settings["marketplace_enabled"] = data.marketplace_enabled
     if data.auto_clock_out_enabled is not None:
         current_settings["auto_clock_out_enabled"] = data.auto_clock_out_enabled
     if data.auto_clock_out_grace_minutes is not None:
         current_settings["auto_clock_out_grace_minutes"] = data.auto_clock_out_grace_minutes
+    if "last_pay_date" in data.model_fields_set:
+        if data.last_pay_date:
+            current_settings["last_pay_date"] = data.last_pay_date
+            current_settings.pop("payroll_reminder_sent_for", None)
+        else:
+            current_settings.pop("last_pay_date", None)
+            current_settings.pop("payroll_reminder_sent_for", None)
+    if "payroll_pay_type" in data.model_fields_set and data.payroll_pay_type is not None:
+        current_settings["payroll_pay_type"] = data.payroll_pay_type
+    if "payroll_reminder_enabled" in data.model_fields_set and data.payroll_reminder_enabled is not None:
+        current_settings["payroll_reminder_enabled"] = data.payroll_reminder_enabled
 
     logger.info(f"Settings after update: {current_settings}")
     

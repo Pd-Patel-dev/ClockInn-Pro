@@ -67,8 +67,20 @@ function LoginContent() {
           window.location.href = `/verify-email?email=${encodeURIComponent(currentUser.email)}`
           return
         }
+        const nextRaw = searchParams?.get('next') || ''
+        const nextPath =
+          nextRaw.startsWith('/') &&
+          !nextRaw.startsWith('//') &&
+          ['/payroll', '/dashboard', '/settings', '/employees', '/schedules', '/reports'].some(
+            (allowed) => nextRaw === allowed || nextRaw.startsWith(`${allowed}/`)
+          )
+            ? nextRaw
+            : null
+
         if (currentUser.role === 'DEVELOPER') {
           router.push('/developer')
+        } else if (nextPath) {
+          router.push(nextPath)
         } else {
           router.push('/dashboard')
         }

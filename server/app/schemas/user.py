@@ -23,6 +23,9 @@ class UserCreate(BaseModel):
     role: UserRole = UserRole.FRONTDESK
     pin: Optional[str] = Field(None, min_length=4, max_length=4, pattern="^[0-9]{4}$")
     pay_rate: Optional[float] = Field(None, ge=0)
+    preferred_name: Optional[str] = Field(None, max_length=100)
+    phone: Optional[str] = Field(None, max_length=30)
+    job_role: Optional[str] = Field(None, max_length=255)
     # Optional; when present must be set for non-DEVELOPER (admin create supplies company via context)
     company_id: Optional[UUID] = None
 
@@ -45,6 +48,9 @@ class UserUpdate(BaseModel):
     role: Optional[UserRole] = None
     pin: Optional[str] = Field(None, min_length=0, max_length=4)
     pay_rate: Optional[float] = Field(None, ge=0)
+    preferred_name: Optional[str] = Field(None, max_length=100)
+    phone: Optional[str] = Field(None, max_length=30)
+    job_role: Optional[str] = Field(None, max_length=255)
     company_id: Optional[UUID] = None
     email: Optional[EmailStr] = None
 
@@ -121,6 +127,9 @@ class UserResponse(BaseModel):
     status: UserStatus
     has_pin: bool
     pay_rate: Optional[float] = None
+    preferred_name: Optional[str] = None
+    phone: Optional[str] = None
+    job_role: Optional[str] = None
     created_at: datetime
     last_login_at: Optional[datetime] = None
     last_punch_at: Optional[datetime] = None

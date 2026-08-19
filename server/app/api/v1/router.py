@@ -1,5 +1,5 @@
 from fastapi import APIRouter
-from app.api.v1.endpoints import auth, users, time, leave, reports, payroll, company, health, shifts, kiosk, gmail, admin, developer, cash_drawer, permissions, shift_notes, app_stubs, me
+from app.api.v1.endpoints import auth, users, time, leave, reports, payroll, company, health, shifts, kiosk, gmail, admin, developer, cash_drawer, cash_management, permissions, shift_notes, app_stubs, me
 
 api_router = APIRouter()
 
@@ -23,6 +23,11 @@ api_router.include_router(
     cash_drawer.employee_router,
     prefix="/cash-drawer",
     tags=["cash-drawer-employee"],
+)
+api_router.include_router(
+    cash_management.router,
+    prefix="/admin/cash-management",
+    tags=["cash-management"],
 )
 api_router.include_router(permissions.router, prefix="/admin", tags=["permissions"])
 api_router.include_router(app_stubs.notifications_router, prefix="/notifications", tags=["notifications"])

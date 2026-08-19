@@ -64,7 +64,7 @@ async def export_report(
             buffer,
             media_type="application/pdf",
             headers={
-                "Content-Disposition": f'attachment; filename="report_{request.start_date}_{request.end_date}.pdf"'
+                "Content-Disposition": f'inline; filename="report_{request.start_date}_{request.end_date}.pdf"'
             },
         )
     elif request.format == "xlsx":

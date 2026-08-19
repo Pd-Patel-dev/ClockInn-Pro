@@ -1,15 +1,17 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useRouter, useParams } from 'next/navigation'
+import Link from 'next/link'
 import Layout from '@/components/Layout'
 import api from '@/lib/api'
 import { getCurrentUser } from '@/lib/auth'
+import { format, parseISO } from 'date-fns'
 import logger from '@/lib/logger'
 import { useToast } from '@/components/Toast'
 import { ButtonSpinner } from '@/components/LoadingSpinner'
 import ConfirmationDialog from '@/components/ConfirmationDialog'
-import BackButton from '@/components/BackButton'
+import { deliverExportBlob, openPreviewTab } from '@/lib/deliverExportBlob'
 
 interface PayrollLineItem {
   id: string
@@ -24,7 +26,29 @@ interface PayrollLineItem {
   overtime_pay_cents: number
   total_pay_cents: number
   exceptions_count: number
-  details_json?: any
+  details_json?: {
+    exceptions?: PayrollExceptionDetail[]
+    week_blocks?: Array<{
+      entries?: Array<{
+        entry_id?: string
+        date?: string
+        minutes?: number
+        hours_overridden?: boolean
+      }>
+    }>
+    days?: Record<string, number>
+    hour_overrides_applied?: Record<string, number>
+  } | null
+}
+
+interface PayrollExceptionDetail {
+  type: string
+  entry_id?: string
+  date?: string
+  clock_in_local?: string | null
+  clock_out_local?: string | null
+  hours_overridden?: boolean
+  message?: string
 }
 
 interface PayrollRun {
@@ -33,6 +57,7 @@ interface PayrollRun {
   payroll_type: 'WEEKLY' | 'BIWEEKLY'
   period_start_date: string
   period_end_date: string
+  pay_date?: string | null
   timezone: string
   status: 'DRAFT' | 'FINALIZED' | 'VOID'
   generated_by: string
@@ -46,12 +71,150 @@ interface PayrollRun {
   line_items: PayrollLineItem[]
 }
 
+function toHours(value: number | string | null | undefined): number {
+  if (value == null) return 0
+  const n = typeof value === 'string' ? parseFloat(value) : value
+  return Number.isFinite(n) ? n : 0
+}
+
+function formatPayDate(value?: string | null) {
+  if (!value) return null
+  try {
+    return format(parseISO(value), 'MMM d, yyyy')
+  } catch {
+    return value
+  }
+}
+
+function formatCurrency(cents: number) {
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: 'USD',
+  }).format((cents || 0) / 100)
+}
+
+function minutesToHours(minutes: number) {
+  return (minutes / 60).toFixed(2)
+}
+
+function getExceptionDetails(item: PayrollLineItem): PayrollExceptionDetail[] {
+  const stored = item.details_json?.exceptions
+  if (Array.isArray(stored) && stored.length > 0) {
+    return stored
+  }
+
+  // Fallback for older runs that only stored a count
+  const fallback: PayrollExceptionDetail[] = []
+  const overrides = item.details_json?.hour_overrides_applied || {}
+  const weekBlocks = item.details_json?.week_blocks || []
+  for (const block of weekBlocks) {
+    for (const entry of block.entries || []) {
+      if (entry.hours_overridden || (entry.entry_id && overrides[entry.entry_id] != null)) {
+        fallback.push({
+          type: 'edited',
+          entry_id: entry.entry_id,
+          date: entry.date,
+          hours_overridden: true,
+          message: 'Hours adjusted during payroll review',
+        })
+      }
+    }
+  }
+  if (fallback.length === 0 && item.exceptions_count > 0) {
+    fallback.push({
+      type: 'unknown',
+      message: `${item.exceptions_count} exception${
+        item.exceptions_count === 1 ? '' : 's'
+      } recorded (open punch or edited time entry). Regenerate payroll to see full details.`,
+    })
+  }
+  return fallback
+}
+
+function exceptionTypeLabel(type: string) {
+  switch (type) {
+    case 'open_punch':
+      return 'Open punch'
+    case 'edited':
+      return 'Edited entry'
+    default:
+      return 'Exception'
+  }
+}
+
+function formatPeriod(start: string, end: string) {
+  try {
+    const s = parseISO(start)
+    const e = parseISO(end)
+    const sameYear = s.getFullYear() === e.getFullYear()
+    const sameMonth = sameYear && s.getMonth() === e.getMonth()
+
+    if (sameMonth) {
+      return `${format(s, 'MMM d')} – ${format(e, 'd, yyyy')}`
+    }
+    if (sameYear) {
+      return `${format(s, 'MMM d')} – ${format(e, 'MMM d, yyyy')}`
+    }
+    return `${format(s, 'MMM d, yyyy')} – ${format(e, 'MMM d, yyyy')}`
+  } catch {
+    return `${start} – ${end}`
+  }
+}
+
+function formatPeriodMonthYear(start: string) {
+  try {
+    return format(parseISO(start), 'MMMM yyyy')
+  } catch {
+    return ''
+  }
+}
+
+function initials(name: string) {
+  const parts = name.trim().split(/\s+/).filter(Boolean)
+  if (parts.length === 0) return '?'
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase()
+  return `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase()
+}
+
+function StatCard({
+  label,
+  value,
+  hint,
+  tone = 'default',
+}: {
+  label: string
+  value: string | number
+  hint?: string
+  tone?: 'default' | 'warning' | 'success' | 'danger'
+}) {
+  const valueClass =
+    tone === 'warning'
+      ? 'text-amber-600'
+      : tone === 'success'
+        ? 'text-emerald-600'
+        : tone === 'danger'
+          ? 'text-red-600'
+          : 'text-slate-900'
+
+  return (
+    <div className="rounded-2xl border border-slate-200/80 bg-white px-5 py-4 shadow-sm">
+      <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-400">
+        {label}
+      </p>
+      <p className={`mt-1 text-2xl font-semibold tracking-tight tabular-nums ${valueClass}`}>
+        {value}
+      </p>
+      {hint && <p className="mt-0.5 text-xs text-slate-500">{hint}</p>}
+    </div>
+  )
+}
+
 export default function PayrollDetailsPage() {
   const router = useRouter()
   const params = useParams()
   const payrollRunId = params.id as string
   const toast = useToast()
-  
+
   const [loading, setLoading] = useState(true)
   const [payrollRun, setPayrollRun] = useState<PayrollRun | null>(null)
   const [voidReason, setVoidReason] = useState('')
@@ -62,6 +225,8 @@ export default function PayrollDetailsPage() {
   const [voiding, setVoiding] = useState(false)
   const [showFinalizeConfirm, setShowFinalizeConfirm] = useState(false)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const [search, setSearch] = useState('')
+  const [exceptionItem, setExceptionItem] = useState<PayrollLineItem | null>(null)
 
   useEffect(() => {
     const checkAdminAndFetch = async () => {
@@ -73,7 +238,10 @@ export default function PayrollDetailsPage() {
         }
         fetchPayrollRun()
       } catch (err: any) {
-        logger.error('Authentication error', err as Error, { action: 'fetchPayrollRun', payrollId: params.id })
+        logger.error('Authentication error', err as Error, {
+          action: 'fetchPayrollRun',
+          payrollId: params.id,
+        })
         router.push('/login')
       }
     }
@@ -87,7 +255,9 @@ export default function PayrollDetailsPage() {
       const response = await api.get(`/admin/payroll/runs/${payrollRunId}`)
       setPayrollRun(response.data)
     } catch (error: any) {
-      logger.error('Failed to fetch payroll run', error as Error, { endpoint: `/admin/payroll/runs/${params.id}` })
+      logger.error('Failed to fetch payroll run', error as Error, {
+        endpoint: `/admin/payroll/runs/${params.id}`,
+      })
       if (error.response?.status === 404) {
         toast.error('Payroll run not found')
         router.push('/payroll')
@@ -101,10 +271,6 @@ export default function PayrollDetailsPage() {
     }
   }
 
-  const handleFinalize = () => {
-    setShowFinalizeConfirm(true)
-  }
-
   const confirmFinalize = async () => {
     setShowFinalizeConfirm(false)
     setFinalizing(true)
@@ -113,7 +279,9 @@ export default function PayrollDetailsPage() {
       toast.success('Payroll run finalized successfully!')
       fetchPayrollRun()
     } catch (error: any) {
-      logger.error('Failed to finalize payroll', error as Error, { endpoint: `/admin/payroll/runs/${params.id}/finalize` })
+      logger.error('Failed to finalize payroll', error as Error, {
+        endpoint: `/admin/payroll/runs/${params.id}/finalize`,
+      })
       toast.error(error.response?.data?.detail || 'Failed to finalize payroll')
     } finally {
       setFinalizing(false)
@@ -135,41 +303,50 @@ export default function PayrollDetailsPage() {
       setVoidReason('')
       fetchPayrollRun()
     } catch (error: any) {
-      logger.error('Failed to void payroll', error as Error, { endpoint: `/admin/payroll/runs/${params.id}/void` })
+      logger.error('Failed to void payroll', error as Error, {
+        endpoint: `/admin/payroll/runs/${params.id}/void`,
+      })
       toast.error(error.response?.data?.detail || 'Failed to void payroll')
     } finally {
       setVoiding(false)
     }
   }
 
-  const handleExport = async (format: 'pdf' | 'xlsx') => {
+  const handleExport = async (fileFormat: 'pdf' | 'xlsx') => {
+    // Open tab during the click gesture so the browser allows PDF preview
+    const previewWindow = fileFormat === 'pdf' ? openPreviewTab() : null
     setExporting(true)
     try {
       const response = await api.post(
-        `/admin/payroll/runs/${payrollRunId}/export?format=${format}`,
+        `/admin/payroll/runs/${payrollRunId}/export?format=${fileFormat}`,
         {},
         { responseType: 'blob' }
       )
-      const blob = new Blob([response.data])
-      const url = window.URL.createObjectURL(blob)
-      const link = document.createElement('a')
-      link.href = url
-      link.download = `payroll_${payrollRunId}.${format === 'pdf' ? 'pdf' : 'xlsx'}`
-      document.body.appendChild(link)
-      link.click()
-      document.body.removeChild(link)
-      window.URL.revokeObjectURL(url)
-      toast.success(`Payroll exported as ${format.toUpperCase()} successfully!`)
+      const filename = `payroll_${payrollRunId}.${fileFormat === 'pdf' ? 'pdf' : 'xlsx'}`
+      const result = deliverExportBlob(response.data, filename, {
+        previewInBrowser: fileFormat === 'pdf',
+        previewWindow,
+        mimeType:
+          fileFormat === 'pdf'
+            ? 'application/pdf'
+            : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      })
+      toast.success(
+        fileFormat === 'pdf' && result.mode === 'preview'
+          ? 'PDF opened in a new tab — use the browser to save or print'
+          : `Payroll exported as ${fileFormat.toUpperCase()} successfully!`
+      )
     } catch (error: any) {
-      logger.error('Failed to export payroll', error as Error, { endpoint: `/admin/payroll/runs/${params.id}/export` })
+      if (previewWindow && !previewWindow.closed) {
+        previewWindow.close()
+      }
+      logger.error('Failed to export payroll', error as Error, {
+        endpoint: `/admin/payroll/runs/${params.id}/export`,
+      })
       toast.error(error.response?.data?.detail || 'Failed to export payroll')
     } finally {
       setExporting(false)
     }
-  }
-
-  const handleDelete = () => {
-    setShowDeleteConfirm(true)
   }
 
   const confirmDelete = async () => {
@@ -178,34 +355,74 @@ export default function PayrollDetailsPage() {
     try {
       await api.delete(`/admin/payroll/runs/${payrollRunId}`)
       toast.success('Payroll run deleted successfully!')
-      // Success - redirect to payroll list
       router.push('/payroll')
     } catch (error: any) {
-      logger.error('Failed to delete payroll', error as Error, { endpoint: `/admin/payroll/runs/${payrollRunId}` })
-      const errorMessage = error.response?.data?.detail || error.message || 'Failed to delete payroll'
-      toast.error(errorMessage)
+      logger.error('Failed to delete payroll', error as Error, {
+        endpoint: `/admin/payroll/runs/${payrollRunId}`,
+      })
+      toast.error(error.response?.data?.detail || error.message || 'Failed to delete payroll')
     } finally {
       setDeleting(false)
     }
   }
 
-  const formatCurrency = (cents: number) => {
-    return `$${(cents / 100).toFixed(2)}`
-  }
+  const lineItems = payrollRun?.line_items || []
 
-  const formatDecimalHours = (minutes: number) => {
-    return (minutes / 60).toFixed(2)
-  }
+  const filteredItems = useMemo(() => {
+    const q = search.trim().toLowerCase()
+    if (!q) return lineItems
+    return lineItems.filter((item) => item.employee_name.toLowerCase().includes(q))
+  }, [lineItems, search])
 
-  const formatHoursDecimal = (hours: number | string) => {
-    return Number(hours).toFixed(2)
-  }
+  const kpis = useMemo(() => {
+    if (!payrollRun) {
+      return {
+        employees: 0,
+        regularHours: 0,
+        otHours: 0,
+        totalHours: 0,
+        otShare: 0,
+        avgPay: 0,
+        exceptions: 0,
+        topEarner: null as PayrollLineItem | null,
+      }
+    }
+    const regularHours = toHours(payrollRun.total_regular_hours)
+    const otHours = toHours(payrollRun.total_overtime_hours)
+    const totalHours = regularHours + otHours
+    const exceptions = lineItems.reduce((sum, i) => sum + (i.exceptions_count || 0), 0)
+    const avgPay =
+      lineItems.length > 0
+        ? Math.round(payrollRun.total_gross_pay_cents / lineItems.length)
+        : 0
+    const topEarner =
+      [...lineItems].sort((a, b) => b.total_pay_cents - a.total_pay_cents)[0] || null
+
+    return {
+      employees: lineItems.length,
+      regularHours,
+      otHours,
+      totalHours,
+      otShare: totalHours > 0 ? Math.round((otHours / totalHours) * 100) : 0,
+      avgPay,
+      exceptions,
+      topEarner,
+    }
+  }, [payrollRun, lineItems])
 
   if (loading) {
     return (
       <Layout>
-        <div className="px-4 py-6 sm:px-0">
-          <div className="text-center py-8">Loading...</div>
+        <div className="relative mx-auto max-w-6xl py-16">
+          <div className="space-y-3">
+            <div className="h-40 animate-pulse rounded-2xl bg-slate-200/80" />
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+              {[0, 1, 2, 3].map((i) => (
+                <div key={i} className="h-20 animate-pulse rounded-2xl bg-slate-100" />
+              ))}
+            </div>
+            <div className="h-72 animate-pulse rounded-2xl bg-slate-100" />
+          </div>
         </div>
       </Layout>
     )
@@ -214,198 +431,503 @@ export default function PayrollDetailsPage() {
   if (!payrollRun) {
     return (
       <Layout>
-        <div className="px-4 py-6 sm:px-0">
-          <div className="text-center py-8 text-slate-500">Payroll run not found</div>
+        <div className="relative mx-auto max-w-6xl py-24 text-center">
+          <p className="text-sm font-semibold text-slate-800">Payroll run not found</p>
+          <Link
+            href="/payroll"
+            className="mt-4 inline-block text-sm font-semibold text-slate-700 hover:text-slate-900"
+          >
+            ← Back to Payroll
+          </Link>
         </div>
       </Layout>
     )
   }
 
+  const busy = finalizing || voiding || deleting || exporting
+
   return (
     <Layout>
-      <div className="px-4 py-6 sm:px-0">
-        <div className="mb-6">
-          <BackButton fallbackHref="/payroll" className="mb-4 text-blue-600 hover:text-blue-700 flex items-center gap-1.5">
-            ← Back to Payroll Runs
-          </BackButton>
-          <div className="flex justify-between items-center">
-            <div>
-              <h1 className="text-2xl font-bold">Payroll Details</h1>
-              <p className="text-slate-600 mt-1">
-                {payrollRun.payroll_type} - {new Date(payrollRun.period_start_date).toLocaleDateString()} to{' '}
-                {new Date(payrollRun.period_end_date).toLocaleDateString()}
-              </p>
-            </div>
-            <div className="flex gap-2">
-              <button
-                onClick={() => handleExport('pdf')}
-                disabled={exporting}
-                className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 text-sm disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-              >
-                {exporting && <ButtonSpinner />}
-                Export PDF
-              </button>
-              <button
-                onClick={() => handleExport('xlsx')}
-                disabled={exporting}
-                className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 text-sm disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-              >
-                {exporting && <ButtonSpinner />}
-                Export Excel
-              </button>
-              {payrollRun.status === 'DRAFT' && (
-                <>
-                  <button
-                    onClick={handleFinalize}
-                    disabled={finalizing}
-                    className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 text-sm disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-                  >
-                    {finalizing && <ButtonSpinner />}
-                    {finalizing ? 'Finalizing...' : 'Finalize'}
-                  </button>
-                  <button
-                    onClick={() => setShowVoidModal(true)}
-                    disabled={voiding || finalizing || deleting}
-                    className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 text-sm disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    Void
-                  </button>
-                  <button
-                    onClick={handleDelete}
-                    disabled={deleting}
-                    className="px-4 py-2 bg-gray-600 text-white rounded-md hover:bg-slate-700 text-sm disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-                  >
-                    {deleting && <ButtonSpinner />}
-                    {deleting ? 'Deleting...' : 'Delete'}
-                  </button>
-                </>
-              )}
-            </div>
-          </div>
+      <div className="relative mx-auto max-w-6xl">
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-x-0 -top-4 h-52 overflow-hidden"
+        >
+          <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_rgba(15,23,42,0.06),_transparent_65%)]" />
+          <div
+            className="absolute inset-0 opacity-[0.35]"
+            style={{
+              backgroundImage:
+                'linear-gradient(to right, rgb(226 232 240 / 0.55) 1px, transparent 1px), linear-gradient(to bottom, rgb(226 232 240 / 0.55) 1px, transparent 1px)',
+              backgroundSize: '28px 28px',
+              maskImage: 'linear-gradient(to bottom, black, transparent)',
+            }}
+          />
         </div>
 
-        <div className="bg-white shadow rounded-lg p-6 mb-6">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <div>
-              <div className="text-sm text-slate-500">Status</div>
-              <span
-                className={`inline-block mt-1 px-2 py-1 text-xs font-semibold rounded-full ${
-                  payrollRun.status === 'FINALIZED'
-                    ? 'bg-green-100 text-green-800'
-                    : payrollRun.status === 'VOID'
-                    ? 'bg-red-100 text-red-800'
-                    : 'bg-yellow-100 text-yellow-800'
-                }`}
-              >
-                {payrollRun.status}
-              </span>
-            </div>
-            <div>
-              <div className="text-sm text-slate-500">Generated At</div>
-              <div className="mt-1 font-medium">
-                {new Date(payrollRun.generated_at).toLocaleString()}
+        <div className="relative space-y-6 pb-8">
+          <div>
+            <Link
+              href="/payroll"
+              className="inline-flex items-center gap-1.5 text-sm font-medium text-slate-500 hover:text-slate-800"
+            >
+              ← Back to Payroll
+            </Link>
+          </div>
+
+          <header className="overflow-hidden rounded-2xl border border-slate-800/10 shadow-[0_20px_50px_-28px_rgba(15,23,42,0.45)]">
+            <div className="relative bg-slate-900 px-5 py-6 sm:px-7 sm:py-8 text-white">
+              <div
+                aria-hidden
+                className="absolute inset-0 opacity-40"
+                style={{
+                  backgroundImage:
+                    'radial-gradient(circle at 12% 20%, rgba(45,212,191,0.28), transparent 42%), radial-gradient(circle at 88% 10%, rgba(59,130,246,0.22), transparent 36%)',
+                }}
+              />
+              <div
+                aria-hidden
+                className="absolute inset-y-0 right-0 w-1/2 opacity-[0.07]"
+                style={{
+                  backgroundImage:
+                    'repeating-linear-gradient(-32deg, transparent, transparent 10px, white 10px, white 11px)',
+                }}
+              />
+              <div className="relative flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+                <div>
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+                    Payroll run · {payrollRun.payroll_type.toLowerCase()}
+                  </p>
+                  <div className="mt-2 flex flex-wrap items-center gap-2">
+                    <h1 className="text-3xl sm:text-4xl font-semibold tracking-tight">
+                      {formatPeriodMonthYear(payrollRun.period_start_date)}
+                    </h1>
+                    <span
+                      className={`inline-flex rounded-md px-2 py-0.5 text-[11px] font-medium ring-1 ring-inset capitalize ${
+                        payrollRun.status === 'FINALIZED'
+                          ? 'bg-emerald-400/15 text-emerald-200 ring-emerald-400/30'
+                          : payrollRun.status === 'VOID'
+                            ? 'bg-red-400/15 text-red-200 ring-red-400/30'
+                            : 'bg-amber-400/15 text-amber-100 ring-amber-400/30'
+                      }`}
+                    >
+                      {payrollRun.status.toLowerCase()}
+                    </span>
+                  </div>
+                  <p className="mt-2 text-sm text-slate-300 tabular-nums">
+                    {formatPeriod(payrollRun.period_start_date, payrollRun.period_end_date)}
+                    {formatPayDate(payrollRun.pay_date) ? (
+                      <>
+                        {' · '}Pay date {formatPayDate(payrollRun.pay_date)}
+                      </>
+                    ) : null}
+                  </p>
+                  <p className="mt-1.5 max-w-xl text-sm text-slate-400 leading-relaxed">
+                    {payrollRun.generated_by_name
+                      ? `Generated by ${payrollRun.generated_by_name}`
+                      : 'Generated'}
+                    {' · '}
+                    {(() => {
+                      try {
+                        return format(parseISO(payrollRun.generated_at), 'MMM d, yyyy · h:mm a')
+                      } catch {
+                        return payrollRun.generated_at
+                      }
+                    })()}
+                    {' · '}
+                    {payrollRun.timezone}
+                  </p>
+                  <p className="mt-3 text-sm font-medium text-teal-200/90 tabular-nums">
+                    {formatCurrency(payrollRun.total_gross_pay_cents)} gross
+                  </p>
+                </div>
+
+                <div className="flex flex-wrap gap-2 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => handleExport('pdf')}
+                    disabled={busy}
+                    className="inline-flex items-center gap-2 rounded-xl border border-white/15 bg-white/5 px-3.5 py-2.5 text-sm font-medium text-slate-100 hover:bg-white/10 disabled:opacity-50"
+                  >
+                    {exporting && <ButtonSpinner />}
+                    View PDF
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleExport('xlsx')}
+                    disabled={busy}
+                    className="inline-flex items-center gap-2 rounded-xl border border-white/15 bg-white/5 px-3.5 py-2.5 text-sm font-medium text-slate-100 hover:bg-white/10 disabled:opacity-50"
+                  >
+                    Export Excel
+                  </button>
+                  {payrollRun.status === 'DRAFT' && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => setShowFinalizeConfirm(true)}
+                        disabled={busy}
+                        className="inline-flex items-center gap-2 rounded-xl bg-white px-3.5 py-2.5 text-sm font-semibold text-slate-900 shadow-sm hover:bg-slate-100 disabled:opacity-50"
+                      >
+                        {finalizing && <ButtonSpinner />}
+                        Finalize
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setShowVoidModal(true)}
+                        disabled={busy}
+                        className="rounded-xl border border-red-400/40 bg-red-500/10 px-3.5 py-2.5 text-sm font-semibold text-red-100 hover:bg-red-500/20 disabled:opacity-50"
+                      >
+                        Void
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setShowDeleteConfirm(true)}
+                        disabled={busy}
+                        className="rounded-xl border border-white/15 bg-white/5 px-3.5 py-2.5 text-sm font-medium text-slate-300 hover:bg-white/10 disabled:opacity-50"
+                      >
+                        Delete
+                      </button>
+                    </>
+                  )}
+                </div>
               </div>
             </div>
-            {payrollRun.generated_by_name && (
+          </header>
+
+          <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
+            <StatCard
+              label="Gross pay"
+              value={formatCurrency(payrollRun.total_gross_pay_cents)}
+              hint={`${kpis.employees} employees`}
+            />
+            <StatCard
+              label="Total hours"
+              value={kpis.totalHours.toFixed(1)}
+              hint={`${kpis.otHours.toFixed(1)} OT · ${kpis.otShare}%`}
+            />
+            <StatCard
+              label="Avg pay"
+              value={formatCurrency(kpis.avgPay)}
+              hint="Per employee"
+              tone="success"
+            />
+          </div>
+
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            <StatCard
+              label="Regular hours"
+              value={kpis.regularHours.toFixed(1)}
+              hint="This period"
+            />
+            <StatCard
+              label="OT hours"
+              value={kpis.otHours.toFixed(1)}
+              hint="Overtime worked"
+              tone={kpis.otHours > 0 ? 'warning' : 'default'}
+            />
+            <StatCard label="Employees" value={kpis.employees} hint="On this run" />
+            <StatCard
+              label="Top earner"
+              value={
+                kpis.topEarner
+                  ? formatCurrency(kpis.topEarner.total_pay_cents)
+                  : '—'
+              }
+              hint={kpis.topEarner?.employee_name || 'No line items'}
+            />
+          </div>
+
+          <div className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm">
+            <div className="px-5 py-3.5 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
               <div>
-                <div className="text-sm text-slate-500">Generated By</div>
-                <div className="mt-1 font-medium">{payrollRun.generated_by_name}</div>
+                <p className="text-sm font-semibold text-slate-900">Employee line items</p>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  {filteredItems.length === lineItems.length
+                    ? `${lineItems.length} employee${lineItems.length === 1 ? '' : 's'}`
+                    : `${filteredItems.length} of ${lineItems.length} employees`}
+                </p>
+              </div>
+              <input
+                type="search"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search employee…"
+                className="w-full sm:w-56 rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-sm text-slate-900 shadow-sm focus:outline-none focus:ring-2 focus:ring-slate-900/10 focus:border-slate-300"
+              />
+            </div>
+
+            {filteredItems.length === 0 ? (
+              <div className="px-6 py-16 text-center">
+                <p className="text-sm font-semibold text-slate-800">No employees found</p>
+                <p className="mt-1 text-sm text-slate-500">
+                  {search ? 'Try a different search' : 'This payroll run has no line items'}
+                </p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full table-fixed min-w-[900px]">
+                  <colgroup>
+                    <col className="w-[22%]" />
+                    <col className="w-[10%]" />
+                    <col className="w-[10%]" />
+                    <col className="w-[11%]" />
+                    <col className="w-[11%]" />
+                    <col className="w-[11%]" />
+                    <col className="w-[13%]" />
+                    <col className="w-[8%]" />
+                  </colgroup>
+                  <thead>
+                    <tr className="border-b border-slate-100">
+                      <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-400">
+                        Employee
+                      </th>
+                      <th className="px-4 py-3 text-right text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-400">
+                        Reg
+                      </th>
+                      <th className="px-4 py-3 text-right text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-400">
+                        OT
+                      </th>
+                      <th className="px-4 py-3 text-right text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-400">
+                        Rate
+                      </th>
+                      <th className="px-4 py-3 text-right text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-400">
+                        Reg pay
+                      </th>
+                      <th className="px-4 py-3 text-right text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-400">
+                        OT pay
+                      </th>
+                      <th className="px-4 py-3 text-right text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-400">
+                        Total
+                      </th>
+                      <th className="px-4 py-3 text-right text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-400">
+                        Exc
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {filteredItems.map((item) => (
+                      <tr
+                        key={item.id}
+                        className="border-l-4 border-l-transparent transition-colors hover:bg-slate-50/90"
+                      >
+                        <td className="px-4 py-3.5 align-middle">
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-900 text-[10px] font-semibold text-white">
+                              {initials(item.employee_name)}
+                            </div>
+                            <p className="truncate text-sm font-medium text-slate-900">
+                              {item.employee_name}
+                            </p>
+                          </div>
+                        </td>
+                        <td className="px-4 py-3.5 align-middle text-right text-sm tabular-nums text-slate-900">
+                          {minutesToHours(item.regular_minutes)}
+                        </td>
+                        <td className="px-4 py-3.5 align-middle text-right text-sm tabular-nums text-slate-900">
+                          {minutesToHours(item.overtime_minutes)}
+                        </td>
+                        <td className="px-4 py-3.5 align-middle text-right text-sm tabular-nums text-slate-700">
+                          {formatCurrency(item.pay_rate_cents)}
+                        </td>
+                        <td className="px-4 py-3.5 align-middle text-right text-sm tabular-nums text-slate-900">
+                          {formatCurrency(item.regular_pay_cents)}
+                        </td>
+                        <td className="px-4 py-3.5 align-middle text-right text-sm tabular-nums text-slate-900">
+                          {formatCurrency(item.overtime_pay_cents)}
+                        </td>
+                        <td className="px-4 py-3.5 align-middle text-right text-sm font-semibold tabular-nums text-slate-900">
+                          {formatCurrency(item.total_pay_cents)}
+                        </td>
+                        <td className="px-4 py-3.5 align-middle text-right text-sm tabular-nums">
+                          {item.exceptions_count > 0 ? (
+                            <button
+                              type="button"
+                              onClick={() => setExceptionItem(item)}
+                              className="font-semibold text-red-600 underline decoration-red-300 underline-offset-2 hover:text-red-700"
+                              title="View exception details"
+                            >
+                              {item.exceptions_count}
+                            </button>
+                          ) : (
+                            <span className="text-slate-400">—</span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot>
+                    <tr className="border-t border-slate-200 bg-slate-50/80">
+                      <td className="px-4 py-3.5 text-sm font-semibold text-slate-900">
+                        Totals
+                      </td>
+                      <td className="px-4 py-3.5 text-right text-sm font-semibold tabular-nums text-slate-900">
+                        {toHours(payrollRun.total_regular_hours).toFixed(2)}
+                      </td>
+                      <td className="px-4 py-3.5 text-right text-sm font-semibold tabular-nums text-slate-900">
+                        {toHours(payrollRun.total_overtime_hours).toFixed(2)}
+                      </td>
+                      <td className="px-4 py-3.5" />
+                      <td className="px-4 py-3.5" />
+                      <td className="px-4 py-3.5" />
+                      <td className="px-4 py-3.5 text-right text-sm font-semibold tabular-nums text-slate-900">
+                        {formatCurrency(payrollRun.total_gross_pay_cents)}
+                      </td>
+                      <td className="px-4 py-3.5 text-right text-sm font-semibold tabular-nums text-slate-900">
+                        {kpis.exceptions > 0 ? kpis.exceptions : '—'}
+                      </td>
+                    </tr>
+                  </tfoot>
+                </table>
               </div>
             )}
-            <div>
-              <div className="text-sm text-slate-500">Timezone</div>
-              <div className="mt-1 font-medium">{payrollRun.timezone}</div>
-            </div>
           </div>
         </div>
 
-        <div className="bg-white shadow rounded-lg overflow-hidden">
-          <div className="px-6 py-4 border-b border-slate-200">
-            <h2 className="text-lg font-semibold">Employee Line Items</h2>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-slate-200">
-              <thead className="bg-slate-50">
-                <tr>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">Employee</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">Reg Hrs</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">OT Hrs</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">Rate</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">Reg Pay</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">OT Pay</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">Total</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase">Exc</th>
-                </tr>
-              </thead>
-              <tbody className="bg-white divide-y divide-slate-200">
-                {payrollRun.line_items.map((item) => (
-                  <tr key={item.id}>
-                    <td className="px-4 py-3 text-sm text-slate-900">{item.employee_name}</td>
-                    <td className="px-4 py-3 text-sm text-slate-900">{formatDecimalHours(item.regular_minutes)}</td>
-                    <td className="px-4 py-3 text-sm text-slate-900">{formatDecimalHours(item.overtime_minutes)}</td>
-                    <td className="px-4 py-3 text-sm text-slate-900">{formatCurrency(item.pay_rate_cents)}</td>
-                    <td className="px-4 py-3 text-sm text-slate-900">{formatCurrency(item.regular_pay_cents)}</td>
-                    <td className="px-4 py-3 text-sm text-slate-900">{formatCurrency(item.overtime_pay_cents)}</td>
-                    <td className="px-4 py-3 text-sm font-medium text-slate-900">{formatCurrency(item.total_pay_cents)}</td>
-                    <td className="px-4 py-3 text-sm text-slate-900">
-                      {item.exceptions_count > 0 ? (
-                        <span className="text-red-600 font-semibold">{item.exceptions_count}</span>
-                      ) : (
-                        '-'
+        {exceptionItem && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4 backdrop-blur-sm">
+            <div className="flex max-h-[85vh] w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
+              <div className="border-b border-slate-800/10 bg-slate-900 px-5 py-4 text-white">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+                      Exceptions
+                    </p>
+                    <h3 className="mt-1 text-xl font-semibold tracking-tight">
+                      {exceptionItem.employee_name}
+                    </h3>
+                    <p className="mt-1 text-sm text-slate-300">
+                      {exceptionItem.exceptions_count} exception
+                      {exceptionItem.exceptions_count === 1 ? '' : 's'}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setExceptionItem(null)}
+                    className="rounded-lg p-1.5 text-slate-400 hover:bg-white/10 hover:text-white"
+                    aria-label="Close"
+                  >
+                    <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M6 18L18 6M6 6l12 12"
+                      />
+                    </svg>
+                  </button>
+                </div>
+              </div>
+              <div className="min-h-0 flex-1 overflow-y-auto p-4">
+                <ul className="space-y-2">
+                  {getExceptionDetails(exceptionItem).map((exc, idx) => (
+                    <li
+                      key={`${exc.entry_id || 'exc'}-${idx}`}
+                      className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <p className="text-sm font-semibold text-slate-900">
+                          {exceptionTypeLabel(exc.type)}
+                        </p>
+                        {exc.date && (
+                          <p className="shrink-0 text-xs tabular-nums text-slate-500">
+                            {(() => {
+                              try {
+                                return format(parseISO(exc.date), 'MMM d, yyyy')
+                              } catch {
+                                return exc.date
+                              }
+                            })()}
+                          </p>
+                        )}
+                      </div>
+                      <p className="mt-1 text-sm text-slate-600">
+                        {exc.message || 'Flagged during payroll calculation'}
+                      </p>
+                      {(exc.clock_in_local || exc.clock_out_local) && (
+                        <p className="mt-2 text-xs tabular-nums text-slate-500">
+                          {exc.clock_in_local || '—'} → {exc.clock_out_local || 'Open'}
+                        </p>
                       )}
-                    </td>
-                  </tr>
-                ))}
-                <tr className="bg-slate-50 font-semibold">
-                  <td className="px-4 py-3 text-sm">TOTALS</td>
-                  <td className="px-4 py-3 text-sm">{formatHoursDecimal(payrollRun.total_regular_hours)}</td>
-                  <td className="px-4 py-3 text-sm">{formatHoursDecimal(payrollRun.total_overtime_hours)}</td>
-                  <td className="px-4 py-3 text-sm"></td>
-                  <td className="px-4 py-3 text-sm"></td>
-                  <td className="px-4 py-3 text-sm"></td>
-                  <td className="px-4 py-3 text-sm">{formatCurrency(payrollRun.total_gross_pay_cents)}</td>
-                  <td className="px-4 py-3 text-sm"></td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        </div>
-
-        {/* Void Modal */}
-        {showVoidModal && (
-          <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center">
-            <div className="relative bg-white rounded-lg shadow-xl p-6 w-full max-w-md m-4">
-              <h2 className="text-xl font-semibold mb-4">Void Payroll Run</h2>
-              <p className="text-sm text-slate-600 mb-4">Please provide a reason for voiding this payroll run:</p>
-              <textarea
-                value={voidReason}
-                onChange={(e) => setVoidReason(e.target.value)}
-                className="w-full px-3 py-2 border border-slate-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                rows={4}
-                placeholder="Reason for voiding..."
-              />
-              <div className="flex gap-3 mt-4">
+                    </li>
+                  ))}
+                </ul>
+              </div>
+              <div className="border-t border-slate-100 px-5 py-4">
                 <button
-                  onClick={handleVoid}
-                  className="flex-1 px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700"
+                  type="button"
+                  onClick={() => setExceptionItem(null)}
+                  className="w-full rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
                 >
-                  Void
-                </button>
-                <button
-                  onClick={() => {
-                    setShowVoidModal(false)
-                    setVoidReason('')
-                  }}
-                  className="flex-1 px-4 py-2 bg-slate-200 text-slate-700 rounded-md hover:bg-slate-300"
-                >
-                  Cancel
+                  Close
                 </button>
               </div>
             </div>
           </div>
         )}
 
-        {/* Finalize Confirmation Dialog */}
+        {showVoidModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4 backdrop-blur-sm">
+            <div className="w-full max-w-md overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
+              <div className="border-b border-slate-800/10 bg-slate-900 px-5 py-4 text-white">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+                      Void run
+                    </p>
+                    <h3 className="mt-1 text-xl font-semibold tracking-tight">Void payroll</h3>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowVoidModal(false)
+                      setVoidReason('')
+                    }}
+                    className="rounded-lg p-1.5 text-slate-400 hover:bg-white/10 hover:text-white"
+                    aria-label="Close"
+                  >
+                    <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+              </div>
+              <div className="p-5 space-y-4">
+                <p className="text-sm text-slate-600">
+                  Provide a reason for voiding this payroll run. This cannot be undone.
+                </p>
+                <textarea
+                  value={voidReason}
+                  onChange={(e) => setVoidReason(e.target.value)}
+                  rows={4}
+                  placeholder="Reason for voiding…"
+                  className="block w-full rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm shadow-sm focus:border-slate-300 focus:outline-none focus:ring-2 focus:ring-slate-900/10"
+                />
+                <div className="flex gap-3 border-t border-slate-100 pt-5">
+                  <button
+                    type="button"
+                    onClick={handleVoid}
+                    disabled={voiding}
+                    className="flex-1 inline-flex items-center justify-center gap-2 rounded-xl bg-red-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-50"
+                  >
+                    {voiding && <ButtonSpinner />}
+                    Void run
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowVoidModal(false)
+                      setVoidReason('')
+                    }}
+                    className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
         <ConfirmationDialog
           isOpen={showFinalizeConfirm}
           title="Finalize Payroll Run"
@@ -417,7 +939,6 @@ export default function PayrollDetailsPage() {
           onCancel={() => setShowFinalizeConfirm(false)}
         />
 
-        {/* Delete Confirmation Dialog */}
         <ConfirmationDialog
           isOpen={showDeleteConfirm}
           title="Delete Payroll Run"
@@ -432,4 +953,3 @@ export default function PayrollDetailsPage() {
     </Layout>
   )
 }
-

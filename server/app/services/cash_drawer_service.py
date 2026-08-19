@@ -215,7 +215,7 @@ async def close_cash_drawer_session(
         if collected_cash_cents < 0:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Collected cash amount cannot be negative",
+                detail="Room sale amount cannot be negative",
             )
         session.collected_cash_cents = collected_cash_cents
 
@@ -240,6 +240,11 @@ async def close_cash_drawer_session(
                 detail="Marketplace sales amount cannot be negative",
             )
         session.beverages_cash_cents = beverages_cash_cents
+
+    # Discard any unpaid cart when the drawer closes
+    if getattr(session, "marketplace_cart_json", None):
+        session.marketplace_cart_json = []
+        flag_modified(session, "marketplace_cart_json")
     
     if drop_amount_cents is not None:
         if drop_amount_cents < 0:
@@ -574,6 +579,113 @@ async def review_cash_drawer_session(
     return session
 
 
+async def verify_cash_drawer_session(
+    db: AsyncSession,
+    company_id: UUID,
+    session_id: UUID,
+    verifier_id: UUID,
+    note: Optional[str] = None,
+) -> CashDrawerSession:
+    """Verify Drop & Sales for a finished cash drawer session (weekly admin check)."""
+    result = await db.execute(
+        select(CashDrawerSession).where(
+            and_(
+                CashDrawerSession.id == session_id,
+                CashDrawerSession.company_id == company_id,
+            )
+        )
+    )
+    session = result.scalar_one_or_none()
+    if not session:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Cash drawer session not found",
+        )
+
+    if session.status == CashDrawerStatus.OPEN:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Cannot verify an open cash drawer session",
+        )
+
+    if session.verified_at is not None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Cash drawer session is already verified",
+        )
+
+    old_status_value = session.status.value if hasattr(session.status, "value") else str(session.status)
+    now = datetime.utcnow()
+
+    session.verified_by = verifier_id
+    session.verified_at = now
+
+    closed_from_review = False
+    if session.status == CashDrawerStatus.REVIEW_NEEDED:
+        session.status = CashDrawerStatus.CLOSED
+        session.reviewed_by = verifier_id
+        session.reviewed_at = now
+        if note:
+            session.review_note = note
+        closed_from_review = True
+
+    new_status_value = session.status.value if hasattr(session.status, "value") else str(session.status)
+
+    audit = CashDrawerAudit(
+        company_id=company_id,
+        cash_drawer_session_id=session.id,
+        actor_user_id=verifier_id,
+        action=CashDrawerAuditAction.VERIFY,
+        old_values_json={
+            "status": old_status_value,
+            "verified_at": None,
+            "drop_amount_cents": session.drop_amount_cents,
+            "beverages_cash_cents": session.beverages_cash_cents,
+        },
+        new_values_json={
+            "status": new_status_value,
+            "verified_at": now.isoformat(),
+            "note": note,
+            "drop_amount_cents": session.drop_amount_cents,
+            "beverages_cash_cents": session.beverages_cash_cents,
+        },
+        reason=note or "Verified Drop & Sales",
+    )
+    db.add(audit)
+
+    if closed_from_review:
+        review_audit = CashDrawerAudit(
+            company_id=company_id,
+            cash_drawer_session_id=session.id,
+            actor_user_id=verifier_id,
+            action=CashDrawerAuditAction.REVIEW,
+            old_values_json={"status": old_status_value},
+            new_values_json={"status": new_status_value, "note": note},
+            reason=note or "Closed via weekly verification",
+        )
+        db.add(review_audit)
+
+    audit_log = AuditLog(
+        company_id=company_id,
+        actor_user_id=verifier_id,
+        action="CASH_DRAWER_VERIFY",
+        entity_type="cash_drawer_session",
+        entity_id=session.id,
+        metadata_json={
+            "old_status": old_status_value,
+            "new_status": new_status_value,
+            "note": note,
+            "drop_amount_cents": session.drop_amount_cents,
+            "beverages_cash_cents": session.beverages_cash_cents,
+            "closed_from_review": closed_from_review,
+        },
+    )
+    db.add(audit_log)
+
+    await db.flush()
+    return session
+
+
 async def get_cash_drawer_session(
     db: AsyncSession,
     company_id: UUID,
@@ -600,6 +712,7 @@ async def get_cash_drawer_sessions(
     status_filter: Optional[CashDrawerStatus] = None,
     limit: int = 100,
     offset: int = 0,
+    verified: Optional[bool] = None,
 ) -> tuple[List[CashDrawerSession], int]:
     """Get cash drawer sessions with filters."""
     query = select(CashDrawerSession).where(CashDrawerSession.company_id == company_id)
@@ -615,6 +728,17 @@ async def get_cash_drawer_sessions(
     
     if status_filter:
         query = query.where(CashDrawerSession.status == status_filter)
+
+    if verified is True:
+        query = query.where(CashDrawerSession.verified_at.isnot(None))
+    elif verified is False:
+        # Finished sessions awaiting weekly Drop & Sales verification
+        query = query.where(
+            and_(
+                CashDrawerSession.status != CashDrawerStatus.OPEN,
+                CashDrawerSession.verified_at.is_(None),
+            )
+        )
     
     # Get total count
     count_query = select(func.count()).select_from(query.subquery())

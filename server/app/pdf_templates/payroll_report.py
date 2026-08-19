@@ -1,14 +1,13 @@
 """
 Professional Payroll Report PDF Generator
 
-Generates a clean, professional payroll report PDF with:
-- Header with company logo circle and metadata
-- Summary cards
-- Employee table with proper formatting
-- Notes section
-- Footer with confidentiality notice
+Clean, modern payroll export aligned with the ClockInn admin UI:
+- Slate hero band with company identity and period
+- KPI summary cards
+- Refined employee earnings table
+- Confidential footer with page numbers
 """
-from typing import List, TypedDict
+from typing import List, Optional, TypedDict
 from datetime import datetime, date
 from io import BytesIO
 from reportlab.lib import colors
@@ -16,13 +15,19 @@ from reportlab.lib.pagesizes import letter
 from reportlab.lib.units import inch
 from reportlab.lib.enums import TA_LEFT, TA_RIGHT, TA_CENTER
 from reportlab.platypus import (
-    SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, 
-    PageBreak, KeepTogether, Flowable
+    SimpleDocTemplate,
+    Table,
+    TableStyle,
+    Paragraph,
+    Spacer,
+    Flowable,
 )
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from reportlab.pdfgen import canvas
-from reportlab.lib.utils import ImageReader
 import re
+
+
+# Page content width (letter with 0.55" side margins)
+CONTENT_WIDTH = 7.4 * inch
 
 
 class PayrollReportTotals(TypedDict):
@@ -53,45 +58,9 @@ def sanitize_html(text: str) -> str:
     if not text:
         return ""
     text = str(text)
-    # ReportLab Paragraph supports XML-style tags, but we should escape entities properly
-    # Only escape & if it's not part of an entity
-    # For now, just remove potentially dangerous tags and keep safe ones like <b>
-    # Remove script tags and similar
-    text = re.sub(r'<script[^>]*>.*?</script>', '', text, flags=re.IGNORECASE | re.DOTALL)
-    # Replace & with &amp; only if not already an entity
-    text = re.sub(r'&(?!\w+;)', '&amp;', text)
+    text = re.sub(r"<script[^>]*>.*?</script>", "", text, flags=re.IGNORECASE | re.DOTALL)
+    text = re.sub(r"&(?!\w+;)", "&amp;", text)
     return text
-
-
-class CircularLogo(Flowable):
-    """Draw a circular logo with company initials."""
-    def __init__(self, initials: str, size: float = 0.4, color: str = "#2563eb"):
-        Flowable.__init__(self)
-        self.initials = initials.upper()[:2]
-        self.size = size * inch
-        self.color = colors.HexColor(color)
-        self.width = self.size
-        self.height = self.size
-    
-    def draw(self):
-        canvas_obj = self.canv
-        # Draw circle
-        canvas_obj.setFillColor(self.color)
-        canvas_obj.circle(
-            self.size / 2,
-            self.size / 2,
-            self.size / 2,
-            fill=1
-        )
-        # Draw initials
-        canvas_obj.setFillColor(colors.white)
-        canvas_obj.setFont("Helvetica-Bold", self.size * 0.4)
-        text_width = canvas_obj.stringWidth(self.initials, "Helvetica-Bold", self.size * 0.4)
-        canvas_obj.drawString(
-            (self.size - text_width) / 2,
-            self.size * 0.3,
-            self.initials
-        )
 
 
 def get_company_initials(company_name: str) -> str:
@@ -104,6 +73,136 @@ def get_company_initials(company_name: str) -> str:
     return "".join(w[0].upper() for w in words[:2])
 
 
+def _status_colors(status: str):
+    """Return (bg, text) HexColors for a status pill."""
+    key = (status or "").strip().upper()
+    if key in ("FINALIZED", "FINAL"):
+        return colors.HexColor("#059669"), colors.white
+    if key in ("VOID", "VOIDED"):
+        return colors.HexColor("#dc2626"), colors.white
+    return colors.HexColor("#d97706"), colors.white
+
+
+class HeroBanner(Flowable):
+    """Full-width slate hero with company mark, title, period, and status."""
+
+    def __init__(
+        self,
+        company_name: str,
+        period_str: str,
+        payroll_type: str,
+        status: str,
+        pay_date_str: str = "",
+        width: float = CONTENT_WIDTH,
+        height: float = 1.15 * inch,
+    ):
+        Flowable.__init__(self)
+        self.company_name = company_name
+        self.period_str = period_str
+        self.payroll_type = payroll_type
+        self.status = status
+        self.pay_date_str = pay_date_str
+        self.width = width
+        self.height = height
+
+    def draw(self):
+        c = self.canv
+        w, h = self.width, self.height
+
+        # Background
+        c.setFillColor(colors.HexColor("#0f172a"))
+        c.roundRect(0, 0, w, h, 8, fill=1, stroke=0)
+
+        # Left accent bar
+        c.setFillColor(colors.HexColor("#38bdf8"))
+        c.rect(0, 0, 4, h, fill=1, stroke=0)
+
+        # Company mark circle
+        mark_x, mark_y, mark_r = 28, h / 2, 16
+        c.setFillColor(colors.HexColor("#1e293b"))
+        c.circle(mark_x, mark_y, mark_r, fill=1, stroke=0)
+        c.setStrokeColor(colors.HexColor("#334155"))
+        c.setLineWidth(1)
+        c.circle(mark_x, mark_y, mark_r, fill=0, stroke=1)
+
+        initials = get_company_initials(self.company_name)
+        c.setFillColor(colors.HexColor("#e2e8f0"))
+        c.setFont("Helvetica-Bold", 9)
+        tw = c.stringWidth(initials, "Helvetica-Bold", 9)
+        c.drawString(mark_x - tw / 2, mark_y - 3, initials)
+
+        # Eyebrow
+        c.setFillColor(colors.HexColor("#94a3b8"))
+        c.setFont("Helvetica", 7.5)
+        c.drawString(52, h - 26, "PAYROLL REPORT")
+
+        # Company name
+        c.setFillColor(colors.white)
+        c.setFont("Helvetica-Bold", 15)
+        name = self.company_name[:42]
+        c.drawString(52, h - 46, name)
+
+        # Period + type
+        c.setFillColor(colors.HexColor("#cbd5e1"))
+        c.setFont("Helvetica", 8.5)
+        type_label = (self.payroll_type or "").replace("_", " ").title()
+        parts = [self.period_str]
+        if self.pay_date_str:
+            parts.append(f"Pay date {self.pay_date_str}")
+        if type_label:
+            parts.append(type_label)
+        meta = "  ·  ".join(p for p in parts if p)
+        c.drawString(52, 18, meta)
+
+        # Status pill (right)
+        status_label = (self.status or "Draft").strip().title()
+        bg, fg = _status_colors(status_label)
+        c.setFont("Helvetica-Bold", 8)
+        label_w = c.stringWidth(status_label, "Helvetica-Bold", 8)
+        pill_w = label_w + 18
+        pill_h = 18
+        pill_x = w - pill_w - 18
+        pill_y = h - 36
+        c.setFillColor(bg)
+        c.roundRect(pill_x, pill_y, pill_w, pill_h, 9, fill=1, stroke=0)
+        c.setFillColor(fg)
+        c.drawString(pill_x + 9, pill_y + 5, status_label)
+
+
+class AccentCard(Flowable):
+    """KPI card with a colored top accent strip."""
+
+    def __init__(self, value: str, label: str, accent, width, height=0.78 * inch):
+        Flowable.__init__(self)
+        self.value = value
+        self.label = label
+        self.accent = accent
+        self.width = width
+        self.height = height
+
+    def draw(self):
+        c = self.canv
+        w, h = self.width, self.height
+
+        c.setFillColor(colors.HexColor("#f8fafc"))
+        c.setStrokeColor(colors.HexColor("#e2e8f0"))
+        c.setLineWidth(0.6)
+        c.roundRect(0, 0, w, h, 5, fill=1, stroke=1)
+
+        c.setFillColor(self.accent)
+        c.rect(0, h - 3.5, w, 3.5, fill=1, stroke=0)
+
+        c.setFillColor(colors.HexColor("#0f172a"))
+        c.setFont("Helvetica-Bold", 13)
+        vw = c.stringWidth(self.value, "Helvetica-Bold", 13)
+        c.drawString((w - vw) / 2, h / 2 + 2, self.value)
+
+        c.setFillColor(colors.HexColor("#64748b"))
+        c.setFont("Helvetica", 7.5)
+        lw = c.stringWidth(self.label, "Helvetica", 7.5)
+        c.drawString((w - lw) / 2, 12, self.label)
+
+
 def generate_payroll_report_pdf(
     company_name: str,
     payroll_type: str,
@@ -113,422 +212,400 @@ def generate_payroll_report_pdf(
     generated_by: str,
     status: str,
     rows: List[dict],
+    pay_date: Optional[date] = None,
 ) -> bytes:
     """
     Generate professional payroll report PDF.
-    
-    Args:
-        company_name: Company name
-        payroll_type: Payroll type (WEEKLY, BIWEEKLY, etc.)
-        period_start: Period start date
-        period_end: Period end date
-        generated_at: Generation timestamp
-        generated_by: Name of person who generated report
-        status: Payroll status (Draft, Finalized, etc.)
-        rows: List of employee payroll data dicts with keys:
-            - employee_name
-            - regular_hours
-            - ot_hours
-            - rate
-            - regular_pay
-            - ot_pay
-            - total_pay
-            - exceptions
-    
-    Returns:
-        PDF bytes
+
+    rows keys: employee_name, regular_hours, ot_hours, rate,
+               regular_pay, ot_pay, total_pay, exceptions (optional)
     """
     buffer = BytesIO()
     doc = SimpleDocTemplate(
         buffer,
         pagesize=letter,
-        leftMargin=0.6*inch,
-        rightMargin=0.6*inch,
-        topMargin=0.65*inch,
-        bottomMargin=0.65*inch,
+        leftMargin=0.55 * inch,
+        rightMargin=0.55 * inch,
+        topMargin=0.5 * inch,
+        bottomMargin=0.7 * inch,
     )
     story = []
     styles = getSampleStyleSheet()
-    
-    # Color scheme - refined professional palette
-    primary_color = colors.HexColor('#2563eb')
-    accent_blue = colors.HexColor('#1e40af')
-    header_bg = colors.HexColor('#1e293b')
-    light_bg = colors.HexColor('#f1f5f9')
-    medium_gray = colors.HexColor('#cbd5e1')
-    light_gray = colors.HexColor('#e2e8f0')
-    muted_gray = colors.HexColor('#64748b')
-    dark_gray = colors.HexColor('#334155')
-    notes_bg = colors.HexColor('#eff6ff')
-    border_gray = colors.HexColor('#e2e8f0')
-    
-    # ========== HEADER ==========
-    # Create header table: Company Info | Metadata
-    # Left side: Company info only (no logo)
-    company_style = ParagraphStyle(
-        'Company',
-        parent=styles['Normal'],
-        fontSize=14,
-        fontName='Helvetica-Bold',
-        textColor=header_bg,
-        leftIndent=0,
-        spaceAfter=3,
-        leading=16,
+
+    # Palette (slate / professional — matches admin UI)
+    slate_900 = colors.HexColor("#0f172a")
+    slate_700 = colors.HexColor("#334155")
+    slate_500 = colors.HexColor("#64748b")
+    slate_200 = colors.HexColor("#e2e8f0")
+    slate_100 = colors.HexColor("#f1f5f9")
+    slate_50 = colors.HexColor("#f8fafc")
+    sky_500 = colors.HexColor("#0ea5e9")
+    emerald_600 = colors.HexColor("#059669")
+    amber_500 = colors.HexColor("#f59e0b")
+
+    period_str = f"{period_start.strftime('%b %d, %Y')} – {period_end.strftime('%b %d, %Y')}"
+    pay_date_str = pay_date.strftime("%b %d, %Y") if pay_date else ""
+    generated_str = generated_at.strftime("%b %d, %Y · %I:%M %p")
+    totals = compute_payroll_report_totals(rows)
+
+    # ========== HERO ==========
+    story.append(
+        HeroBanner(
+            company_name=company_name or "Company",
+            period_str=period_str,
+            payroll_type=payroll_type or "",
+            status=status or "Draft",
+            pay_date_str=pay_date_str,
+        )
     )
-    title_style = ParagraphStyle(
-        'Title',
-        parent=styles['Normal'],
-        fontSize=12,
-        textColor=muted_gray,
-        leftIndent=0,
-        spaceAfter=0,
-        leading=14,
-    )
-    
-    company_text = f'<para leftIndent="0">{sanitize_html(company_name)}</para>'
-    
-    left_content = [
-        [Paragraph(company_text, company_style)]
-    ]
-    
-    # Right side: Metadata with improved styling
-    meta_label_style = ParagraphStyle(
-        'MetaLabel',
-        parent=styles['Normal'],
-        fontSize=7.5,
-        textColor=muted_gray,
-        alignment=TA_LEFT,
-        fontName='Helvetica',
+    story.append(Spacer(1, 0.18 * inch))
+
+    # ========== META STRIP ==========
+    meta_label = ParagraphStyle(
+        "MetaLabel",
+        parent=styles["Normal"],
+        fontSize=7,
+        textColor=slate_500,
+        fontName="Helvetica",
         leading=9,
     )
-    meta_value_style = ParagraphStyle(
-        'MetaValue',
-        parent=styles['Normal'],
-        fontSize=7.5,
-        textColor=dark_gray,
-        alignment=TA_LEFT,
-        fontName='Helvetica-Bold',
-        leading=9,
+    meta_value = ParagraphStyle(
+        "MetaValue",
+        parent=styles["Normal"],
+        fontSize=8.5,
+        textColor=slate_900,
+        fontName="Helvetica-Bold",
+        leading=11,
     )
-    
-    period_str = f"{period_start.strftime('%b %d, %Y')} - {period_end.strftime('%b %d, %Y')}"
-    generated_str = generated_at.strftime('%b %d, %Y at %I:%M %p')
-    
-    metadata = [
-        [Paragraph("<b>Payroll Type:</b>", meta_label_style), Paragraph(sanitize_html(payroll_type), meta_value_style)],
-        [Paragraph("<b>Period:</b>", meta_label_style), Paragraph(sanitize_html(period_str), meta_value_style)],
-        [Paragraph("<b>Status:</b>", meta_label_style), Paragraph(sanitize_html(status), meta_value_style)],
-        [Paragraph("<b>Generated:</b>", meta_label_style), Paragraph(sanitize_html(generated_str), meta_value_style)],
-        [Paragraph("<b>Generated By:</b>", meta_label_style), Paragraph(sanitize_html(generated_by), meta_value_style)],
-    ]
-    
-    header_table = Table(
+
+    meta_table = Table(
         [
             [
-                Table(left_content, colWidths=[None]),
-                Table(metadata, colWidths=[1.25*inch, 2.4*inch]),
+                Paragraph("GENERATED", meta_label),
+                Paragraph("PREPARED BY", meta_label),
+                Paragraph("PAY PERIOD", meta_label),
+                Paragraph("PAY DATE", meta_label),
+            ],
+            [
+                Paragraph(sanitize_html(generated_str), meta_value),
+                Paragraph(sanitize_html(generated_by or "System"), meta_value),
+                Paragraph(sanitize_html(period_str), meta_value),
+                Paragraph(sanitize_html(pay_date_str or "—"), meta_value),
+            ],
+        ],
+        colWidths=[1.85 * inch] * 4,
+    )
+    meta_table.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, -1), slate_50),
+                ("BOX", (0, 0), (-1, -1), 0.6, slate_200),
+                ("LINEBELOW", (0, 0), (-1, 0), 0.4, slate_200),
+                ("TOPPADDING", (0, 0), (-1, 0), 8),
+                ("BOTTOMPADDING", (0, 0), (-1, 0), 2),
+                ("TOPPADDING", (0, 1), (-1, 1), 2),
+                ("BOTTOMPADDING", (0, 1), (-1, 1), 10),
+                ("LEFTPADDING", (0, 0), (-1, -1), 10),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 8),
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+            ]
+        )
+    )
+    story.append(meta_table)
+    story.append(Spacer(1, 0.22 * inch))
+
+    # ========== KPI CARDS ==========
+    card_w = 1.775 * inch
+    gap = 0.1 * inch
+    kpi_row = Table(
+        [
+            [
+                AccentCard(f"{totals['employee_count']}", "Employees", sky_500, card_w),
+                AccentCard(f"{totals['total_regular_hours']:,.1f}", "Regular Hours", slate_700, card_w),
+                AccentCard(f"{totals['total_ot_hours']:,.1f}", "Overtime Hours", amber_500, card_w),
+                AccentCard(f"${totals['total_gross_pay']:,.2f}", "Gross Pay", emerald_600, card_w),
             ]
         ],
-        colWidths=[3.6*inch, 3.4*inch],
+        colWidths=[card_w + gap] * 3 + [card_w],
     )
-    header_table.setStyle(TableStyle([
-        ('VALIGN', (0, 0), (-1, -1), 'TOP'),
-        ('LEFTPADDING', (0, 0), (-1, -1), 0),
-        ('RIGHTPADDING', (0, 0), (-1, -1), 0),
-        ('TOPPADDING', (0, 0), (-1, -1), 0),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 0),
-    ]))
-    
-    story.append(header_table)
-    story.append(Spacer(1, 0.2*inch))
-    
-    # Divider line - thicker and more prominent
-    divider = Table([['']], colWidths=[6.8*inch], rowHeights=[2])
-    divider.setStyle(TableStyle([
-        ('LINEBELOW', (0, 0), (-1, -1), 1.5, medium_gray),
-        ('TOPPADDING', (0, 0), (-1, -1), 0),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 0),
-    ]))
-    story.append(divider)
-    story.append(Spacer(1, 0.25*inch))
-    
-    # Payroll Report title above KPIs
-    report_title_style = ParagraphStyle(
-        'ReportTitle',
-        parent=styles['Normal'],
-        fontSize=16,
-        fontName='Helvetica-Bold',
-        textColor=header_bg,
-        alignment=TA_LEFT,
-        spaceAfter=12,
-        leading=19,
+    kpi_row.setStyle(
+        TableStyle(
+            [
+                ("LEFTPADDING", (0, 0), (-1, -1), 0),
+                ("RIGHTPADDING", (0, 0), (-2, -1), gap),
+                ("RIGHTPADDING", (-1, 0), (-1, -1), 0),
+                ("TOPPADDING", (0, 0), (-1, -1), 0),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+            ]
+        )
     )
-    story.append(Paragraph("Payroll Report", report_title_style))
-    
-    # ========== SUMMARY CARDS ==========
-    totals = compute_payroll_report_totals(rows)
-    total_employees = totals["employee_count"]
-    total_regular_hours = totals["total_regular_hours"]
-    total_ot_hours = totals["total_ot_hours"]
-    total_gross_pay = totals["total_gross_pay"]
-    
-    card_number_style = ParagraphStyle(
-        'CardNumber',
-        parent=styles['Normal'],
-        fontSize=18,
-        fontName='Helvetica-Bold',
-        textColor=header_bg,
-        alignment=TA_CENTER,
-        spaceAfter=4,
-        leading=21,
+    story.append(kpi_row)
+    story.append(Spacer(1, 0.28 * inch))
+
+    # ========== SECTION TITLE ==========
+    section_style = ParagraphStyle(
+        "SectionTitle",
+        parent=styles["Normal"],
+        fontSize=10,
+        fontName="Helvetica-Bold",
+        textColor=slate_900,
+        spaceAfter=2,
+        leading=12,
     )
-    card_label_style = ParagraphStyle(
-        'CardLabel',
-        parent=styles['Normal'],
-        fontSize=9.5,
-        textColor=muted_gray,
-        alignment=TA_CENTER,
-        spaceAfter=0,
-        fontName='Helvetica',
-        leading=11,
+    section_sub = ParagraphStyle(
+        "SectionSub",
+        parent=styles["Normal"],
+        fontSize=7.5,
+        textColor=slate_500,
+        spaceAfter=8,
+        leading=9,
     )
-    
-    summary_cards = Table([
-        [
-            [Paragraph(f"{total_employees}", card_number_style), Paragraph("Total Employees", card_label_style)],
-            [Paragraph(f"{total_regular_hours:,.2f}", card_number_style), Paragraph("Regular Hours", card_label_style)],
-            [Paragraph(f"{total_ot_hours:,.2f}", card_number_style), Paragraph("OT Hours", card_label_style)],
-            [Paragraph(f"${total_gross_pay:,.2f}", card_number_style), Paragraph("Gross Pay", card_label_style)],
-        ]
-    ], colWidths=[1.7*inch] * 4)
-    
-    summary_cards.setStyle(TableStyle([
-        ('BACKGROUND', (0, 0), (-1, -1), colors.white),
-        ('GRID', (0, 0), (-1, -1), 0.5, border_gray),
-        ('BOX', (0, 0), (-1, -1), 0.5, border_gray),
-        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-        ('TOPPADDING', (0, 0), (-1, -1), 14),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 14),
-        ('LEFTPADDING', (0, 0), (-1, -1), 10),
-        ('RIGHTPADDING', (0, 0), (-1, -1), 10),
-    ]))
-    
-    story.append(summary_cards)
-    story.append(Spacer(1, 0.3*inch))
-    
+    story.append(Paragraph("Employee earnings", section_style))
+    story.append(
+        Paragraph(
+            "Hours and pay by employee for this payroll period. Amounts shown in USD.",
+            section_sub,
+        )
+    )
+
     # ========== EMPLOYEE TABLE ==========
-    # Prepare table data
-    table_data = []
-    
-    # Header row
-    header_row = [
-        "Employee",
-        "Reg Hrs",
-        "OT Hrs",
-        "Rate",
-        "Reg Pay",
-        "OT Pay",
-        "Total Pay"
-    ]
-    header_cell_style = ParagraphStyle(
-        'Header',
-        parent=styles['Normal'],
-        fontSize=9.5,
-        fontName='Helvetica-Bold',
-        textColor=colors.white,
+    header_cell = ParagraphStyle(
+        "Hdr",
+        parent=styles["Normal"],
+        fontSize=7.5,
+        fontName="Helvetica-Bold",
+        textColor=colors.HexColor("#e2e8f0"),
         alignment=TA_CENTER,
-        leading=11,
+        leading=9,
     )
-    table_data.append([Paragraph(sanitize_html(str(cell)), header_cell_style) for cell in header_row])
-    
-    # Data rows - improved styling
-    cell_style_left = ParagraphStyle(
-        'Cell',
-        parent=styles['Normal'],
-        fontSize=8.5,
+    header_left = ParagraphStyle(
+        "HdrL",
+        parent=header_cell,
         alignment=TA_LEFT,
-        fontName='Helvetica',
-        leading=10,
-        textColor=dark_gray,
     )
-    cell_style_right = ParagraphStyle(
-        'Cell',
-        parent=styles['Normal'],
-        fontSize=8.5,
+    cell_left = ParagraphStyle(
+        "CellL",
+        parent=styles["Normal"],
+        fontSize=8,
+        fontName="Helvetica",
+        textColor=slate_900,
+        alignment=TA_LEFT,
+        leading=10,
+    )
+    cell_right = ParagraphStyle(
+        "CellR",
+        parent=styles["Normal"],
+        fontSize=8,
+        fontName="Helvetica",
+        textColor=slate_700,
         alignment=TA_RIGHT,
-        fontName='Helvetica',
         leading=10,
-        textColor=dark_gray,
     )
-    cell_style_center = ParagraphStyle(
-        'Cell',
-        parent=styles['Normal'],
-        fontSize=8.5,
+    cell_total = ParagraphStyle(
+        "CellTot",
+        parent=styles["Normal"],
+        fontSize=8,
+        fontName="Helvetica-Bold",
+        textColor=slate_900,
+        alignment=TA_RIGHT,
+        leading=10,
+    )
+    cell_exc = ParagraphStyle(
+        "CellExc",
+        parent=styles["Normal"],
+        fontSize=7.5,
+        fontName="Helvetica",
+        textColor=slate_500,
         alignment=TA_CENTER,
-        fontName='Helvetica',
-        leading=10,
-        textColor=dark_gray,
+        leading=9,
     )
-    
-    for row in rows:
-        employee_name = sanitize_html(str(row.get('employee_name', '')))
-        regular_hours = float(row.get('regular_hours', 0))
-        ot_hours = float(row.get('ot_hours', 0))
-        rate = float(row.get('rate', 0))
-        regular_pay = float(row.get('regular_pay', 0))
-        ot_pay = float(row.get('ot_pay', 0))
-        total_pay = float(row.get('total_pay', 0))
-        
-        table_data.append([
-            Paragraph(employee_name, cell_style_left),
-            Paragraph(f"{regular_hours:,.2f}", cell_style_right),
-            Paragraph(f"{ot_hours:,.2f}", cell_style_right),
-            Paragraph(f"${rate:,.2f}", cell_style_right),
-            Paragraph(f"${regular_pay:,.2f}", cell_style_right),
-            Paragraph(f"${ot_pay:,.2f}", cell_style_right),
-            Paragraph(f"${total_pay:,.2f}", cell_style_right),
-        ])
-    
-    # Totals row
-    totals_style = ParagraphStyle(
-        'Totals',
-        parent=styles['Normal'],
-        fontSize=9,
-        fontName='Helvetica-Bold',
+    totals_left = ParagraphStyle(
+        "TotL",
+        parent=styles["Normal"],
+        fontSize=8,
+        fontName="Helvetica-Bold",
         textColor=colors.white,
-        alignment=TA_CENTER,
+        alignment=TA_LEFT,
+        leading=10,
     )
-    totals_style_right = ParagraphStyle(
-        'TotalsRight',
-        parent=styles['Normal'],
-        fontSize=9,
-        fontName='Helvetica-Bold',
+    totals_right = ParagraphStyle(
+        "TotR",
+        parent=styles["Normal"],
+        fontSize=8,
+        fontName="Helvetica-Bold",
         textColor=colors.white,
         alignment=TA_RIGHT,
+        leading=10,
     )
-    
-    total_regular_pay = totals["total_regular_pay"]
-    total_ot_pay = totals["total_ot_pay"]
-    
-    table_data.append([
-        Paragraph("TOTALS", totals_style),
-        Paragraph(f"{total_regular_hours:,.2f}", totals_style_right),
-        Paragraph(f"{total_ot_hours:,.2f}", totals_style_right),
-        Paragraph("", totals_style),
-        Paragraph(f"${total_regular_pay:,.2f}", totals_style_right),
-        Paragraph(f"${total_ot_pay:,.2f}", totals_style_right),
-        Paragraph(f"${total_gross_pay:,.2f}", totals_style_right),
-    ])
-    
-    # Create table with improved styling
-    col_widths = [1.8*inch, 0.85*inch, 0.85*inch, 0.9*inch, 1.1*inch, 1.1*inch, 1.2*inch]
+
+    sorted_rows = sorted(rows, key=lambda r: str(r.get("employee_name", "")).lower())
+
+    table_data = [
+        [
+            Paragraph("Employee", header_left),
+            Paragraph("Reg Hrs", header_cell),
+            Paragraph("OT Hrs", header_cell),
+            Paragraph("Rate", header_cell),
+            Paragraph("Reg Pay", header_cell),
+            Paragraph("OT Pay", header_cell),
+            Paragraph("Total", header_cell),
+            Paragraph("Exc.", header_cell),
+        ]
+    ]
+
+    for row in sorted_rows:
+        exc_raw = row.get("exceptions", "-")
+        if exc_raw in (None, "", "-", "0", "0 exception(s)"):
+            exc_display = "—"
+        else:
+            # Shorten "3 exception(s)" → "3"
+            m = re.match(r"^(\d+)", str(exc_raw))
+            exc_display = m.group(1) if m else str(exc_raw)
+
+        total_pay = float(row.get("total_pay", 0))
+        table_data.append(
+            [
+                Paragraph(sanitize_html(str(row.get("employee_name", ""))), cell_left),
+                Paragraph(f"{float(row.get('regular_hours', 0)):,.2f}", cell_right),
+                Paragraph(f"{float(row.get('ot_hours', 0)):,.2f}", cell_right),
+                Paragraph(f"${float(row.get('rate', 0)):,.2f}", cell_right),
+                Paragraph(f"${float(row.get('regular_pay', 0)):,.2f}", cell_right),
+                Paragraph(f"${float(row.get('ot_pay', 0)):,.2f}", cell_right),
+                Paragraph(f"${total_pay:,.2f}", cell_total),
+                Paragraph(sanitize_html(exc_display), cell_exc),
+            ]
+        )
+
+    table_data.append(
+        [
+            Paragraph("TOTALS", totals_left),
+            Paragraph(f"{totals['total_regular_hours']:,.2f}", totals_right),
+            Paragraph(f"{totals['total_ot_hours']:,.2f}", totals_right),
+            Paragraph("", totals_right),
+            Paragraph(f"${totals['total_regular_pay']:,.2f}", totals_right),
+            Paragraph(f"${totals['total_ot_pay']:,.2f}", totals_right),
+            Paragraph(f"${totals['total_gross_pay']:,.2f}", totals_right),
+            Paragraph("", totals_right),
+        ]
+    )
+
+    col_widths = [
+        1.55 * inch,
+        0.72 * inch,
+        0.68 * inch,
+        0.72 * inch,
+        0.88 * inch,
+        0.82 * inch,
+        0.95 * inch,
+        0.48 * inch,
+    ]
     table = Table(table_data, colWidths=col_widths, repeatRows=1)
-    
-    table.setStyle(TableStyle([
-        # Header row - enhanced
-        ('BACKGROUND', (0, 0), (-1, 0), header_bg),
-        ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
-        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-        ('FONTSIZE', (0, 0), (-1, 0), 9.5),
-        ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
-        ('TOPPADDING', (0, 0), (-1, 0), 12),
-        ('LINEBELOW', (0, 0), (-1, 0), 2, header_bg),
-        
-        # Data rows - better spacing and zebra striping
-        ('BACKGROUND', (0, 1), (-1, -2), colors.white),
-        ('ROWBACKGROUNDS', (0, 1), (-1, -2), [colors.white, light_bg]),
-        ('TOPPADDING', (0, 1), (-1, -2), 8),
-        ('BOTTOMPADDING', (0, 1), (-1, -2), 8),
-        
-        # Alignment
-        ('ALIGN', (0, 1), (0, -2), 'LEFT'),  # Employee name
-        ('ALIGN', (1, 1), (6, -2), 'RIGHT'),  # Numeric columns
-        
-        # Totals row - enhanced
-        ('BACKGROUND', (0, -1), (-1, -1), accent_blue),
-        ('TEXTCOLOR', (0, -1), (-1, -1), colors.white),
-        ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'),
-        ('FONTSIZE', (0, -1), (-1, -1), 9.5),
-        ('TOPPADDING', (0, -1), (-1, -1), 12),
-        ('BOTTOMPADDING', (0, -1), (-1, -1), 12),
-        ('LINEABOVE', (0, -1), (-1, -1), 2.5, accent_blue),
-        ('ALIGN', (0, -1), (0, -1), 'LEFT'),
-        ('ALIGN', (1, -1), (6, -1), 'RIGHT'),
-        
-        # Grid - refined borders
-        ('GRID', (0, 0), (-1, -1), 0.5, border_gray),
-        ('LINEBELOW', (0, 0), (-1, 0), 2, header_bg),
-        ('LINEABOVE', (0, -1), (-1, -1), 2.5, accent_blue),
-        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-        ('LEFTPADDING', (0, 0), (-1, -1), 8),
-        ('RIGHTPADDING', (0, 0), (-1, -1), 8),
-    ]))
-    
+
+    style_cmds = [
+        # Header
+        ("BACKGROUND", (0, 0), (-1, 0), slate_900),
+        ("TOPPADDING", (0, 0), (-1, 0), 9),
+        ("BOTTOMPADDING", (0, 0), (-1, 0), 9),
+        # Body
+        ("TOPPADDING", (0, 1), (-1, -2), 7),
+        ("BOTTOMPADDING", (0, 1), (-1, -2), 7),
+        ("ROWBACKGROUNDS", (0, 1), (-1, -2), [colors.white, slate_50]),
+        ("LINEBELOW", (0, 1), (-1, -2), 0.4, slate_200),
+        # Totals
+        ("BACKGROUND", (0, -1), (-1, -1), colors.HexColor("#1e293b")),
+        ("TOPPADDING", (0, -1), (-1, -1), 10),
+        ("BOTTOMPADDING", (0, -1), (-1, -1), 10),
+        # Shared
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 6),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+        ("BOX", (0, 0), (-1, -1), 0.6, slate_200),
+    ]
+
+    # Soft highlight for exception rows
+    for i, row in enumerate(sorted_rows, start=1):
+        exc = row.get("exceptions", "-")
+        if exc not in (None, "", "-", "0", "0 exception(s)"):
+            style_cmds.append(("BACKGROUND", (0, i), (-1, i), colors.HexColor("#fff7ed")))
+
+    table.setStyle(TableStyle(style_cmds))
     story.append(table)
-    story.append(Spacer(1, 0.3*inch))
-    
-    # ========== NOTES SECTION ==========
-    notes_style = ParagraphStyle(
-        'Notes',
-        parent=styles['Normal'],
-        fontSize=9,
-        textColor=dark_gray,
-        leftIndent=0,
-        rightIndent=0,
-        spaceAfter=4,
-        leading=13,
+    story.append(Spacer(1, 0.26 * inch))
+
+    # ========== NOTES ==========
+    notes_title = ParagraphStyle(
+        "NotesTitle",
+        parent=styles["Normal"],
+        fontSize=8,
+        fontName="Helvetica-Bold",
+        textColor=slate_900,
+        spaceAfter=3,
+        leading=10,
     )
-    
-    notes_text = (
-        "<b>Notes</b><br/>"
-        "Exceptions are shown per-employee when applicable (e.g., missing punches, approvals pending). "
-        "This report reflects the payroll as of the generated timestamp."
+    notes_body = ParagraphStyle(
+        "NotesBody",
+        parent=styles["Normal"],
+        fontSize=7.5,
+        textColor=slate_500,
+        leading=10,
     )
-    
-    notes_table = Table([
-        [Paragraph(notes_text, notes_style)]
-    ], colWidths=[6.8*inch])
-    
-    notes_table.setStyle(TableStyle([
-        ('BACKGROUND', (0, 0), (-1, -1), notes_bg),
-        ('BOX', (0, 0), (-1, -1), 1, colors.HexColor('#bfdbfe')),
-        ('TOPPADDING', (0, 0), (-1, -1), 12),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 12),
-        ('LEFTPADDING', (0, 0), (-1, -1), 14),
-        ('RIGHTPADDING', (0, 0), (-1, -1), 14),
-        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-    ]))
-    
-    story.append(notes_table)
-    
+    notes = Table(
+        [
+            [
+                [
+                    Paragraph("Notes", notes_title),
+                    Paragraph(
+                        "Exception counts appear in the Exc. column when an employee has "
+                        "missing punches, pending approvals, or other flags. This report "
+                        "reflects payroll as of the generated timestamp.",
+                        notes_body,
+                    ),
+                ]
+            ]
+        ],
+        colWidths=[CONTENT_WIDTH],
+    )
+    notes.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, -1), slate_50),
+                ("BOX", (0, 0), (-1, -1), 0.5, slate_200),
+                ("TOPPADDING", (0, 0), (-1, -1), 10),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 10),
+                ("LEFTPADDING", (0, 0), (-1, -1), 12),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 12),
+            ]
+        )
+    )
+    story.append(notes)
+
     # ========== FOOTER ==========
-    def add_footer(canvas_obj, doc):
-        """Add footer with divider, confidentiality notice, and page number."""
+    def add_footer(canvas_obj, doc_obj):
         canvas_obj.saveState()
-        
-        # Draw divider line - more prominent
-        canvas_obj.setStrokeColor(medium_gray)
-        canvas_obj.setLineWidth(1)
-        y = 0.55 * inch
-        canvas_obj.line(0.6 * inch, y, 7.4 * inch, y)
-        
-        # Confidentiality notice (left) - improved styling
-        canvas_obj.setFont("Helvetica", 8.5)
-        canvas_obj.setFillColor(muted_gray)
-        canvas_obj.drawString(0.6 * inch, y - 16, "Confidential - For internal use only")
-        
-        # Page number (right) - improved styling
-        page_num = canvas_obj.getPageNumber()
-        page_text = f"Page {page_num}"
-        canvas_obj.setFont("Helvetica", 8.5)
-        text_width = canvas_obj.stringWidth(page_text, "Helvetica", 8.5)
-        canvas_obj.drawString(7.4 * inch - text_width, y - 16, page_text)
-        
+        y = 0.42 * inch
+
+        canvas_obj.setStrokeColor(slate_200)
+        canvas_obj.setLineWidth(0.8)
+        canvas_obj.line(0.55 * inch, y + 14, 8.0 * inch, y + 14)
+
+        canvas_obj.setFillColor(slate_500)
+        canvas_obj.setFont("Helvetica", 7)
+        canvas_obj.drawString(
+            0.55 * inch,
+            y,
+            "Confidential · For internal payroll use only",
+        )
+
+        canvas_obj.setFont("Helvetica", 7)
+        brand = "ClockInn Pro"
+        canvas_obj.drawCentredString(4.25 * inch, y, brand)
+
+        page_text = f"Page {canvas_obj.getPageNumber()}"
+        tw = canvas_obj.stringWidth(page_text, "Helvetica", 7)
+        canvas_obj.drawString(8.0 * inch - tw, y, page_text)
         canvas_obj.restoreState()
-    
-    # Build PDF
+
     doc.build(story, onFirstPage=add_footer, onLaterPages=add_footer)
     buffer.seek(0)
     return buffer.read()
-

@@ -141,6 +141,9 @@ async def list_employee_user_responses(
             status=emp.status,
             has_pin=emp.pin_hash is not None,
             pay_rate=float(emp.pay_rate) if emp.pay_rate is not None else None,
+            preferred_name=emp.preferred_name,
+            phone=emp.phone,
+            job_role=emp.job_role,
             created_at=emp.created_at,
             last_login_at=emp.last_login_at,
             last_punch_at=last_punches.get(emp.id),
@@ -229,6 +232,9 @@ async def create_employee(
         pin_hash=pin_hash,
         status=UserStatus.ACTIVE,
         pay_rate=data.pay_rate,
+        preferred_name=(data.preferred_name.strip() if data.preferred_name else None) or None,
+        phone=(data.phone.strip() if data.phone else None) or None,
+        job_role=(data.job_role.strip() if data.job_role else None) or None,
     )
     
     try:
@@ -528,6 +534,12 @@ async def update_employee(
             user.pin_hash = new_pin_hash
     if data.pay_rate is not None:
         user.pay_rate = data.pay_rate
+    if data.preferred_name is not None:
+        user.preferred_name = data.preferred_name.strip() or None
+    if data.phone is not None:
+        user.phone = data.phone.strip() or None
+    if data.job_role is not None:
+        user.job_role = data.job_role.strip() or None
     
     try:
         # Log status changes

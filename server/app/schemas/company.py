@@ -47,8 +47,13 @@ class CompanySettingsResponse(BaseModel):
     # Which employee types may punch in/out (dashboard + punch APIs)
     punch_allowed_roles: Optional[list[str]] = None
     marketplace_items: Optional[List[MarketplaceItem]] = None
+    marketplace_enabled: Optional[bool] = False
     auto_clock_out_enabled: Optional[bool] = True
     auto_clock_out_grace_minutes: Optional[int] = 0
+    # Pay schedule: last payday reference + weekly/biweekly cadence
+    last_pay_date: Optional[date] = None
+    payroll_pay_type: Optional[str] = None  # WEEKLY | BIWEEKLY
+    payroll_reminder_enabled: Optional[bool] = True
 
 
 class AdminInfo(BaseModel):
@@ -116,6 +121,10 @@ class CompanySettingsUpdate(BaseModel):
         None,
         description="Marketplace items for Front Desk sales during a shift (label + price_cents)",
     )
+    marketplace_enabled: Optional[bool] = Field(
+        None,
+        description="Enable marketplace sales on the Front Desk dashboard",
+    )
     auto_clock_out_enabled: Optional[bool] = Field(
         None,
         description="Automatically clock out employees who forget after their scheduled shift end",
@@ -123,8 +132,22 @@ class CompanySettingsUpdate(BaseModel):
     auto_clock_out_grace_minutes: Optional[int] = Field(
         None,
         ge=0,
-        le=180,
-        description="Minutes after scheduled end before auto clock-out runs",
+        le=720,
+        description="Minutes after scheduled end before auto clock-out runs (clock-out time remains the scheduled end)",
+    )
+    last_pay_date: Optional[str] = Field(
+        None,
+        max_length=10,
+        description="Last payday reference (YYYY-MM-DD). Used to compute the next pay date.",
+    )
+    payroll_pay_type: Optional[str] = Field(
+        None,
+        pattern="^(WEEKLY|BIWEEKLY)$",
+        description="Payroll cadence: WEEKLY or BIWEEKLY",
+    )
+    payroll_reminder_enabled: Optional[bool] = Field(
+        None,
+        description="Email admins when generation opens (4 days before payday)",
     )
 
 

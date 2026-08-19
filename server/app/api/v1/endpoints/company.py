@@ -32,6 +32,12 @@ def _settings_response(settings: dict) -> CompanySettingsResponse:
             biweekly_anchor = date_type.fromisoformat(settings["biweekly_anchor_date"])
         except (ValueError, TypeError):
             pass
+    last_pay = None
+    if settings.get("last_pay_date"):
+        try:
+            last_pay = date_type.fromisoformat(str(settings["last_pay_date"])[:10])
+        except (ValueError, TypeError):
+            pass
     return CompanySettingsResponse(
         timezone=settings["timezone"],
         payroll_week_start_day=settings["payroll_week_start_day"],
@@ -63,8 +69,15 @@ def _settings_response(settings: dict) -> CompanySettingsResponse:
         kiosk_allowed_ips=settings.get("kiosk_allowed_ips") or [],
         punch_allowed_roles=settings.get("punch_allowed_roles", list(DEFAULT_PUNCH_ALLOWED_ROLES)),
         marketplace_items=settings.get("marketplace_items") or [],
+        marketplace_enabled=settings.get(
+            "marketplace_enabled",
+            bool(settings.get("marketplace_items")),
+        ),
         auto_clock_out_enabled=settings.get("auto_clock_out_enabled", True),
         auto_clock_out_grace_minutes=settings.get("auto_clock_out_grace_minutes", 0),
+        last_pay_date=last_pay,
+        payroll_pay_type=settings.get("payroll_pay_type"),
+        payroll_reminder_enabled=settings.get("payroll_reminder_enabled", True),
     )
 
 

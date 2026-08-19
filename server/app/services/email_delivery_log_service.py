@@ -30,6 +30,7 @@ EMAIL_TYPE_LABELS: Dict[str, str] = {
     "shift_summary": "Shift summary",
     "auto_clock_out": "Auto clock-out",
     "auto_clock_out_cash_reminder": "Auto clock-out cash reminder",
+    "payroll_generate_reminder": "Payroll generate reminder",
 }
 
 

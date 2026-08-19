@@ -17,8 +17,10 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true)
   const [sideMenuOpen, setSideMenuOpen] = useState(false)
   const [openDropdown, setOpenDropdown] = useState<string | null>(null)
-  /** From GET /company/info — hide employee shift notepad only; admin Shift Log stays available */
+  /** From GET /company/info — hide Shift Log (employee + admin) when disabled */
   const [shiftNotesEnabled, setShiftNotesEnabled] = useState(true)
+  /** From GET /company/info — hide Drawer Log when cash drawer is off */
+  const [cashDrawerEnabled, setCashDrawerEnabled] = useState(false)
   const { can } = usePermissions(user)
 
   // Lock body scroll when side menu is open (below 950px)
@@ -129,6 +131,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
     // Platform developers have no company — skip tenant company info fetch
     if (user.role === 'DEVELOPER' || user.company_id == null) {
       setShiftNotesEnabled(true)
+      setCashDrawerEnabled(false)
       return
     }
     let cancelled = false
@@ -137,10 +140,11 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       .then((res) => {
         if (!cancelled) {
           setShiftNotesEnabled(res.data?.settings?.shift_notes_enabled !== false)
+          setCashDrawerEnabled(res.data?.settings?.cash_drawer_enabled === true)
         }
       })
       .catch(() => {
-        /* keep default true on error */
+        /* keep defaults on error */
       })
     return () => {
       cancelled = true
@@ -183,17 +187,28 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         items: [
           { href: '/employees', label: 'Employees', permission: 'user_management' },
           { href: '/leave-requests', label: 'Leave Requests', permission: 'user_management' },
-          { href: '/roles', label: 'Roles & Permissions', permission: 'user_management' },
+        ],
+      },
+      {
+        type: 'single' as const,
+        items: [
+          { href: '/schedules', label: 'Schedules', permission: 'schedule' },
         ],
       },
       {
         type: 'dropdown' as const,
-        label: 'Scheduling',
+        label: 'Logs',
         items: [
-          { href: '/schedules', label: 'Schedules', permission: 'schedule' },
-          { href: '/time-entries', label: 'Time Entries', permission: 'schedule' },
-          { href: '/admin/common-log', label: 'Shift log', permission: 'common_log' },
-          { href: '/admin/shift-log', label: 'Drawer log', permission: 'common_log' },
+          { href: '/time-entries', label: 'Punch Log', permission: 'schedule' },
+          ...(cashDrawerEnabled
+            ? [
+                { href: '/admin/shift-log', label: 'Drawer Log', permission: 'common_log' },
+                { href: '/admin/cash-management', label: 'Cash', permission: 'cash_drawer' },
+              ]
+            : []),
+          ...(shiftNotesEnabled
+            ? [{ href: '/admin/common-log', label: 'Shift Log', permission: 'common_log' }]
+            : []),
         ],
       },
       {
@@ -214,7 +229,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       .filter((group) => group.items.length > 0)
 
     return filtered
-  }, [can])
+  }, [can, shiftNotesEnabled, cashDrawerEnabled])
 
   const requiredPermission = useMemo(
     () =>
@@ -288,6 +303,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           tenantLinks={tenantNavLinks}
           onMobileMenuToggle={() => setSideMenuOpen((o) => !o)}
           showMobileNavButton={!isDeveloper}
+          cashDrawerEnabled={cashDrawerEnabled}
         />
 
       {/* Side menu overlay - below 950px only (tenant admin/employee) */}

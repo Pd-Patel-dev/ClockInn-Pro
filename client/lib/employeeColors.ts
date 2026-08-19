@@ -153,11 +153,9 @@ export function getEmployeeColor(employeeId: string): EmployeeColorScheme {
   const hueOffset = (hash * 13) % hueRange // Use different multiplier for better distribution
   const baseHue = selectedGroup.min + hueOffset
   
-  // More vibrant but still professional color parameters
-  // Increased saturation for better color distinction: 30-50%
-  // Slightly darker backgrounds for better visibility: 75-88%
-  const baseSaturation = 30 + (hash % 21) // 30-50%
-  const baseLightness = 75 + (hash % 14) // 75-88%
+  // Clear, distinct colors so each employee is easy to spot on the schedule chart
+  const baseSaturation = 42 + (hash % 22) // 42-63%
+  const baseLightness = 72 + (hash % 12) // 72-83%
   
   const baseSat = Math.round(baseSaturation)
   const baseLight = Math.round(baseLightness)

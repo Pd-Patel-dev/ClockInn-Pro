@@ -66,3 +66,16 @@ async def run_auto_clock_out_endpoint(
     summary = await run_auto_clock_outs(db)
     return {"success": True, **summary}
 
+
+@router.post("/payroll-reminders/run")
+@handle_endpoint_errors(operation_name="run_payroll_reminders")
+async def run_payroll_reminders_endpoint(
+    current_user: User = Depends(get_current_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Manually trigger payroll generate reminders (also runs on a background timer)."""
+    from app.services.payroll_reminder_service import process_payroll_reminders
+
+    summary = await process_payroll_reminders(db)
+    return {"success": True, **summary}
+

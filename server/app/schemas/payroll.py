@@ -1,6 +1,6 @@
 from pydantic import BaseModel, Field, model_validator
-from typing import Optional, List
-from datetime import date, datetime
+from typing import Optional, List, Dict
+from datetime import date, datetime, timedelta
 from uuid import UUID
 from decimal import Decimal
 from app.models.payroll import PayrollType, PayrollStatus, AdjustmentType
@@ -11,10 +11,12 @@ class PayrollGenerateRequest(BaseModel):
     start_date: date
     include_inactive: bool = False
     employee_ids: Optional[List[UUID]] = None
+    # entry_id -> paid hours as reviewed in the generate dialog
+    entry_hour_overrides: Optional[Dict[str, float]] = None
     
     @model_validator(mode='after')
     def validate_start_date(self):
-        """Validate that start_date is not in the future."""
+        """Validate start_date is not in the future (schedule window enforced in service)."""
         if self.start_date > date.today():
             raise ValueError("start_date cannot be in the future")
         return self
@@ -45,6 +47,7 @@ class PayrollRunResponse(BaseModel):
     payroll_type: PayrollType
     period_start_date: date
     period_end_date: date
+    pay_date: Optional[date] = None
     timezone: str
     status: PayrollStatus
     generated_by: UUID
@@ -66,6 +69,7 @@ class PayrollRunSummaryResponse(BaseModel):
     payroll_type: PayrollType
     period_start_date: date
     period_end_date: date
+    pay_date: Optional[date] = None
     status: PayrollStatus
     generated_at: datetime
     total_regular_hours: Decimal
@@ -120,4 +124,53 @@ class EmployeePayrollResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class PayrollReviewEntry(BaseModel):
+    id: str
+    clock_in_at: Optional[str] = None
+    clock_out_at: Optional[str] = None
+    clock_in_local: Optional[str] = None
+    clock_out_local: Optional[str] = None
+    break_minutes: int = 0
+    status: Optional[str] = None
+    minutes: int = 0
+    hours: float = 0
+    is_open: bool = False
+    note: Optional[str] = None
+
+
+class PayrollReviewEmployee(BaseModel):
+    employee_id: str
+    employee_name: str
+    pay_rate_cents: int
+    overtime_multiplier: float
+    regular_minutes: int
+    overtime_minutes: int
+    total_minutes: int
+    total_hours: float
+    exceptions_count: int
+    entry_count: int
+    open_entry_count: int
+    entries: List[PayrollReviewEntry] = []
+
+
+class PayrollReviewPreviewResponse(BaseModel):
+    payroll_type: str
+    period_start: str
+    period_end: str
+    timezone: str
+    breaks_paid: bool
+    employee_count: int
+    employees: List[PayrollReviewEmployee] = []
+
+
+class PayrollReviewHoursUpdate(BaseModel):
+    hours: float = Field(..., ge=0, le=24)
+    break_minutes: Optional[int] = Field(None, ge=0)
+    edit_reason: str = Field(
+        "Payroll review hours adjustment",
+        min_length=1,
+        max_length=500,
+    )
 

@@ -323,7 +323,7 @@ export default function MyPunchPage() {
       const collectedValue = parseFloat(collectedCash)
       const dropValue = parseFloat(dropAmount)
       if (isNaN(collectedValue) || collectedValue < 0) {
-        setCashError('Please enter a valid collected cash amount')
+        setCashError('Please enter a valid room sale amount')
         return
       }
       if (isNaN(dropValue) || dropValue < 0) {
@@ -579,7 +579,7 @@ export default function MyPunchPage() {
                     /* Clock-out: collected, drop, cash in drawer */
                     <div className="space-y-4 mb-8">
                       <div>
-                        <label className="block text-sm font-semibold text-slate-700 mb-2">Collected Cash <span className="text-red-500">*</span></label>
+                        <label className="block text-sm font-semibold text-slate-700 mb-2">Room Sale <span className="text-red-500">*</span></label>
                         <div className="relative">
                           <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">$</span>
                           <input

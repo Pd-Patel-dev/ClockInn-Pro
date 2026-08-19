@@ -1,10 +1,10 @@
 'use client'
 
-import { useEffect, useState } from 'react'
-import { useRouter, useParams } from 'next/navigation'
+import { useEffect, useState, type ReactNode } from 'react'
+import { useRouter, useParams, useSearchParams } from 'next/navigation'
 import Layout from '@/components/Layout'
 import api from '@/lib/api'
-import { getCurrentUser, User } from '@/lib/auth'
+import { getCurrentUser } from '@/lib/auth'
 import { format } from 'date-fns'
 import logger from '@/lib/logger'
 import { useForm } from 'react-hook-form'
@@ -12,18 +12,27 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { useToast } from '@/components/Toast'
 import ConfirmationDialog from '@/components/ConfirmationDialog'
-import { FormField, Input, Select } from '@/components/FormField'
-import { ButtonSpinner } from '@/components/LoadingSpinner'
 import BackButton from '@/components/BackButton'
+import EmployeeForm, {
+  editEmployeeSchema,
+  EditEmployeeFormValues,
+  EMPLOYEE_ROLE_OPTIONS,
+  toUpdatePayload,
+} from '@/components/employees/EmployeeForm'
 
 interface Employee {
   id: string
   name: string
   email: string
+  role: string
   status: string
   pay_rate: number | null
+  preferred_name?: string | null
+  phone?: string | null
+  job_role?: string | null
   has_pin: boolean
   last_punch_at: string | null
+  last_login_at: string | null
   is_clocked_in: boolean | null
   created_at: string
 }
@@ -57,25 +66,56 @@ const editEntrySchema = z.object({
   edit_reason: z.string().min(1, 'Edit reason is required'),
 })
 
-const editEmployeeSchema = z.object({
-  name: z.string().min(1, 'Name is required'),
-  status: z.enum(['active', 'inactive']),
-  role: z
-    .enum(['MAINTENANCE', 'FRONTDESK', 'HOUSEKEEPING', 'RESTAURANT', 'SECURITY', 'MANAGER', 'ADMIN'])
-    .optional(),
-  pin: z.string().length(4, 'PIN must be 4 digits').optional().or(z.literal('')),
-  pay_rate: z.string().optional(),
-})
-
 type ManualEntryForm = z.infer<typeof manualEntrySchema>
 type EditEntryForm = z.infer<typeof editEntrySchema>
-type EditEmployeeForm = z.infer<typeof editEmployeeSchema>
+
+function roleLabel(role: string) {
+  return EMPLOYEE_ROLE_OPTIONS.find((r) => r.value === role)?.label || role
+}
+
+function DetailItem({ label, value }: { label: string; value: ReactNode }) {
+  return (
+    <div className="min-w-0">
+      <dt className="text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-400">
+        {label}
+      </dt>
+      <dd className="mt-1.5 text-sm font-medium text-slate-900 break-words">{value ?? '—'}</dd>
+    </div>
+  )
+}
+
+function Metric({
+  label,
+  value,
+  hint,
+}: {
+  label: string
+  value: ReactNode
+  hint?: string
+}) {
+  return (
+    <div className="min-w-0 px-5 py-4">
+      <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-400">
+        {label}
+      </p>
+      <p className="mt-1 text-lg font-semibold tracking-tight text-slate-900 tabular-nums truncate">
+        {value}
+      </p>
+      {hint && <p className="mt-0.5 text-xs text-slate-500">{hint}</p>}
+    </div>
+  )
+}
+
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 
 export default function EmployeeDetailPage() {
   const router = useRouter()
   const params = useParams()
+  const searchParams = useSearchParams()
   const employeeId = params?.id as string
   const toast = useToast()
+  const isValidEmployeeId = Boolean(employeeId && UUID_RE.test(employeeId))
 
   const [employee, setEmployee] = useState<Employee | null>(null)
   const [entries, setEntries] = useState<TimeEntry[]>([])
@@ -90,12 +130,8 @@ export default function EmployeeDetailPage() {
   const [deletingEntry, setDeletingEntry] = useState(false)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [updating, setUpdating] = useState(false)
+  const [resettingPassword, setResettingPassword] = useState(false)
   const pageSize = 20
-
-  const closeEditEmployeeForm = () => {
-    setShowEditEmployee(false)
-    editEmployeeForm.reset()
-  }
 
   const manualForm = useForm<ManualEntryForm>({
     resolver: zodResolver(manualEntrySchema),
@@ -110,63 +146,84 @@ export default function EmployeeDetailPage() {
     resolver: zodResolver(editEntrySchema),
   })
 
-  const editEmployeeForm = useForm<EditEmployeeForm>({
+  const editEmployeeForm = useForm<EditEmployeeFormValues>({
     resolver: zodResolver(editEmployeeSchema),
   })
 
+  const populateEditForm = (data: Employee) => {
+    editEmployeeForm.reset({
+      name: data.name,
+      preferred_name: data.preferred_name || '',
+      phone: data.phone || '',
+      status: (data.status as 'active' | 'inactive') || 'active',
+      role: data.role as EditEmployeeFormValues['role'],
+      pin: '',
+      job_role: data.job_role || '',
+      pay_rate: data.pay_rate?.toString() || '',
+    })
+  }
+
+  const closeEditEmployeeForm = () => {
+    setShowEditEmployee(false)
+    if (employee) populateEditForm(employee)
+    router.replace(`/employees/${employeeId}`, { scroll: false })
+  }
+
   useEffect(() => {
+    if (!employeeId) return
+    if (employeeId === 'new') {
+      router.replace('/employees/create')
+      return
+    }
+    if (!isValidEmployeeId) {
+      setLoading(false)
+      setError('Invalid employee link')
+      return
+    }
+
     const checkAdmin = async () => {
       try {
         const user = await getCurrentUser()
-        if (user.role !== 'ADMIN') {
+        if (!(user.permissions || []).includes('user_management')) {
           router.push('/dashboard')
           return
         }
         fetchEmployee()
         fetchEntries()
-      } catch (err) {
+      } catch {
         router.push('/login')
       }
     }
     checkAdmin()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [router, employeeId])
+  }, [router, employeeId, isValidEmployeeId])
 
   useEffect(() => {
-    if (employeeId) {
+    if (searchParams.get('edit') === '1') {
+      setShowEditEmployee(true)
+    }
+  }, [searchParams])
+
+  useEffect(() => {
+    if (isValidEmployeeId) {
       fetchEntries()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentPage, employeeId])
+  }, [currentPage, employeeId, isValidEmployeeId])
 
   const fetchEmployee = async () => {
     try {
       const response = await api.get(`/users/admin/employees/${employeeId}`)
       setEmployee(response.data)
-      // Populate edit form with current values
       if (response.data) {
-        editEmployeeForm.reset({
-          name: response.data.name,
-          status: response.data.status as 'active' | 'inactive',
-          role:
-            response.data.role as
-              | 'MAINTENANCE'
-              | 'FRONTDESK'
-              | 'HOUSEKEEPING'
-              | 'RESTAURANT'
-              | 'SECURITY'
-              | 'MANAGER'
-              | 'ADMIN',
-          pin: '',
-          pay_rate: response.data.pay_rate?.toString() || '',
-        })
+        populateEditForm(response.data)
       }
-    } catch (error: any) {
-      logger.error('Failed to fetch employee', error as Error, { employeeId })
-      if (error.response?.status === 404) {
+    } catch (err: any) {
+      logger.error('Failed to fetch employee', err as Error, { employeeId })
+      if (err.response?.status === 404) {
         setError('Employee not found')
       } else {
-        setError('Failed to load employee details')
+        setError(err.response?.data?.detail || 'Failed to load employee details')
       }
     } finally {
       setLoading(false)
@@ -180,12 +237,12 @@ export default function EmployeeDetailPage() {
       params.append('employee_id', employeeId)
       params.append('skip', ((currentPage - 1) * pageSize).toString())
       params.append('limit', pageSize.toString())
-      
+
       const response = await api.get(`/time/admin/time?${params.toString()}`)
       setEntries(response.data.entries || [])
       setTotal(response.data.total || 0)
-    } catch (error: any) {
-      logger.error('Failed to fetch time entries', error as Error, { employeeId })
+    } catch (err: any) {
+      logger.error('Failed to fetch time entries', err as Error, { employeeId })
     } finally {
       setLoadingEntries(false)
     }
@@ -194,9 +251,10 @@ export default function EmployeeDetailPage() {
   const onSubmitManual = async (data: ManualEntryForm) => {
     try {
       const clockIn = new Date(`${data.clock_in_at}T${data.clock_in_time}`)
-      const clockOut = data.clock_out_at && data.clock_out_time
-        ? new Date(`${data.clock_out_at}T${data.clock_out_time}`)
-        : null
+      const clockOut =
+        data.clock_out_at && data.clock_out_time
+          ? new Date(`${data.clock_out_at}T${data.clock_out_time}`)
+          : null
 
       await api.post('/time/admin/time/manual', {
         employee_id: employeeId,
@@ -210,9 +268,9 @@ export default function EmployeeDetailPage() {
       manualForm.reset()
       setShowManualForm(false)
       fetchEntries()
-    } catch (error: any) {
-      logger.error('Failed to create manual entry', error as Error)
-      setError(error.response?.data?.detail || 'Failed to create time entry')
+    } catch (err: any) {
+      logger.error('Failed to create manual entry', err as Error)
+      setError(err.response?.data?.detail || 'Failed to create time entry')
     }
   }
 
@@ -221,9 +279,10 @@ export default function EmployeeDetailPage() {
 
     try {
       const clockIn = new Date(`${data.clock_in_at}T${data.clock_in_time}`)
-      const clockOut = data.clock_out_at && data.clock_out_time
-        ? new Date(`${data.clock_out_at}T${data.clock_out_time}`)
-        : null
+      const clockOut =
+        data.clock_out_at && data.clock_out_time
+          ? new Date(`${data.clock_out_at}T${data.clock_out_time}`)
+          : null
 
       await api.put(`/time/admin/time/${editingEntry.id}`, {
         clock_in_at: clockIn.toISOString(),
@@ -236,9 +295,9 @@ export default function EmployeeDetailPage() {
       editForm.reset()
       setEditingEntry(null)
       fetchEntries()
-    } catch (error: any) {
-      logger.error('Failed to edit entry', error as Error)
-      setError(error.response?.data?.detail || 'Failed to edit time entry')
+    } catch (err: any) {
+      logger.error('Failed to edit entry', err as Error)
+      setError(err.response?.data?.detail || 'Failed to edit time entry')
     }
   }
 
@@ -272,9 +331,9 @@ export default function EmployeeDetailPage() {
       setEditingEntry(null)
       editForm.reset()
       fetchEntries()
-    } catch (error: any) {
-      logger.error('Failed to delete entry', error as Error)
-      toast.error(error.response?.data?.detail || 'Failed to delete time entry')
+    } catch (err: any) {
+      logger.error('Failed to delete entry', err as Error)
+      toast.error(err.response?.data?.detail || 'Failed to delete time entry')
     } finally {
       setDeletingEntry(false)
     }
@@ -290,54 +349,63 @@ export default function EmployeeDetailPage() {
     manualForm.reset()
   }
 
-  const onSubmitEditEmployee = async (data: EditEmployeeForm) => {
+  const onSubmitEditEmployee = async (data: EditEmployeeFormValues) => {
     setUpdating(true)
     try {
-      const updateData: any = {
-        name: data.name,
-        status: data.status,
-      }
+      const updateData = toUpdatePayload(data) as Record<string, unknown>
 
-      // Include role if provided
-      if (data.role !== undefined) {
-        updateData.role = data.role
-      }
-
-      // Handle PIN: send new 4-digit PIN, empty string to clear, or omit to keep current
       if (data.pin !== undefined) {
         if (data.pin.trim() === '' && employee?.has_pin) {
-          // User wants to clear PIN
-          updateData.pin = ''
+          // leave empty = keep existing PIN (do not send)
+          delete updateData.pin
         } else if (data.pin.trim().length === 4) {
-          // User wants to set new PIN
           updateData.pin = data.pin.trim()
+        } else {
+          delete updateData.pin
         }
-        // If pin is empty and employee doesn't have PIN, we don't send it (no change needed)
       }
 
-      // Only include pay_rate if it has a value
-      if (data.pay_rate && data.pay_rate.trim() !== '') {
-        const payRateValue = parseFloat(data.pay_rate)
-        if (!isNaN(payRateValue) && payRateValue >= 0) {
-          updateData.pay_rate = payRateValue
-        }
-      } else {
-        updateData.pay_rate = null
+      if (data.pay_rate === undefined || data.pay_rate.trim() === '') {
+        // omit clearing pay rate unless explicitly set
       }
 
       await api.put(`/users/admin/employees/${employeeId}`, updateData)
-      
+
       toast.success('Employee updated successfully!')
       setShowEditEmployee(false)
-      editEmployeeForm.reset()
+      router.replace(`/employees/${employeeId}`, { scroll: false })
       fetchEmployee()
       setError(null)
-    } catch (error: any) {
-      logger.error('Failed to update employee', error as Error)
-      const errorMessage = error.response?.data?.detail || error.response?.data?.message || 'Failed to update employee'
+    } catch (err: any) {
+      logger.error('Failed to update employee', err as Error)
+      const errorMessage =
+        err.response?.data?.detail || err.response?.data?.message || 'Failed to update employee'
       toast.error(Array.isArray(errorMessage) ? errorMessage.join(', ') : errorMessage)
     } finally {
       setUpdating(false)
+    }
+  }
+
+  const handleResetPassword = async () => {
+    const newPassword = window.prompt(
+      'Enter a new temporary password (min 8 characters). The employee can change it after logging in.'
+    )
+    if (!newPassword) return
+    if (newPassword.length < 8) {
+      toast.error('Password must be at least 8 characters')
+      return
+    }
+    setResettingPassword(true)
+    try {
+      await api.post(
+        `/users/admin/employees/${employeeId}/reset-password?new_password=${encodeURIComponent(newPassword)}`
+      )
+      toast.success('Password reset successfully')
+    } catch (err: any) {
+      logger.error('Failed to reset password', err as Error)
+      toast.error(err.response?.data?.detail || 'Failed to reset password')
+    } finally {
+      setResettingPassword(false)
     }
   }
 
@@ -371,7 +439,8 @@ export default function EmployeeDetailPage() {
     return (
       <Layout>
         <div className="px-4 py-8 sm:px-6 lg:px-8">
-          <div className="bg-red-50 border border-red-200 text-red-800 px-4 py-3 rounded-lg">
+          <BackButton fallbackHref="/employees">Employees</BackButton>
+          <div className="mt-4 bg-red-50 border border-red-200 text-red-800 px-4 py-3 rounded-lg">
             <p>{error}</p>
           </div>
         </div>
@@ -381,187 +450,231 @@ export default function EmployeeDetailPage() {
 
   return (
     <Layout>
-      <div className="px-4 py-8 sm:px-6 lg:px-8">
-        {/* Header */}
-        <div className="mb-6">
-          <BackButton fallbackHref="/employees" className="text-sm text-blue-600 hover:text-blue-700 mb-4">
-            Back
-          </BackButton>
-          <h1 className="text-2xl font-semibold text-slate-900 mb-1">Employee Details</h1>
-          <p className="text-sm text-slate-600">View and manage employee information and time entries</p>
+      <div className="relative px-4 py-8 sm:px-6 lg:px-8 max-w-6xl mx-auto">
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-x-0 -top-4 h-56 overflow-hidden"
+        >
+          <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_rgba(15,23,42,0.06),_transparent_65%)]" />
+          <div
+            className="absolute inset-0 opacity-[0.35]"
+            style={{
+              backgroundImage:
+                'linear-gradient(to right, rgb(226 232 240 / 0.55) 1px, transparent 1px), linear-gradient(to bottom, rgb(226 232 240 / 0.55) 1px, transparent 1px)',
+              backgroundSize: '28px 28px',
+              maskImage: 'linear-gradient(to bottom, black, transparent)',
+            }}
+          />
+        </div>
+
+        <div className="relative space-y-6">
+        <div>
+          <BackButton fallbackHref="/employees">Employees</BackButton>
         </div>
 
         {error && (
-          <div className="bg-red-50 border border-red-200 text-red-800 px-4 py-3 rounded-lg mb-6">
+          <div className="bg-red-50 border border-red-200 text-red-800 px-4 py-3 rounded-xl">
             <p className="text-sm">{error}</p>
           </div>
         )}
 
-        {/* Employee Info Card */}
         {employee && (
-          <div className="bg-white rounded-lg border border-slate-200 p-6 mb-6">
-            <div className="flex items-start justify-between">
-              <div className="flex items-center">
-                <div className="flex-shrink-0 h-16 w-16 rounded-full bg-blue-100 flex items-center justify-center text-blue-700 font-semibold text-xl">
-                  {employee.name.charAt(0).toUpperCase()}
-                </div>
-                <div className="ml-4">
-                  <h2 className="text-xl font-semibold text-slate-900">{employee.name}</h2>
-                  <p className="text-sm text-slate-600">{employee.email}</p>
-                  <div className="mt-2 flex items-center gap-4 text-sm">
-                    <span className={`px-2 py-1 rounded-full text-xs font-semibold ${
-                      employee.status === 'active'
-                        ? 'bg-green-100 text-green-800'
-                        : 'bg-slate-100 text-slate-800'
-                    }`}>
-                      {employee.status ? employee.status.charAt(0).toUpperCase() + employee.status.slice(1).toLowerCase() : employee.status}
-                    </span>
-                    {employee.is_clocked_in && (
-                      <span className="px-2 py-1 rounded-full text-xs font-semibold bg-yellow-100 text-yellow-800">
-                        Clocked In
-                      </span>
-                    )}
+          <>
+            {/* Profile hero */}
+            <div className="overflow-hidden rounded-2xl border border-slate-800/10 shadow-[0_20px_50px_-28px_rgba(15,23,42,0.45)]">
+              <div className="relative bg-slate-900 px-5 py-6 sm:px-7 sm:py-7 text-white">
+                <div
+                  aria-hidden
+                  className="absolute inset-0 opacity-40"
+                  style={{
+                    backgroundImage:
+                      'radial-gradient(circle at 12% 20%, rgba(45,212,191,0.28), transparent 42%), radial-gradient(circle at 88% 10%, rgba(59,130,246,0.22), transparent 36%)',
+                  }}
+                />
+                <div
+                  aria-hidden
+                  className="absolute inset-y-0 right-0 w-1/2 opacity-[0.07]"
+                  style={{
+                    backgroundImage:
+                      'repeating-linear-gradient(-32deg, transparent, transparent 10px, white 10px, white 11px)',
+                  }}
+                />
+
+                <div className="relative flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="flex items-center gap-4 sm:gap-5 min-w-0">
+                    <div className="relative flex-shrink-0">
+                      <div className="flex h-16 w-16 sm:h-[4.5rem] sm:w-[4.5rem] items-center justify-center rounded-2xl bg-white/10 ring-1 ring-white/20 backdrop-blur-sm text-2xl font-semibold tracking-tight">
+                        {(employee.preferred_name || employee.name).charAt(0).toUpperCase()}
+                      </div>
+                      {employee.is_clocked_in && (
+                        <span
+                          className="absolute -bottom-1 -right-1 h-3.5 w-3.5 rounded-full bg-emerald-400 ring-2 ring-slate-900"
+                          title="Clocked in"
+                        />
+                      )}
+                    </div>
+                    <div className="min-w-0">
+                      <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight truncate">
+                        {employee.name}
+                      </h1>
+                      {employee.preferred_name && (
+                        <p className="mt-0.5 text-sm text-slate-300">
+                          Goes by {employee.preferred_name}
+                        </p>
+                      )}
+                      <p className="mt-1 text-sm text-slate-400 truncate">{employee.email}</p>
+                      <div className="mt-3 flex flex-wrap items-center gap-2">
+                        <span
+                          className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium ring-1 ring-inset ${
+                            employee.status === 'active'
+                              ? 'bg-emerald-400/15 text-emerald-200 ring-emerald-400/30'
+                              : 'bg-white/10 text-slate-300 ring-white/15'
+                          }`}
+                        >
+                          <span
+                            className={`h-1.5 w-1.5 rounded-full ${
+                              employee.status === 'active' ? 'bg-emerald-300' : 'bg-slate-400'
+                            }`}
+                          />
+                          {employee.status === 'active' ? 'Active' : 'Inactive'}
+                        </span>
+                        <span className="inline-flex rounded-full bg-white/10 px-2.5 py-1 text-xs font-medium text-slate-200 ring-1 ring-inset ring-white/15">
+                          {roleLabel(employee.role)}
+                        </span>
+                        {employee.is_clocked_in && (
+                          <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-400/15 px-2.5 py-1 text-xs font-medium text-amber-100 ring-1 ring-inset ring-amber-300/30">
+                            <span className="h-1.5 w-1.5 rounded-full bg-amber-300 animate-pulse" />
+                            On shift
+                          </span>
+                        )}
+                      </div>
+                    </div>
                   </div>
+
+                  {!showEditEmployee && (
+                    <div className="flex flex-wrap gap-2 sm:shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          populateEditForm(employee)
+                          setShowEditEmployee(true)
+                        }}
+                        className="px-4 py-2 rounded-lg bg-white text-slate-900 text-sm font-semibold hover:bg-slate-100 transition-colors"
+                      >
+                        Edit profile
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleResetPassword}
+                        disabled={resettingPassword}
+                        className="px-4 py-2 rounded-lg bg-white/10 text-white text-sm font-medium ring-1 ring-inset ring-white/20 hover:bg-white/15 transition-colors disabled:opacity-50"
+                      >
+                        {resettingPassword ? 'Resetting…' : 'Reset password'}
+                      </button>
+                    </div>
+                  )}
                 </div>
               </div>
+
               {!showEditEmployee && (
-                <button
-                  onClick={() => setShowEditEmployee(true)}
-                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium text-sm"
-                >
-                  Edit Employee
-                </button>
+                <div className="grid grid-cols-2 lg:grid-cols-4 divide-y sm:divide-y-0 divide-slate-100 bg-white border-t border-slate-800/5">
+                  <Metric
+                    label="Pay rate"
+                    value={
+                      employee.pay_rate != null ? `$${employee.pay_rate.toFixed(2)}` : '—'
+                    }
+                    hint={employee.pay_rate != null ? 'per hour' : undefined}
+                  />
+                  <Metric
+                    label="Job title"
+                    value={employee.job_role || '—'}
+                  />
+                  <Metric
+                    label="Kiosk PIN"
+                    value={employee.has_pin ? 'Set' : 'Not set'}
+                  />
+                  <Metric
+                    label="Last punch"
+                    value={
+                      employee.last_punch_at
+                        ? format(new Date(employee.last_punch_at), 'MMM d · HH:mm')
+                        : 'Never'
+                    }
+                  />
+                </div>
               )}
             </div>
-            <div className="mt-6 grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div>
-                <p className="text-sm text-slate-600">Pay Rate</p>
-                <p className="text-sm font-medium text-slate-900">
-                  {employee.pay_rate ? `$${employee.pay_rate.toFixed(2)}/hr` : 'N/A'}
-                </p>
-              </div>
-              <div>
-                <p className="text-sm text-slate-600">Last Punch</p>
-                <p className="text-sm font-medium text-slate-900">
-                  {employee.last_punch_at
-                    ? format(new Date(employee.last_punch_at), 'MMM dd, yyyy HH:mm')
-                    : 'Never'}
-                </p>
-              </div>
-            </div>
-          </div>
-        )}
 
-        {/* Edit Employee Modal */}
-        {showEditEmployee && employee && (
-          <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center p-4">
-            <div className="relative bg-white rounded-xl shadow-xl w-full max-w-2xl m-4">
-              {/* Header */}
-              <div className="flex justify-between items-center px-8 py-6 border-b border-slate-200">
-                <div>
-                  <h3 className="text-2xl font-bold text-slate-900">Edit Employee</h3>
-                  <p className="text-sm text-slate-500 mt-1">Update employee information below</p>
+            {showEditEmployee ? (
+              <div className="rounded-2xl border border-slate-200/80 bg-white/80 backdrop-blur-sm p-5 sm:p-6 shadow-sm">
+                <div className="mb-5">
+                  <h2 className="text-lg font-semibold tracking-tight text-slate-900">
+                    Edit employee
+                  </h2>
+                  <p className="mt-1 text-sm text-slate-500">
+                    Update profile details, then save changes.
+                  </p>
                 </div>
-                <button
-                  onClick={closeEditEmployeeForm}
-                  className="text-slate-400 hover:text-slate-600 text-3xl leading-none transition-colors"
-                  disabled={updating}
-                  aria-label="Close"
-                >
-                  ×
-                </button>
+                <form onSubmit={editEmployeeForm.handleSubmit(onSubmitEditEmployee)}>
+                  <EmployeeForm
+                    mode="edit"
+                    register={editEmployeeForm.register}
+                    errors={editEmployeeForm.formState.errors}
+                    emailReadOnly={employee.email}
+                    hasPin={employee.has_pin}
+                    submitting={updating}
+                    onCancel={closeEditEmployeeForm}
+                  />
+                </form>
               </div>
-
-              {/* Form Content */}
-              <form onSubmit={editEmployeeForm.handleSubmit(onSubmitEditEmployee)} className="p-8">
-                {/* Basic Information Section */}
-                <div className="mb-8">
-                  <h4 className="text-lg font-semibold text-slate-900 mb-4 pb-2 border-b border-slate-200">
-                    Basic Information
-                  </h4>
-                  <div className="space-y-5">
-                    <FormField label="Name" error={editEmployeeForm.formState.errors.name?.message} required>
-                      <Input {...editEmployeeForm.register('name')} error={!!editEmployeeForm.formState.errors.name} />
-                    </FormField>
-                    
-                    <FormField label="Email" hint="Email cannot be changed">
-                      <Input
-                        type="email"
-                        value={employee.email}
-                        disabled
-                        className="bg-slate-100 text-slate-500 cursor-not-allowed"
-                      />
-                    </FormField>
-                    
-                    <FormField label="Status" error={editEmployeeForm.formState.errors.status?.message} required>
-                      <Select {...editEmployeeForm.register('status')} error={!!editEmployeeForm.formState.errors.status}>
-                        <option value="active">Active</option>
-                        <option value="inactive">Inactive</option>
-                      </Select>
-                    </FormField>
-                    
-                    <FormField label="Role" error={editEmployeeForm.formState.errors.role?.message}>
-                      <Select {...editEmployeeForm.register('role')} error={!!editEmployeeForm.formState.errors.role}>
-                        <option value="FRONTDESK">Front Desk</option>
-                        <option value="MAINTENANCE">Maintenance</option>
-                        <option value="HOUSEKEEPING">Housekeeping</option>
-                        <option value="RESTAURANT">Restaurant</option>
-                        <option value="SECURITY">Security</option>
-                        <option value="MANAGER">Manager</option>
-                        <option value="ADMIN">Administrator</option>
-                      </Select>
-                    </FormField>
+            ) : (
+              <div className="rounded-2xl border border-slate-200/80 bg-white shadow-sm overflow-hidden">
+                <div className="px-5 sm:px-6 py-4 border-b border-slate-100 flex items-center justify-between gap-3">
+                  <div>
+                    <h2 className="text-sm font-semibold text-slate-900">Profile details</h2>
+                    <p className="text-xs text-slate-500 mt-0.5">
+                      Contact, access, and employment info
+                    </p>
                   </div>
                 </div>
-
-                {/* Additional Details Section */}
-                <div className="mb-8">
-                  <h4 className="text-lg font-semibold text-slate-900 mb-4 pb-2 border-b border-slate-200">
-                    Additional Details
-                  </h4>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <FormField 
-                      label="PIN" 
-                      error={editEmployeeForm.formState.errors.pin?.message}
-                      hint={employee.has_pin ? 'Leave empty to keep current PIN, or enter new 4-digit PIN' : 'Enter 4-digit PIN or leave empty'}
-                    >
-                      <Input 
-                        {...editEmployeeForm.register('pin')} 
-                        type="text" 
-                        maxLength={4} 
-                        error={!!editEmployeeForm.formState.errors.pin}
-                        placeholder="Enter new 4-digit PIN"
-                      />
-                    </FormField>
-                    
-                    <FormField label="Pay Rate" error={editEmployeeForm.formState.errors.pay_rate?.message} hint="Hourly rate in dollars">
-                      <Input {...editEmployeeForm.register('pay_rate')} type="number" step="0.01" min="0" error={!!editEmployeeForm.formState.errors.pay_rate} />
-                    </FormField>
-                  </div>
-                </div>
-
-                {/* Action Buttons */}
-                <div className="flex gap-4 pt-6 mt-8 border-t border-slate-200">
-                  <button
-                    type="submit"
-                    disabled={updating}
-                    className="flex-1 px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-semibold text-sm shadow-sm hover:shadow-sm transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:shadow-sm flex items-center justify-center gap-2"
-                  >
-                    {updating && <ButtonSpinner />}
-                    {updating ? 'Saving...' : 'Save Changes'}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={closeEditEmployeeForm}
-                    disabled={updating}
-                    className="px-6 py-3 bg-slate-100 text-slate-700 rounded-lg hover:bg-slate-200 font-semibold text-sm transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    Cancel
-                  </button>
-                </div>
-              </form>
-            </div>
-          </div>
+                <dl className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-8 gap-y-6 p-5 sm:p-6">
+                  <DetailItem label="Full name" value={employee.name} />
+                  <DetailItem label="Preferred name" value={employee.preferred_name || '—'} />
+                  <DetailItem label="Email" value={employee.email} />
+                  <DetailItem label="Phone" value={employee.phone || '—'} />
+                  <DetailItem label="Role" value={roleLabel(employee.role)} />
+                  <DetailItem
+                    label="Status"
+                    value={employee.status === 'active' ? 'Active' : 'Inactive'}
+                  />
+                  <DetailItem label="Job title" value={employee.job_role || '—'} />
+                  <DetailItem
+                    label="Hourly pay"
+                    value={
+                      employee.pay_rate != null ? `$${employee.pay_rate.toFixed(2)}/hr` : '—'
+                    }
+                  />
+                  <DetailItem label="PIN" value={employee.has_pin ? 'Set' : 'Not set'} />
+                  <DetailItem
+                    label="Last login"
+                    value={
+                      employee.last_login_at
+                        ? format(new Date(employee.last_login_at), 'MMM dd, yyyy · HH:mm')
+                        : 'Never'
+                    }
+                  />
+                  <DetailItem
+                    label="Created"
+                    value={
+                      employee.created_at
+                        ? format(new Date(employee.created_at), 'MMM dd, yyyy')
+                        : '—'
+                    }
+                  />
+                </dl>
+              </div>
+            )}
+          </>
         )}
 
         {/* Add Manual Entry Modal */}
@@ -580,29 +693,39 @@ export default function EmployeeDetailPage() {
               <form onSubmit={manualForm.handleSubmit(onSubmitManual)} className="space-y-4">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-2">Clock In Date</label>
+                    <label className="block text-sm font-medium text-slate-700 mb-2">
+                      Clock In Date
+                    </label>
                     <input
                       type="date"
                       {...manualForm.register('clock_in_at')}
                       className="block w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
                     />
                     {manualForm.formState.errors.clock_in_at && (
-                      <p className="mt-1 text-sm text-red-600">{manualForm.formState.errors.clock_in_at.message}</p>
+                      <p className="mt-1 text-sm text-red-600">
+                        {manualForm.formState.errors.clock_in_at.message}
+                      </p>
                     )}
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-2">Clock In Time</label>
+                    <label className="block text-sm font-medium text-slate-700 mb-2">
+                      Clock In Time
+                    </label>
                     <input
                       type="time"
                       {...manualForm.register('clock_in_time')}
                       className="block w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
                     />
                     {manualForm.formState.errors.clock_in_time && (
-                      <p className="mt-1 text-sm text-red-600">{manualForm.formState.errors.clock_in_time.message}</p>
+                      <p className="mt-1 text-sm text-red-600">
+                        {manualForm.formState.errors.clock_in_time.message}
+                      </p>
                     )}
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-2">Clock Out Date (Optional)</label>
+                    <label className="block text-sm font-medium text-slate-700 mb-2">
+                      Clock Out Date (Optional)
+                    </label>
                     <input
                       type="date"
                       {...manualForm.register('clock_out_at')}
@@ -610,7 +733,9 @@ export default function EmployeeDetailPage() {
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-2">Clock Out Time (Optional)</label>
+                    <label className="block text-sm font-medium text-slate-700 mb-2">
+                      Clock Out Time (Optional)
+                    </label>
                     <input
                       type="time"
                       {...manualForm.register('clock_out_time')}
@@ -618,7 +743,9 @@ export default function EmployeeDetailPage() {
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-2">Break Minutes</label>
+                    <label className="block text-sm font-medium text-slate-700 mb-2">
+                      Break Minutes
+                    </label>
                     <input
                       type="number"
                       {...manualForm.register('break_minutes')}
@@ -626,7 +753,9 @@ export default function EmployeeDetailPage() {
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-2">Note (Optional)</label>
+                    <label className="block text-sm font-medium text-slate-700 mb-2">
+                      Note (Optional)
+                    </label>
                     <input
                       type="text"
                       {...manualForm.register('note')}
@@ -658,7 +787,6 @@ export default function EmployeeDetailPage() {
         {editingEntry && (
           <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center p-4">
             <div className="relative bg-white rounded-xl shadow-xl w-full max-w-3xl m-4">
-              {/* Header */}
               <div className="flex justify-between items-center px-8 py-6 border-b border-slate-200">
                 <div>
                   <h3 className="text-2xl font-bold text-slate-900">Edit Time Entry</h3>
@@ -674,9 +802,7 @@ export default function EmployeeDetailPage() {
                 </button>
               </div>
 
-              {/* Form Content */}
               <form onSubmit={editForm.handleSubmit(onSubmitEdit)} className="p-8">
-                {/* Clock In Section */}
                 <div className="mb-8">
                   <h4 className="text-lg font-semibold text-slate-900 mb-4 pb-2 border-b border-slate-200">
                     Clock In
@@ -689,7 +815,7 @@ export default function EmployeeDetailPage() {
                       <input
                         type="date"
                         {...editForm.register('clock_in_at')}
-                        className="block w-full px-4 py-3 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm transition-all shadow-sm hover:border-slate-400"
+                        className="block w-full px-4 py-3 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
                         disabled={deletingEntry}
                       />
                     </div>
@@ -700,14 +826,13 @@ export default function EmployeeDetailPage() {
                       <input
                         type="time"
                         {...editForm.register('clock_in_time')}
-                        className="block w-full px-4 py-3 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm transition-all shadow-sm hover:border-slate-400"
+                        className="block w-full px-4 py-3 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
                         disabled={deletingEntry}
                       />
                     </div>
                   </div>
                 </div>
 
-                {/* Clock Out Section */}
                 <div className="mb-8">
                   <h4 className="text-lg font-semibold text-slate-900 mb-4 pb-2 border-b border-slate-200">
                     Clock Out
@@ -720,7 +845,7 @@ export default function EmployeeDetailPage() {
                       <input
                         type="date"
                         {...editForm.register('clock_out_at')}
-                        className="block w-full px-4 py-3 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm transition-all shadow-sm hover:border-slate-400"
+                        className="block w-full px-4 py-3 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
                         disabled={deletingEntry}
                       />
                     </div>
@@ -731,14 +856,13 @@ export default function EmployeeDetailPage() {
                       <input
                         type="time"
                         {...editForm.register('clock_out_time')}
-                        className="block w-full px-4 py-3 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm transition-all shadow-sm hover:border-slate-400"
+                        className="block w-full px-4 py-3 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
                         disabled={deletingEntry}
                       />
                     </div>
                   </div>
                 </div>
 
-                {/* Additional Information Section */}
                 <div className="mb-8">
                   <h4 className="text-lg font-semibold text-slate-900 mb-4 pb-2 border-b border-slate-200">
                     Additional Information
@@ -752,10 +876,9 @@ export default function EmployeeDetailPage() {
                         type="number"
                         {...editForm.register('break_minutes')}
                         min="0"
-                        className="block w-full px-4 py-3 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm transition-all shadow-sm hover:border-slate-400"
+                        className="block w-full px-4 py-3 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
                         disabled={deletingEntry}
                       />
-                      <p className="mt-2 text-xs text-slate-500">Total break time in minutes</p>
                     </div>
                     <div className="md:col-span-2">
                       <label className="block text-sm font-semibold text-slate-700 mb-3">
@@ -765,7 +888,7 @@ export default function EmployeeDetailPage() {
                         type="text"
                         {...editForm.register('edit_reason')}
                         placeholder="Enter reason for editing this time entry"
-                        className="block w-full px-4 py-3 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm transition-all shadow-sm hover:border-slate-400"
+                        className="block w-full px-4 py-3 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
                         disabled={deletingEntry}
                       />
                       {editForm.formState.errors.edit_reason && (
@@ -773,17 +896,15 @@ export default function EmployeeDetailPage() {
                           {editForm.formState.errors.edit_reason.message}
                         </p>
                       )}
-                      <p className="mt-2 text-xs text-slate-500">Please provide a reason for making changes to this entry</p>
                     </div>
                   </div>
                 </div>
 
-                {/* Action Buttons */}
                 <div className="flex gap-4 pt-6 mt-8 border-t border-slate-200">
                   <button
                     type="submit"
                     disabled={deletingEntry}
-                    className="flex-1 px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-semibold text-sm shadow-sm hover:shadow-sm transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:shadow-sm"
+                    className="flex-1 px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-semibold text-sm disabled:opacity-50"
                   >
                     Save Changes
                   </button>
@@ -791,7 +912,7 @@ export default function EmployeeDetailPage() {
                     type="button"
                     onClick={handleDeleteEntry}
                     disabled={deletingEntry}
-                    className="px-6 py-3 bg-red-600 text-white rounded-lg hover:bg-red-700 font-semibold text-sm shadow-sm hover:shadow-sm transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:shadow-sm"
+                    className="px-6 py-3 bg-red-600 text-white rounded-lg hover:bg-red-700 font-semibold text-sm disabled:opacity-50"
                   >
                     {deletingEntry ? 'Deleting...' : 'Delete'}
                   </button>
@@ -799,7 +920,7 @@ export default function EmployeeDetailPage() {
                     type="button"
                     onClick={closeEditForm}
                     disabled={deletingEntry}
-                    className="px-6 py-3 bg-slate-100 text-slate-700 rounded-lg hover:bg-slate-200 font-semibold text-sm transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="px-6 py-3 bg-slate-100 text-slate-700 rounded-lg hover:bg-slate-200 font-semibold text-sm disabled:opacity-50"
                   >
                     Cancel
                   </button>
@@ -810,15 +931,18 @@ export default function EmployeeDetailPage() {
         )}
 
         {/* Time Entries Section */}
-        <div className="bg-white rounded-lg border border-slate-200 overflow-hidden">
-          <div className="p-5 border-b border-slate-200 flex justify-between items-center">
-            <h2 className="text-xl font-semibold text-slate-900">Time Entries</h2>
+        <div className="rounded-2xl border border-slate-200/80 bg-white shadow-sm overflow-hidden">
+          <div className="px-5 sm:px-6 py-4 border-b border-slate-100 flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h2 className="text-sm font-semibold text-slate-900">Time entries</h2>
+              <p className="text-xs text-slate-500 mt-0.5">Punch history for this employee</p>
+            </div>
             {!showManualForm && !editingEntry && (
               <button
                 onClick={() => setShowManualForm(true)}
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium text-sm"
+                className="px-3.5 py-2 bg-slate-900 text-white rounded-lg hover:bg-slate-800 font-medium text-sm transition-colors"
               >
-                Add Manual Entry
+                Add manual entry
               </button>
             )}
           </div>
@@ -883,7 +1007,9 @@ export default function EmployeeDetailPage() {
                             ) : entry.clock_out_at ? (
                               format(new Date(entry.clock_out_at), 'HH:mm')
                             ) : (
-                              <span className="px-2 py-1 bg-yellow-100 text-yellow-800 rounded-full text-xs font-semibold">Open</span>
+                              <span className="px-2 py-1 bg-yellow-100 text-yellow-800 rounded-full text-xs font-semibold">
+                                Open
+                              </span>
                             )}
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm font-semibold text-slate-900">
@@ -893,12 +1019,19 @@ export default function EmployeeDetailPage() {
                             {entry.break_minutes} min
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm">
-                            <span className={`px-2 py-1 rounded-full text-xs font-semibold ${
-                              entry.status === 'closed' ? 'bg-green-100 text-green-800' :
-                              entry.status === 'open' ? 'bg-yellow-100 text-yellow-800' :
-                              'bg-slate-100 text-slate-800'
-                            }`}>
-                              {entry.status ? entry.status.charAt(0).toUpperCase() + entry.status.slice(1).toLowerCase() : entry.status}
+                            <span
+                              className={`px-2 py-1 rounded-full text-xs font-semibold ${
+                                entry.status === 'closed'
+                                  ? 'bg-green-100 text-green-800'
+                                  : entry.status === 'open'
+                                    ? 'bg-yellow-100 text-yellow-800'
+                                    : 'bg-slate-100 text-slate-800'
+                              }`}
+                            >
+                              {entry.status
+                                ? entry.status.charAt(0).toUpperCase() +
+                                  entry.status.slice(1).toLowerCase()
+                                : entry.status}
                             </span>
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm">
@@ -916,12 +1049,12 @@ export default function EmployeeDetailPage() {
                 </table>
               </div>
 
-              {/* Pagination */}
               {total > 0 && (
                 <div className="p-4 border-t border-slate-200">
                   <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
                     <div className="text-sm text-slate-700">
-                      Showing <span className="font-medium">{startEntry}</span> to <span className="font-medium">{endEntry}</span> of{' '}
+                      Showing <span className="font-medium">{startEntry}</span> to{' '}
+                      <span className="font-medium">{endEntry}</span> of{' '}
                       <span className="font-medium">{total}</span> entries
                     </div>
                     <div className="flex items-center gap-2">
@@ -949,9 +1082,9 @@ export default function EmployeeDetailPage() {
             </>
           )}
         </div>
+        </div>
       </div>
 
-      {/* Delete Confirmation Dialog */}
       <ConfirmationDialog
         isOpen={showDeleteConfirm}
         title="Delete Time Entry"
@@ -965,4 +1098,3 @@ export default function EmployeeDetailPage() {
     </Layout>
   )
 }
-

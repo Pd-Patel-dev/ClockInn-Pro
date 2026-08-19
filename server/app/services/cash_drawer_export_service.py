@@ -86,7 +86,7 @@ async def generate_cash_drawer_pdf(
     # Simple table with fewer columns
     if sessions:
         # Header row - simple text, no Paragraph objects
-        table_data = [["Date", "Employee", "Start", "Collected", "Drop", "Balance", "End", "+/-", "Status"]]
+        table_data = [["Date", "Employee", "Start", "Room Sale", "Drop", "Balance", "End", "+/-", "Status"]]
         
         total_delta = 0
         total_start = 0
@@ -191,7 +191,7 @@ async def generate_cash_drawer_excel(
     ws.title = "Cash Drawer"
     
     # Simple header
-    headers = ["Date", "Employee", "Start", "Collected", "Drop", "Balance", "End", "+/-", "Status"]
+    headers = ["Date", "Employee", "Start", "Room Sale", "Drop", "Balance", "End", "+/-", "Status"]
     ws.append(headers)
     
     # Style header

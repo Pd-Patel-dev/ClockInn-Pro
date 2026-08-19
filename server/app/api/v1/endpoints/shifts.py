@@ -29,6 +29,11 @@ from app.schemas.shift import (
     ScheduleSwapCreate,
     ScheduleSwapResponse,
     SendScheduleRequest,
+    BulkShiftIdsRequest,
+    BulkShiftUpdateRequest,
+    BulkShiftDeleteResponse,
+    BulkShiftUpdateResponse,
+    BulkShiftFailure,
 )
 from app.schemas.bulk_shift import (
     BulkWeekShiftCreate, BulkWeekShiftPreviewResponse, BulkWeekShiftCreateResponse,
@@ -228,6 +233,74 @@ async def create_bulk_week_shifts_endpoint(
         conflicts=conflicts,
         series_id=series_id,
     )
+
+
+@router.post("/shifts/bulk/delete", response_model=BulkShiftDeleteResponse)
+@handle_endpoint_errors(operation_name="bulk_delete_shifts")
+async def bulk_delete_shifts_endpoint(
+    data: BulkShiftIdsRequest,
+    current_user: User = Depends(get_current_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Soft-delete many shifts (admin only). Continues on per-shift errors."""
+    deleted = 0
+    failed: list[BulkShiftFailure] = []
+    seen: set[UUID] = set()
+    for shift_id in data.shift_ids:
+        if shift_id in seen:
+            continue
+        seen.add(shift_id)
+        try:
+            await delete_shift(
+                db,
+                shift_id,
+                current_user.company_id,
+                deleted_by=current_user.id,
+            )
+            deleted += 1
+        except HTTPException as e:
+            detail = e.detail if isinstance(e.detail, str) else str(e.detail)
+            failed.append(BulkShiftFailure(id=shift_id, detail=detail))
+        except Exception as e:
+            failed.append(BulkShiftFailure(id=shift_id, detail=str(e)))
+    return BulkShiftDeleteResponse(deleted=deleted, failed=failed)
+
+
+@router.post("/shifts/bulk/update", response_model=BulkShiftUpdateResponse)
+@handle_endpoint_errors(operation_name="bulk_update_shifts")
+async def bulk_update_shifts_endpoint(
+    data: BulkShiftUpdateRequest,
+    current_user: User = Depends(get_current_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Apply shared fields to many shifts (admin only). Continues on per-shift errors."""
+    update_payload = ShiftUpdate(
+        start_time=data.start_time,
+        end_time=data.end_time,
+        break_minutes=data.break_minutes,
+        status=data.status,
+    )
+    updated = 0
+    failed: list[BulkShiftFailure] = []
+    seen: set[UUID] = set()
+    for shift_id in data.shift_ids:
+        if shift_id in seen:
+            continue
+        seen.add(shift_id)
+        try:
+            await update_shift(
+                db,
+                shift_id,
+                current_user.company_id,
+                update_payload,
+            )
+            updated += 1
+        except HTTPException as e:
+            detail = e.detail if isinstance(e.detail, str) else str(e.detail)
+            failed.append(BulkShiftFailure(id=shift_id, detail=detail))
+        except Exception as e:
+            failed.append(BulkShiftFailure(id=shift_id, detail=str(e)))
+    return BulkShiftUpdateResponse(updated=updated, failed=failed)
 
 
 @router.post("/shifts/send-schedule")

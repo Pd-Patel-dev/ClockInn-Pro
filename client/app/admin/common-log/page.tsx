@@ -89,6 +89,15 @@ export default function AdminCommonLogPage() {
           router.replace('/dashboard')
           return
         }
+        try {
+          const info = await api.get('/company/info')
+          if (info.data?.settings?.shift_notes_enabled === false) {
+            router.replace('/dashboard')
+            return
+          }
+        } catch {
+          /* ignore — proceed if company info fails */
+        }
         setUser(u)
       } catch {
         router.push('/login')
@@ -188,7 +197,7 @@ export default function AdminCommonLogPage() {
       <div className="max-w-4xl mx-auto px-6 py-8 space-y-6 bg-gray-50 min-h-[calc(100vh-4rem)]">
         <div className="flex items-baseline justify-between gap-4 flex-wrap">
           <div>
-            <h1 className="text-base font-semibold text-gray-900">Shift log</h1>
+            <h1 className="text-base font-semibold text-gray-900">Shift Log</h1>
             <p className="text-sm text-gray-500 mt-0.5">All employee shift notes for your company</p>
           </div>
           {unreviewed > 0 && (

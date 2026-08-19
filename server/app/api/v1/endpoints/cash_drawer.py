@@ -23,6 +23,7 @@ from app.schemas.cash_drawer import (
     CashDrawerSessionDetailResponse,
     CashDrawerSessionUpdate,
     CashDrawerSessionReview,
+    CashDrawerSessionVerify,
     CashDrawerSummaryResponse,
     CashDrawerExportRequest,
 )
@@ -32,6 +33,7 @@ from app.services.cash_drawer_service import (
     get_cash_drawer_summary,
     edit_cash_drawer_session,
     review_cash_drawer_session,
+    verify_cash_drawer_session,
     delete_cash_drawer_session,
 )
 
@@ -46,6 +48,61 @@ def _safe_session_attr(session, name, default=None):
     return getattr(session, name, default)
 
 
+def _session_response_kwargs(session, employee_name: str, time_entry=None) -> dict:
+    collected = _safe_session_attr(session, "collected_cash_cents")
+    drop = _safe_session_attr(session, "drop_amount_cents")
+    from app.services.marketplace_service import (
+        marketplace_card_cents,
+        marketplace_cash_cents,
+        marketplace_total_cents,
+        normalize_sales,
+    )
+
+    sales = normalize_sales(_safe_session_attr(session, "marketplace_sales_json"))
+    total = _safe_session_attr(session, "beverages_cash_cents")
+    if total is None and sales:
+        total = marketplace_total_cents(sales)
+    cash_mkt = marketplace_cash_cents(sales)
+    card_mkt = marketplace_card_cents(sales)
+    if total is not None and int(total) > cash_mkt + card_mkt:
+        cash_mkt = int(total) - card_mkt
+    return {
+        "id": session.id,
+        "company_id": session.company_id,
+        "time_entry_id": session.time_entry_id,
+        "employee_id": session.employee_id,
+        "employee_name": employee_name,
+        "start_cash_cents": session.start_cash_cents,
+        "start_counted_at": session.start_counted_at,
+        "start_count_source": session.start_count_source.value,
+        "end_cash_cents": session.end_cash_cents,
+        "end_counted_at": session.end_counted_at,
+        "end_count_source": session.end_count_source.value if session.end_count_source else None,
+        "collected_cash_cents": collected,
+        "drop_amount_cents": drop,
+        "beverages_cash_cents": total,
+        "marketplace_cash_cents": cash_mkt if sales or total else None,
+        "marketplace_card_cents": card_mkt if sales or total else None,
+        "marketplace_sales": [s for s in sales if int(s.get("qty") or 0) > 0] if sales else None,
+        "expected_balance_cents": (
+            session.start_cash_cents + (collected or 0) - (drop or 0)
+        )
+        if session.end_cash_cents is not None
+        else None,
+        "delta_cents": _safe_session_attr(session, "delta_cents"),
+        "status": session.status.value,
+        "reviewed_by": session.reviewed_by,
+        "reviewed_at": session.reviewed_at,
+        "review_note": session.review_note,
+        "verified_by": _safe_session_attr(session, "verified_by"),
+        "verified_at": _safe_session_attr(session, "verified_at"),
+        "created_at": session.created_at,
+        "updated_at": session.updated_at,
+        "clock_in_at": time_entry.clock_in_at if time_entry else None,
+        "clock_out_at": time_entry.clock_out_at if time_entry else None,
+    }
+
+
 @router.get("", response_model=list[CashDrawerSessionResponse])
 @handle_endpoint_errors(operation_name="list_cash_drawer_sessions")
 async def list_cash_drawer_sessions(
@@ -53,6 +110,10 @@ async def list_cash_drawer_sessions(
     to_date: Optional[date] = Query(None),
     employee_id: Optional[UUID] = Query(None),
     status_filter: Optional[str] = Query(None),
+    verified: Optional[bool] = Query(
+        None,
+        description="Filter by weekly verification: true=verified, false=finished & unverified",
+    ),
     limit: int = Query(100, ge=1, le=1000),
     offset: int = Query(0, ge=0),
     current_user: User = Depends(require_permission("cash_drawer")),
@@ -78,6 +139,7 @@ async def list_cash_drawer_sessions(
         status_enum,
         limit,
         offset,
+        verified=verified,
     )
     
     # Load employee names and time entry data
@@ -95,36 +157,15 @@ async def list_cash_drawer_sessions(
         )
         time_entry = time_entry_result.scalar_one_or_none()
         
-        result.append(CashDrawerSessionResponse(
-            id=session.id,
-            company_id=session.company_id,
-            time_entry_id=session.time_entry_id,
-            employee_id=session.employee_id,
-            employee_name=employee.name if employee else "Unknown",
-            start_cash_cents=session.start_cash_cents,
-            start_counted_at=session.start_counted_at,
-            start_count_source=session.start_count_source.value,
-            end_cash_cents=session.end_cash_cents,
-            end_counted_at=session.end_counted_at,
-            end_count_source=session.end_count_source.value if session.end_count_source else None,
-            collected_cash_cents=_safe_session_attr(session, "collected_cash_cents"),
-            drop_amount_cents=_safe_session_attr(session, "drop_amount_cents"),
-            beverages_cash_cents=_safe_session_attr(session, "beverages_cash_cents"),
-            expected_balance_cents=(
-                session.start_cash_cents
-                + (_safe_session_attr(session, "collected_cash_cents") or 0)
-                - (_safe_session_attr(session, "drop_amount_cents") or 0)
-            ) if session.end_cash_cents is not None else None,
-            delta_cents=_safe_session_attr(session, "delta_cents"),
-            status=session.status.value,
-            reviewed_by=session.reviewed_by,
-            reviewed_at=session.reviewed_at,
-            review_note=session.review_note,
-            created_at=session.created_at,
-            updated_at=session.updated_at,
-            clock_in_at=time_entry.clock_in_at if time_entry else None,
-            clock_out_at=time_entry.clock_out_at if time_entry else None,
-        ))
+        result.append(
+            CashDrawerSessionResponse(
+                **_session_response_kwargs(
+                    session,
+                    employee.name if employee else "Unknown",
+                    time_entry,
+                )
+            )
+        )
     
     return result
 
@@ -233,7 +274,7 @@ async def export_cash_drawer(
                 buffer,
                 media_type="application/pdf",
                 headers={
-                    "Content-Disposition": f'attachment; filename="{filename}"'
+                    "Content-Disposition": f'inline; filename="{filename}"'
                 },
             )
         else:  # xlsx
@@ -284,6 +325,11 @@ async def get_cash_drawer_session_endpoint(
         select(User).where(User.id == session.employee_id)
     )
     employee = emp_result.scalar_one_or_none()
+
+    time_entry_result = await db.execute(
+        select(TimeEntry).where(TimeEntry.id == session.time_entry_id)
+    )
+    time_entry = time_entry_result.scalar_one_or_none()
     
     # Load audit logs
     from app.models.cash_drawer import CashDrawerAudit
@@ -307,34 +353,11 @@ async def get_cash_drawer_session_endpoint(
         })
     
     return CashDrawerSessionDetailResponse(
-        id=session.id,
-        company_id=session.company_id,
-        time_entry_id=session.time_entry_id,
-        employee_id=session.employee_id,
-        employee_name=employee.name if employee else "Unknown",
-        start_cash_cents=session.start_cash_cents,
-        start_counted_at=session.start_counted_at,
-        start_count_source=session.start_count_source.value,
-        end_cash_cents=session.end_cash_cents,
-        end_counted_at=session.end_counted_at,
-        end_count_source=session.end_count_source.value if session.end_count_source else None,
-        collected_cash_cents=_safe_session_attr(session, "collected_cash_cents"),
-        drop_amount_cents=_safe_session_attr(session, "drop_amount_cents"),
-        beverages_cash_cents=_safe_session_attr(session, "beverages_cash_cents"),
-        expected_balance_cents=(
-            session.start_cash_cents
-            + (_safe_session_attr(session, "collected_cash_cents") or 0)
-            - (_safe_session_attr(session, "drop_amount_cents") or 0)
-        ) if session.end_cash_cents is not None else None,
-        delta_cents=_safe_session_attr(session, "delta_cents"),
-        status=session.status.value,
-        reviewed_by=session.reviewed_by,
-        reviewed_at=session.reviewed_at,
-        review_note=session.review_note,
-        created_at=session.created_at,
-        updated_at=session.updated_at,
-        clock_in_at=time_entry.clock_in_at if time_entry else None,
-        clock_out_at=time_entry.clock_out_at if time_entry else None,
+        **_session_response_kwargs(
+            session,
+            employee.name if employee else "Unknown",
+            time_entry,
+        ),
         audit_logs=audit_logs,
     )
 
@@ -361,33 +384,6 @@ async def edit_cash_drawer_session_endpoint(
     await db.refresh(session)
 
     # Copy all session attributes to locals *before* any other await (avoid expired attributes -> MissingGreenlet)
-    collected = _safe_session_attr(session, "collected_cash_cents")
-    drop = _safe_session_attr(session, "drop_amount_cents")
-    beverages = _safe_session_attr(session, "beverages_cash_cents")
-    delta = _safe_session_attr(session, "delta_cents")
-    payload = {
-        "id": session.id,
-        "company_id": session.company_id,
-        "time_entry_id": session.time_entry_id,
-        "employee_id": session.employee_id,
-        "start_cash_cents": session.start_cash_cents,
-        "start_counted_at": session.start_counted_at,
-        "start_count_source": session.start_count_source.value,
-        "end_cash_cents": session.end_cash_cents,
-        "end_counted_at": session.end_counted_at,
-        "end_count_source": session.end_count_source.value if session.end_count_source else None,
-        "collected_cash_cents": collected,
-        "drop_amount_cents": drop,
-        "beverages_cash_cents": beverages,
-        "delta_cents": delta,
-        "status": session.status.value,
-        "reviewed_by": session.reviewed_by,
-        "reviewed_at": session.reviewed_at,
-        "review_note": session.review_note,
-        "created_at": session.created_at,
-        "updated_at": session.updated_at,
-    }
-
     emp_result = await db.execute(
         select(User).where(User.id == session.employee_id)
     )
@@ -398,13 +394,11 @@ async def edit_cash_drawer_session_endpoint(
     time_entry = time_entry_result.scalar_one_or_none()
 
     response = CashDrawerSessionResponse(
-        **payload,
-        employee_name=employee.name if employee else "Unknown",
-        expected_balance_cents=(
-            payload["start_cash_cents"] + (collected or 0) - (drop or 0)
-        ) if payload["end_cash_cents"] is not None else None,
-        clock_in_at=time_entry.clock_in_at if time_entry else None,
-        clock_out_at=time_entry.clock_out_at if time_entry else None,
+        **_session_response_kwargs(
+            session,
+            employee.name if employee else "Unknown",
+            time_entry,
+        )
     )
     await db.commit()
     return response
@@ -430,30 +424,6 @@ async def review_cash_drawer_session_endpoint(
     )
     await db.refresh(session)
 
-    collected = _safe_session_attr(session, "collected_cash_cents")
-    drop = _safe_session_attr(session, "drop_amount_cents")
-    payload = {
-        "id": session.id,
-        "company_id": session.company_id,
-        "time_entry_id": session.time_entry_id,
-        "employee_id": session.employee_id,
-        "start_cash_cents": session.start_cash_cents,
-        "start_counted_at": session.start_counted_at,
-        "start_count_source": session.start_count_source.value,
-        "end_cash_cents": session.end_cash_cents,
-        "end_counted_at": session.end_counted_at,
-        "end_count_source": session.end_count_source.value if session.end_count_source else None,
-        "collected_cash_cents": collected,
-        "drop_amount_cents": drop,
-        "beverages_cash_cents": _safe_session_attr(session, "beverages_cash_cents"),
-        "delta_cents": _safe_session_attr(session, "delta_cents"),
-        "status": session.status.value,
-        "reviewed_by": session.reviewed_by,
-        "reviewed_at": session.reviewed_at,
-        "review_note": session.review_note,
-        "created_at": session.created_at,
-        "updated_at": session.updated_at,
-    }
     emp_result = await db.execute(
         select(User).where(User.id == session.employee_id)
     )
@@ -463,13 +433,49 @@ async def review_cash_drawer_session_endpoint(
     )
     time_entry = time_entry_result.scalar_one_or_none()
     response = CashDrawerSessionResponse(
-        **payload,
-        employee_name=employee.name if employee else "Unknown",
-        expected_balance_cents=(
-            payload["start_cash_cents"] + (collected or 0) - (drop or 0)
-        ) if payload["end_cash_cents"] is not None else None,
-        clock_in_at=time_entry.clock_in_at if time_entry else None,
-        clock_out_at=time_entry.clock_out_at if time_entry else None,
+        **_session_response_kwargs(
+            session,
+            employee.name if employee else "Unknown",
+            time_entry,
+        )
+    )
+    await db.commit()
+    return response
+
+
+@router.post("/{session_id}/verify", response_model=CashDrawerSessionResponse)
+@handle_endpoint_errors(operation_name="verify_cash_drawer_session")
+async def verify_cash_drawer_session_endpoint(
+    session_id: str,
+    data: CashDrawerSessionVerify,
+    current_user: User = Depends(require_permission("cash_drawer")),
+    db: AsyncSession = Depends(get_db),
+):
+    """Verify Drop & Sales for a finished session (weekly admin check)."""
+    sid = parse_uuid(session_id, "Session ID")
+    session = await verify_cash_drawer_session(
+        db,
+        current_user.company_id,
+        sid,
+        current_user.id,
+        data.note,
+    )
+    await db.refresh(session)
+
+    emp_result = await db.execute(
+        select(User).where(User.id == session.employee_id)
+    )
+    employee = emp_result.scalar_one_or_none()
+    time_entry_result = await db.execute(
+        select(TimeEntry).where(TimeEntry.id == session.time_entry_id)
+    )
+    time_entry = time_entry_result.scalar_one_or_none()
+    response = CashDrawerSessionResponse(
+        **_session_response_kwargs(
+            session,
+            employee.name if employee else "Unknown",
+            time_entry,
+        )
     )
     await db.commit()
     return response
@@ -502,14 +508,39 @@ async def delete_cash_drawer_session_endpoint(
 from pydantic import BaseModel, Field
 from typing import Optional as Opt
 from app.core.dependencies import get_current_verified_user
-from app.services.marketplace_service import get_marketplace_state, update_marketplace_qty
+from app.services.marketplace_service import (
+    clear_marketplace_cart,
+    finalize_marketplace_cart,
+    get_marketplace_state,
+    update_marketplace_cart,
+)
 from app.services.cash_drawer_service import get_open_company_cash_drawer
 
 
-class MarketplaceUpdateBody(BaseModel):
+class MarketplaceCartUpdateBody(BaseModel):
     item_id: str = Field(..., min_length=1, max_length=64)
     qty: Opt[int] = Field(None, ge=0)
     delta: Opt[int] = None
+
+
+class MarketplaceFinalizeBody(BaseModel):
+    cash_cents: Opt[int] = Field(
+        None,
+        ge=0,
+        description="Cash portion of cart total (use with card_cents for split)",
+    )
+    card_cents: Opt[int] = Field(
+        None,
+        ge=0,
+        description="Card portion of cart total (use with cash_cents for split)",
+    )
+    # Legacy single-tender fields
+    payment: Opt[str] = Field(None, description='"cash" or "card" (legacy)')
+    amount_cents: Opt[int] = Field(
+        None,
+        ge=0,
+        description="Legacy single amount; must equal cart total when payment is set",
+    )
 
 
 @employee_router.get("/active")
@@ -538,21 +569,59 @@ async def get_marketplace_sales(
     current_user: User = Depends(get_current_verified_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Current shift marketplace counts and running total (Front Desk)."""
+    """Current cart + shift marketplace sales (Front Desk)."""
     return await get_marketplace_state(db, current_user)
 
 
 @employee_router.put("/marketplace")
-async def update_marketplace_sales(
-    body: MarketplaceUpdateBody,
+@employee_router.put("/marketplace/cart")
+async def update_marketplace_cart_endpoint(
+    body: MarketplaceCartUpdateBody,
     current_user: User = Depends(get_current_verified_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Set or adjust marketplace item qty for the open cash drawer session."""
-    return await update_marketplace_qty(
+    """Add/remove items on the unpaid cart."""
+    return await update_marketplace_cart(
         db,
         current_user,
         item_id=body.item_id,
         qty=body.qty,
         delta=body.delta,
+    )
+
+
+@employee_router.delete("/marketplace/cart")
+async def clear_marketplace_cart_endpoint(
+    current_user: User = Depends(get_current_verified_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Clear the unpaid cart without recording sales."""
+    return await clear_marketplace_cart(db, current_user)
+
+
+@employee_router.post("/marketplace/finalize")
+async def finalize_marketplace_cart_endpoint(
+    body: MarketplaceFinalizeBody,
+    current_user: User = Depends(get_current_verified_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Finalize cart payment (cash, card, or split) and add to shift sales."""
+    payment = (body.payment or "").lower().strip() or None
+    if payment is not None and payment not in ("cash", "card"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail='payment must be "cash" or "card"',
+        )
+    if body.cash_cents is None and body.card_cents is None and payment is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Provide cash_cents and/or card_cents, or payment.",
+        )
+    return await finalize_marketplace_cart(
+        db,
+        current_user,
+        payment=payment,
+        amount_cents=body.amount_cents,
+        cash_cents=body.cash_cents,
+        card_cents=body.card_cents,
     )

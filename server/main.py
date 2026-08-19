@@ -101,13 +101,42 @@ async def lifespan(app: FastAPI):
     auto_clock_out_task = asyncio.create_task(_auto_clock_out_loop())
     logger.info("Auto clock-out background task started")
 
+    async def _payroll_reminder_loop():
+        """Hourly: email admins when payroll generation window is open."""
+        from app.core.database import AsyncSessionLocal
+        from app.services.payroll_reminder_service import (
+            PAYROLL_REMINDER_INTERVAL_SECONDS,
+            process_payroll_reminders,
+        )
+
+        await asyncio.sleep(45)
+        while True:
+            try:
+                async with AsyncSessionLocal() as db:
+                    summary = await process_payroll_reminders(db)
+                    if summary.get("sent") or summary.get("errors"):
+                        logger.info("Payroll reminder run: %s", summary)
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:
+                logger.error("Payroll reminder loop error: %s", e, exc_info=True)
+            await asyncio.sleep(PAYROLL_REMINDER_INTERVAL_SECONDS)
+
+    payroll_reminder_task = asyncio.create_task(_payroll_reminder_loop())
+    logger.info("Payroll reminder background task started")
+
     logger.info("ClockInn API server started successfully")
     yield
     # Shutdown
     logger.info("Shutting down ClockInn API server...")
     auto_clock_out_task.cancel()
+    payroll_reminder_task.cancel()
     try:
         await auto_clock_out_task
+    except asyncio.CancelledError:
+        pass
+    try:
+        await payroll_reminder_task
     except asyncio.CancelledError:
         pass
     try:

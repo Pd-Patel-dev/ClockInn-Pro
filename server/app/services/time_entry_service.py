@@ -428,6 +428,7 @@ async def _send_clock_out_shift_summary_email(
                 {
                     "label": row.get("label") or "Item",
                     "qty": int(row.get("qty") or 0),
+                    "payment": row.get("payment") or "cash",
                     "line_total": _format_cents(
                         int(row.get("qty") or 0) * int(row.get("price_cents") or 0)
                     ),

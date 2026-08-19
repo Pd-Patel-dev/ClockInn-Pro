@@ -7,6 +7,7 @@ const nextConfig = {
   async redirects() {
     return [
       { source: '/admin/cash', destination: '/admin/shift-log', permanent: true },
+      { source: '/employees/new', destination: '/employees/create', permanent: false },
     ]
   },
   // Enable fast refresh and hot reload

@@ -30,11 +30,21 @@ type UpcomingShift = {
   status: string
 }
 
+type MarketplaceCartRow = {
+  id: string
+  label: string
+  price_cents: number
+  qty: number
+}
+
 type MarketplaceSaleRow = {
   id: string
   label: string
   price_cents: number
   qty: number
+  cash_qty?: number
+  card_qty?: number
+  payment?: 'cash' | 'card'
 }
 
 type LastShiftSummary = {
@@ -45,6 +55,8 @@ type LastShiftSummary = {
   collected_cash_cents: number | null
   drop_amount_cents: number | null
   marketplace_sales_cents: number
+  marketplace_cash_cents?: number
+  marketplace_card_cents?: number
   units_sold: number
   marketplace_sales?: MarketplaceSaleRow[]
   delta_cents: number | null
@@ -60,9 +72,15 @@ type ActiveDrawerInfo = {
 }
 
 type MarketplaceState = {
+  marketplace_enabled?: boolean
   items: { id: string; label: string; price_cents: number }[]
   sales: MarketplaceSaleRow[]
+  cart?: MarketplaceCartRow[]
+  cart_total_cents?: number
+  cart_units?: number
   total_cents: number
+  cash_cents?: number
+  card_cents?: number
   units_sold?: number
   start_cash_cents?: number | null
   last_shift?: LastShiftSummary | null
@@ -166,6 +184,11 @@ export default function PunchInOutPanel({ user, compact = false }: PunchInOutPan
   const [dropAmount, setDropAmount] = useState('')
   const [marketplace, setMarketplace] = useState<MarketplaceState | null>(null)
   const [marketplaceBusyId, setMarketplaceBusyId] = useState<string | null>(null)
+  const [finalizingPayment, setFinalizingPayment] = useState(false)
+  const [showPayDialog, setShowPayDialog] = useState(false)
+  const [payCashAmount, setPayCashAmount] = useState('')
+  const [payCardAmount, setPayCardAmount] = useState('')
+  const [payError, setPayError] = useState<string | null>(null)
   const [cashError, setCashError] = useState<string | null>(null)
   const [showCashDialog, setShowCashDialog] = useState(false)
   const [showPunchConfirm, setShowPunchConfirm] = useState(false)
@@ -401,19 +424,16 @@ export default function PunchInOutPanel({ user, compact = false }: PunchInOutPan
     })
   }
 
-  const marketplaceRows: MarketplaceSaleRow[] =
-    marketplace?.sales?.length
-      ? marketplace.sales
-      : (marketplace?.items || []).map((item) => ({
-          id: item.id,
-          label: item.label,
-          price_cents: item.price_cents,
-          qty: 0,
-        }))
-  const marketplaceConfigured = marketplaceRows.length > 0
-  const marketplaceTotalCents =
-    marketplace?.total_cents ??
-    marketplaceRows.reduce((sum, row) => sum + row.qty * row.price_cents, 0)
+  const catalogItems = marketplace?.items || []
+  const marketplaceEnabled = marketplace?.marketplace_enabled !== false
+  const marketplaceConfigured = marketplaceEnabled && catalogItems.length > 0
+  const cartRows: MarketplaceCartRow[] = marketplace?.cart || []
+  const cartTotalCents =
+    marketplace?.cart_total_cents ??
+    cartRows.reduce((sum, row) => sum + row.qty * row.price_cents, 0)
+  const marketplaceTotalCents = marketplace?.total_cents ?? 0
+  const marketplaceCashCents = marketplace?.cash_cents ?? 0
+  const marketplaceCardCents = marketplace?.card_cents ?? 0
   const lastShift = marketplace?.last_shift ?? null
   const expectedStartCashCents =
     lastShift?.end_cash_cents != null ? lastShift.end_cash_cents : null
@@ -426,7 +446,7 @@ export default function PunchInOutPanel({ user, compact = false }: PunchInOutPan
     expectedStartCashCents != null &&
     enteredStartCashCents != null &&
     enteredStartCashCents !== expectedStartCashCents
-  const marketplaceRowIdsKey = marketplaceRows.map((row) => row.id).join(',')
+  const marketplaceRowIdsKey = catalogItems.map((row) => row.id).join(',')
   const marketplaceButtonColors = useMemo(
     () => assignMarketplaceButtonColors(marketplaceRowIdsKey ? marketplaceRowIdsKey.split(',') : []),
     [marketplaceRowIdsKey]
@@ -569,11 +589,19 @@ export default function PunchInOutPanel({ user, compact = false }: PunchInOutPan
   ])
 
   const handlePunch = async () => {
-    if (loading || showPunchConfirm || showCashDialog) return
+    if (loading || showPunchConfirm || showCashDialog || showPayDialog) return
     setError(null)
     setMessage(null)
     setDrawerActiveNote(null)
     setIncludeCashOnPunch(false)
+    if (
+      currentStatus === 'in' &&
+      user.role === 'FRONTDESK' &&
+      cartTotalCents > 0
+    ) {
+      setError('Finish or clear the current cart before clocking out.')
+      return
+    }
     // Refresh settings so cash drawer prompt isn't skipped after a failed company/info load
     const cashRequired = await refreshPunchSettings()
     if (cashRequired) {
@@ -645,25 +673,148 @@ export default function PunchInOutPanel({ user, compact = false }: PunchInOutPan
     }
   }
 
-  const adjustMarketplaceQty = async (itemId: string, delta: number) => {
+  const adjustCartQty = async (itemId: string, delta: number) => {
     if (marketplaceBusyId) return
     const prev = marketplace
     if (prev) {
-      const nextSales = prev.sales.map((s) =>
-        s.id === itemId ? { ...s, qty: Math.max(0, s.qty + delta) } : s
-      )
-      const total_cents = nextSales.reduce((sum, s) => sum + s.qty * s.price_cents, 0)
-      setMarketplace({ ...prev, sales: nextSales, total_cents })
+      const existing = [...(prev.cart || [])]
+      const idx = existing.findIndex((r) => r.id === itemId)
+      const catalog = (prev.items || []).find((i) => i.id === itemId)
+      if (idx >= 0) {
+        const nextQty = Math.max(0, existing[idx].qty + delta)
+        if (nextQty === 0) existing.splice(idx, 1)
+        else existing[idx] = { ...existing[idx], qty: nextQty }
+      } else if (delta > 0 && catalog) {
+        existing.push({
+          id: catalog.id,
+          label: catalog.label,
+          price_cents: catalog.price_cents,
+          qty: delta,
+        })
+      }
+      const cart_total_cents = existing.reduce((s, r) => s + r.qty * r.price_cents, 0)
+      setMarketplace({
+        ...prev,
+        cart: existing,
+        cart_total_cents,
+        cart_units: existing.reduce((s, r) => s + r.qty, 0),
+      })
     }
     setMarketplaceBusyId(itemId)
     try {
-      const res = await api.put('/cash-drawer/marketplace', { item_id: itemId, delta })
+      const res = await api.put('/cash-drawer/marketplace/cart', {
+        item_id: itemId,
+        delta,
+      })
       setMarketplace(res.data as MarketplaceState)
     } catch {
       if (prev) setMarketplace(prev)
-      setError('Could not update marketplace sale. Try again.')
+      setError('Could not update cart. Try again.')
     } finally {
       setMarketplaceBusyId(null)
+    }
+  }
+
+  const clearCart = async () => {
+    if (marketplaceBusyId || finalizingPayment) return
+    const prev = marketplace
+    setMarketplaceBusyId('clear')
+    try {
+      const res = await api.delete('/cash-drawer/marketplace/cart')
+      setMarketplace(res.data as MarketplaceState)
+    } catch {
+      if (prev) setMarketplace(prev)
+      setError('Could not clear cart.')
+    } finally {
+      setMarketplaceBusyId(null)
+    }
+  }
+
+  const openPayDialog = () => {
+    if (cartTotalCents <= 0) {
+      setError('Add items to the cart before taking payment.')
+      return
+    }
+    // Default: all cash (front desk can edit for split / all card)
+    setPayCashAmount((cartTotalCents / 100).toFixed(2))
+    setPayCardAmount('0.00')
+    setPayError(null)
+    setShowPayDialog(true)
+  }
+
+  const setPayAllCash = () => {
+    setPayCashAmount((cartTotalCents / 100).toFixed(2))
+    setPayCardAmount('0.00')
+    setPayError(null)
+  }
+
+  const setPayAllCard = () => {
+    setPayCashAmount('0.00')
+    setPayCardAmount((cartTotalCents / 100).toFixed(2))
+    setPayError(null)
+  }
+
+  const onPayCashChange = (value: string) => {
+    setPayCashAmount(value)
+    setPayError(null)
+    const cash = Math.round(parseFloat(value || '0') * 100)
+    if (!Number.isFinite(cash) || cash < 0) return
+    const remainder = Math.max(0, cartTotalCents - cash)
+    setPayCardAmount((remainder / 100).toFixed(2))
+  }
+
+  const onPayCardChange = (value: string) => {
+    setPayCardAmount(value)
+    setPayError(null)
+    const card = Math.round(parseFloat(value || '0') * 100)
+    if (!Number.isFinite(card) || card < 0) return
+    const remainder = Math.max(0, cartTotalCents - card)
+    setPayCashAmount((remainder / 100).toFixed(2))
+  }
+
+  const confirmPay = async () => {
+    const cashDollars = parseFloat(payCashAmount || '0')
+    const cardDollars = parseFloat(payCardAmount || '0')
+    if (!Number.isFinite(cashDollars) || cashDollars < 0) {
+      setPayError('Enter a valid cash amount')
+      return
+    }
+    if (!Number.isFinite(cardDollars) || cardDollars < 0) {
+      setPayError('Enter a valid card amount')
+      return
+    }
+    const cash_cents = Math.round(cashDollars * 100)
+    const card_cents = Math.round(cardDollars * 100)
+    if (cash_cents + card_cents !== cartTotalCents) {
+      setPayError(
+        `Cash + card must equal cart total ($${(cartTotalCents / 100).toFixed(2)})`
+      )
+      return
+    }
+    if (cash_cents === 0 && card_cents === 0) {
+      setPayError('Enter a payment amount')
+      return
+    }
+    setFinalizingPayment(true)
+    setPayError(null)
+    try {
+      const res = await api.post('/cash-drawer/marketplace/finalize', {
+        cash_cents,
+        card_cents,
+      })
+      setMarketplace(res.data as MarketplaceState)
+      setShowPayDialog(false)
+      const parts: string[] = []
+      if (cash_cents > 0) parts.push(`Cash ${formatCurrencyCents(cash_cents)}`)
+      if (card_cents > 0) parts.push(`Card ${formatCurrencyCents(card_cents)}`)
+      setMessage(`Sale recorded · ${parts.join(' + ')}`)
+    } catch (e: unknown) {
+      const msg =
+        (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail ||
+        'Could not finalize payment'
+      setPayError(typeof msg === 'string' ? msg : 'Could not finalize payment')
+    } finally {
+      setFinalizingPayment(false)
     }
   }
 
@@ -677,7 +828,7 @@ export default function PunchInOutPanel({ user, compact = false }: PunchInOutPan
       const collectedValue = parseFloat(collectedCash)
       const dropValue = parseFloat(dropAmount)
       if (isNaN(collectedValue) || collectedValue < 0) {
-        setCashError('Please enter a valid collected cash amount')
+        setCashError('Please enter a valid room sale amount')
         return
       }
       if (isNaN(dropValue) || dropValue < 0) {
@@ -843,65 +994,120 @@ export default function PunchInOutPanel({ user, compact = false }: PunchInOutPan
         ownsActiveDrawer && (
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_14rem]">
           <div className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm sm:p-5">
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 sm:gap-6">
-              {/* Left — sales list */}
-              <div>
-                <div className="mb-2 flex items-baseline justify-between gap-3">
-                  <h3 className="text-sm font-semibold text-slate-900">Total:</h3>
-                  <p className="text-sm font-semibold tabular-nums text-slate-900">
-                    {formatCurrencyCents(marketplaceTotalCents)}
-                  </p>
-                </div>
-                <ul className="space-y-1.5">
-                  {marketplaceRows.map((item) => (
-                    <li
-                      key={`line-${item.id}`}
-                      className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-3 text-sm text-slate-700"
+            <div className="grid grid-cols-1 gap-5 lg:grid-cols-2 lg:gap-6">
+              {/* Current cart + pay */}
+              <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-3 sm:p-4">
+                <div className="mb-2 flex items-center justify-between gap-2">
+                  <h3 className="text-sm font-semibold text-slate-900">Current cart</h3>
+                  {cartRows.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => void clearCart()}
+                      disabled={Boolean(marketplaceBusyId) || finalizingPayment}
+                      className="text-xs font-medium text-slate-400 hover:text-red-600 disabled:opacity-50"
                     >
-                      <span className="truncate font-medium text-slate-800">
-                        {item.label}
-                        <span className="ml-1 font-normal tabular-nums text-slate-400">
-                          ({item.qty})
-                        </span>
-                      </span>
-                      <span className="tabular-nums text-slate-500">
-                        {formatCurrencyCents(item.price_cents * item.qty)}
-                      </span>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        disabled={marketplaceBusyId === item.id || item.qty <= 0}
-                        onClick={() => void adjustMarketplaceQty(item.id, -1)}
-                        aria-label={`Decrease ${item.label}`}
-                        className="h-7 w-7 shrink-0 px-0"
+                      Clear
+                    </button>
+                  )}
+                </div>
+                {cartRows.length === 0 ? (
+                  <p className="py-4 text-center text-sm text-slate-400">No items yet</p>
+                ) : (
+                  <ul className="max-h-48 space-y-1.5 overflow-y-auto">
+                    {cartRows.map((row) => (
+                      <li
+                        key={`cart-${row.id}`}
+                        className="flex items-center justify-between gap-2 text-sm"
                       >
-                        −
-                      </Button>
-                    </li>
-                  ))}
-                </ul>
+                        <span className="min-w-0 truncate font-medium text-slate-800">
+                          {row.label}{' '}
+                          <span className="font-normal text-slate-400">× {row.qty}</span>
+                        </span>
+                        <div className="flex shrink-0 items-center gap-2">
+                          <span className="tabular-nums text-slate-600">
+                            {formatCurrencyCents(row.qty * row.price_cents)}
+                          </span>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            disabled={Boolean(marketplaceBusyId) || finalizingPayment}
+                            onClick={() => void adjustCartQty(row.id, -1)}
+                            aria-label={`Remove one ${row.label}`}
+                            className="h-7 w-7 px-0"
+                          >
+                            −
+                          </Button>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                <div className="mt-3 flex items-baseline justify-between border-t border-slate-200 pt-3">
+                  <span className="text-sm font-semibold text-slate-900">Due</span>
+                  <span className="text-base font-semibold tabular-nums text-slate-900">
+                    {formatCurrencyCents(cartTotalCents)}
+                  </span>
+                </div>
+                <div className="mt-3 grid grid-cols-1 gap-2">
+                  <button
+                    type="button"
+                    disabled={cartTotalCents <= 0 || Boolean(marketplaceBusyId) || finalizingPayment}
+                    onClick={() => openPayDialog()}
+                    className="rounded-xl bg-slate-900 px-3 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    Take payment
+                  </button>
+                </div>
               </div>
 
-              {/* Right — add buttons */}
-              <div className="sm:border-l sm:border-slate-200 sm:pl-6">
-                <h3 className="mb-2 text-sm font-semibold text-slate-900">Marketplace</h3>
+              {/* Items → cart */}
+              <div>
+                <h3 className="mb-1 text-sm font-semibold text-slate-900">Marketplace</h3>
+                <p className="mb-3 text-xs text-slate-400">Tap items to add to the current cart</p>
                 <div className="flex flex-wrap gap-2">
-                  {marketplaceRows.map((item) => (
+                  {catalogItems.map((item) => (
                     <button
                       key={`btn-${item.id}`}
                       type="button"
-                      disabled={marketplaceBusyId === item.id}
-                      onClick={() => void adjustMarketplaceQty(item.id, 1)}
-                      className={`inline-flex h-8 items-center justify-center rounded-lg border px-3 text-xs font-medium transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60 ${
+                      disabled={Boolean(marketplaceBusyId) || finalizingPayment}
+                      onClick={() => void adjustCartQty(item.id, 1)}
+                      className={`inline-flex h-9 items-center justify-center rounded-lg border px-3 text-xs font-medium transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60 ${
                         marketplaceButtonColors[item.id] ||
                         'border-slate-300 bg-white text-slate-800 hover:bg-slate-50'
                       }`}
                     >
                       {item.label}
+                      <span className="ml-1.5 tabular-nums opacity-70">
+                        {formatCurrencyCents(item.price_cents)}
+                      </span>
                     </button>
                   ))}
                 </div>
+              </div>
+            </div>
+
+            {/* Shift sales (finalized) */}
+            <div className="mt-5 border-t border-slate-100 pt-4">
+              <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
+                <h3 className="text-sm font-semibold text-slate-900">Today&apos;s sales</h3>
+                <p className="text-sm font-semibold tabular-nums text-slate-900">
+                  {formatCurrencyCents(marketplaceTotalCents)}
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-4 text-xs text-slate-500">
+                <span>
+                  Cash{' '}
+                  <span className="font-medium tabular-nums text-emerald-700">
+                    {formatCurrencyCents(marketplaceCashCents)}
+                  </span>
+                </span>
+                <span>
+                  Card{' '}
+                  <span className="font-medium tabular-nums text-sky-700">
+                    {formatCurrencyCents(marketplaceCardCents)}
+                  </span>
+                </span>
               </div>
             </div>
           </div>
@@ -926,6 +1132,20 @@ export default function PunchInOutPanel({ user, compact = false }: PunchInOutPan
                   <p className="mt-0.5 text-lg font-semibold tabular-nums tracking-tight text-slate-900">
                     {formatCurrencyCents(lastShift.marketplace_sales_cents)}
                   </p>
+                  <div className="mt-1 space-y-0.5 text-[11px] text-slate-500">
+                    <div className="flex justify-between gap-2">
+                      <span>Cash</span>
+                      <span className="tabular-nums text-emerald-700">
+                        {formatCurrencyCents(lastShift.marketplace_cash_cents ?? 0)}
+                      </span>
+                    </div>
+                    <div className="flex justify-between gap-2">
+                      <span>Card</span>
+                      <span className="tabular-nums text-sky-700">
+                        {formatCurrencyCents(lastShift.marketplace_card_cents ?? 0)}
+                      </span>
+                    </div>
+                  </div>
                 </div>
               </div>
             ) : (
@@ -948,7 +1168,9 @@ export default function PunchInOutPanel({ user, compact = false }: PunchInOutPan
 
       {user.role === 'FRONTDESK' && currentStatus === 'in' && !marketplaceConfigured && (
         <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/80 px-4 py-3 text-sm text-slate-500">
-          Marketplace buttons appear here after an admin adds items in Settings → Cash Drawer.
+          {marketplace?.marketplace_enabled === false
+            ? 'Marketplace is turned off. An admin can enable it in Settings → Marketplace.'
+            : 'Marketplace buttons appear here after an admin adds items in Settings → Marketplace.'}
         </div>
       )}
 
@@ -1147,6 +1369,90 @@ export default function PunchInOutPanel({ user, compact = false }: PunchInOutPan
         onCancel={cancelPunchConfirm}
       />
 
+      {showPayDialog &&
+        typeof document !== 'undefined' &&
+        createPortal(
+          <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/40 p-4">
+            <div className="w-full max-w-sm rounded-2xl border border-slate-200 bg-white p-5 shadow-xl">
+              <h3 className="text-lg font-semibold text-slate-900">Take payment</h3>
+              <p className="mt-1 text-sm text-slate-500">
+                Cart total {formatCurrencyCents(cartTotalCents)}. Split across cash and
+                card — amounts must add up to the total.
+              </p>
+              <div className="mt-3 flex gap-2">
+                <button
+                  type="button"
+                  onClick={setPayAllCash}
+                  disabled={finalizingPayment}
+                  className="flex-1 rounded-lg border border-emerald-200 bg-emerald-50 px-2 py-1.5 text-xs font-medium text-emerald-800 hover:bg-emerald-100"
+                >
+                  All cash
+                </button>
+                <button
+                  type="button"
+                  onClick={setPayAllCard}
+                  disabled={finalizingPayment}
+                  className="flex-1 rounded-lg border border-sky-200 bg-sky-50 px-2 py-1.5 text-xs font-medium text-sky-800 hover:bg-sky-100"
+                >
+                  All card
+                </button>
+              </div>
+              <label className="mt-4 block text-sm">
+                <span className="text-emerald-800">Cash ($)</span>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={payCashAmount}
+                  onChange={(e) => onPayCashChange(e.target.value)}
+                  className="mt-1 w-full rounded-xl border border-emerald-200 px-3 py-2.5 text-sm tabular-nums"
+                  disabled={finalizingPayment}
+                  autoFocus
+                />
+              </label>
+              <label className="mt-3 block text-sm">
+                <span className="text-sky-800">Card ($)</span>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={payCardAmount}
+                  onChange={(e) => onPayCardChange(e.target.value)}
+                  className="mt-1 w-full rounded-xl border border-sky-200 px-3 py-2.5 text-sm tabular-nums"
+                  disabled={finalizingPayment}
+                />
+              </label>
+              <p className="mt-2 text-xs text-slate-500">
+                Entering one amount auto-fills the other to match the cart total.
+              </p>
+              {payError && (
+                <p className="mt-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-600">
+                  {payError}
+                </p>
+              )}
+              <div className="mt-5 flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowPayDialog(false)}
+                  disabled={finalizingPayment}
+                  className="flex-1 rounded-xl border border-slate-200 px-3 py-2.5 text-sm font-medium text-slate-600 hover:bg-slate-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void confirmPay()}
+                  disabled={finalizingPayment}
+                  className="flex-1 rounded-xl bg-slate-900 px-3 py-2.5 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-50"
+                >
+                  {finalizingPayment ? 'Recording…' : 'Confirm sale'}
+                </button>
+              </div>
+            </div>
+          </div>,
+          document.body
+        )}
+
       {showCashDialog &&
         typeof document !== 'undefined' &&
         createPortal(
@@ -1214,7 +1520,7 @@ export default function PunchInOutPanel({ user, compact = false }: PunchInOutPan
                     {(
                       [
                         {
-                          label: 'Collected cash',
+                          label: 'Room sale',
                           value: collectedCash,
                           set: setCollectedCash,
                           hint: 'Total cash collected from customers',
@@ -1267,14 +1573,30 @@ export default function PunchInOutPanel({ user, compact = false }: PunchInOutPan
                     ))}
 
                     {marketplaceConfigured && (
-                      <div className="grid grid-cols-1 items-center gap-2 rounded-xl border border-slate-200 bg-slate-50/80 px-3 py-3 sm:grid-cols-[minmax(0,1fr)_9.5rem] sm:gap-4">
-                        <CashInfoLabel
-                          label="Marketplace sales"
-                          hint="From dashboard item counts (read-only)"
-                        />
-                        <p className="text-right text-sm font-semibold tabular-nums text-slate-900 sm:pr-1">
-                          {formatCurrencyCents(marketplaceTotalCents)}
-                        </p>
+                      <div className="space-y-2 rounded-xl border border-slate-200 bg-slate-50/80 px-3 py-3">
+                        <div className="grid grid-cols-1 items-center gap-2 sm:grid-cols-[minmax(0,1fr)_9.5rem] sm:gap-4">
+                          <CashInfoLabel
+                            label="Marketplace sales"
+                            hint="Finalized Cash/Card sales from the dashboard (read-only)"
+                          />
+                          <p className="text-right text-sm font-semibold tabular-nums text-slate-900 sm:pr-1">
+                            {formatCurrencyCents(marketplaceTotalCents)}
+                          </p>
+                        </div>
+                        <div className="flex justify-between gap-3 border-t border-slate-200/80 pt-2 text-xs text-slate-500">
+                          <span>
+                            Cash{' '}
+                            <span className="font-medium tabular-nums text-emerald-700">
+                              {formatCurrencyCents(marketplaceCashCents)}
+                            </span>
+                          </span>
+                          <span>
+                            Card{' '}
+                            <span className="font-medium tabular-nums text-sky-700">
+                              {formatCurrencyCents(marketplaceCardCents)}
+                            </span>
+                          </span>
+                        </div>
                       </div>
                     )}
                   </>

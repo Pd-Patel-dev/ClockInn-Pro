@@ -81,6 +81,7 @@ export interface AppHeaderProps {
   onMobileMenuToggle?: () => void
   showMobileNavButton?: boolean
   breadcrumbs?: BreadcrumbItem[]
+  cashDrawerEnabled?: boolean
 }
 
 export function AppHeader({
@@ -93,6 +94,7 @@ export function AppHeader({
   onMobileMenuToggle,
   showMobileNavButton,
   breadcrumbs: breadcrumbsProp,
+  cashDrawerEnabled = false,
 }: AppHeaderProps) {
   const pathname = usePathname()
   const headerRef = useRef<HTMLElement>(null)
@@ -476,19 +478,30 @@ export function AppHeader({
                         >
                           Leave
                         </Link>
-                        <Link
-                          href="/admin/shift-log"
-                          onClick={() => setNotifOpen(false)}
-                          className="text-xs font-medium text-blue-600 hover:text-blue-700"
-                        >
-                          Shift Log
-                        </Link>
+                        {cashDrawerEnabled && (
+                          <>
+                            <Link
+                              href="/admin/shift-log"
+                              onClick={() => setNotifOpen(false)}
+                              className="text-xs font-medium text-blue-600 hover:text-blue-700"
+                            >
+                              Drawer Log
+                            </Link>
+                            <Link
+                              href="/admin/cash-management"
+                              onClick={() => setNotifOpen(false)}
+                              className="text-xs font-medium text-blue-600 hover:text-blue-700"
+                            >
+                              Cash
+                            </Link>
+                          </>
+                        )}
                         <Link
                           href="/time-entries"
                           onClick={() => setNotifOpen(false)}
                           className="text-xs font-medium text-blue-600 hover:text-blue-700"
                         >
-                          Time entries
+                          Punch Log
                         </Link>
                       </>
                     ) : (

@@ -1,7 +1,7 @@
 'use client'
 
-import { useEffect, useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { useEffect, useState, type ReactNode } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import Layout from '@/components/Layout'
 import api from '@/lib/api'
 import { getCurrentUser } from '@/lib/auth'
@@ -11,6 +11,83 @@ import { z } from 'zod'
 import logger from '@/lib/logger'
 import { useToast } from '@/components/Toast'
 import { DEFAULT_PUNCH_ALLOWED_ROLES, PUNCH_ROLE_OPTIONS } from '@/lib/punch'
+import RolesPermissionsTab from '@/components/settings/RolesPermissionsTab'
+import { InfoTip } from '@/components/ui/InfoTip'
+
+function FieldLabel({
+  children,
+  tip,
+  className = 'text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-400',
+}: {
+  children: ReactNode
+  tip: string
+  className?: string
+}) {
+  return (
+    <span className={`inline-flex items-center gap-1.5 ${className}`}>
+      <span>{children}</span>
+      <InfoTip label={typeof children === 'string' ? children : 'More info'} content={tip} />
+    </span>
+  )
+}
+
+function SectionTitle({
+  children,
+  tip,
+  as: Tag = 'h3',
+  subtitle,
+}: {
+  children: ReactNode
+  tip: string
+  as?: 'h2' | 'h3'
+  subtitle?: string
+}) {
+  if (Tag === 'h2') {
+    return (
+      <div className="border-b border-slate-100 px-5 py-4 sm:px-6">
+        <Tag className="inline-flex items-center gap-1.5 text-sm font-semibold text-slate-900">
+          {children}
+          <InfoTip label={typeof children === 'string' ? children : 'More info'} content={tip} />
+        </Tag>
+        {subtitle && <p className="mt-0.5 text-xs text-slate-500">{subtitle}</p>}
+      </div>
+    )
+  }
+  return (
+    <Tag className="inline-flex items-center gap-1.5 text-sm font-semibold text-slate-900 mb-2">
+      {children}
+      <InfoTip label={typeof children === 'string' ? children : 'More info'} content={tip} />
+    </Tag>
+  )
+}
+
+function StatCard({
+  label,
+  value,
+  hint,
+}: {
+  label: string
+  value: string | number
+  hint?: string
+}) {
+  const valueStr = String(value)
+  const compact = valueStr.length > 12
+  return (
+    <div className="rounded-2xl border border-slate-200/80 bg-white px-5 py-4 shadow-sm">
+      <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-400">{label}</p>
+      <p
+        className={`mt-1 font-semibold tracking-tight text-slate-900 ${
+          compact ? 'truncate text-base sm:text-lg' : 'text-2xl tabular-nums'
+        }`}
+        title={valueStr}
+      >
+        {value}
+      </p>
+      {hint && <p className="mt-0.5 text-xs text-slate-500">{hint}</p>}
+    </div>
+  )
+}
+
 const companyNameSchema = z.object({
   name: z.string().min(1, 'Company name is required').max(255, 'Company name is too long'),
 })
@@ -19,6 +96,9 @@ const companySettingsSchema = z.object({
   timezone: z.string().min(1, 'Timezone is required'),
   payroll_week_start_day: z.number().int().min(0).max(6),
   biweekly_anchor_date: z.string().optional().nullable(),
+  last_pay_date: z.string().optional().nullable(),
+  payroll_pay_type: z.enum(['WEEKLY', 'BIWEEKLY']).optional().nullable(),
+  payroll_reminder_enabled: z.boolean().optional(),
   overtime_enabled: z.boolean(),
   overtime_threshold_hours_per_week: z.number().int().min(1).max(168),
   overtime_multiplier_default: z.string().transform((val) => {
@@ -31,6 +111,9 @@ const companySettingsSchema = z.object({
   schedule_day_start_hour: z.number().int().min(0).max(23),
   schedule_day_end_hour: z.number().int().min(0).max(23),
   shift_notes_enabled: z.boolean(),
+  auto_clock_out_enabled: z.boolean(),
+  /** Hours after scheduled end before auto clock-out runs (0–12). Stored as minutes. */
+  auto_clock_out_grace_hours: z.number().int().min(0).max(12),
   punch_allowed_roles: z.array(z.string()).optional(),
 })
 
@@ -49,6 +132,10 @@ const cashDrawerSettingsSchema = z.object({
   cash_drawer_variance_threshold_cents: z.number().int().min(0),
   cash_drawer_allow_edit: z.boolean(),
   cash_drawer_require_manager_review: z.boolean(),
+})
+
+const marketplaceSettingsSchema = z.object({
+  marketplace_enabled: z.boolean(),
   marketplace_items: z.array(marketplaceItemSchema).optional(),
 })
 
@@ -76,12 +163,16 @@ const geofenceSettingsSchema = z.object({
 type CompanyNameForm = z.infer<typeof companyNameSchema>
 type CompanySettingsForm = z.infer<typeof companySettingsSchema>
 type CashDrawerSettingsForm = z.infer<typeof cashDrawerSettingsSchema>
+type MarketplaceSettingsForm = z.infer<typeof marketplaceSettingsSchema>
 type GeofenceSettingsForm = z.infer<typeof geofenceSettingsSchema>
 
 interface CompanySettings {
   timezone: string
   payroll_week_start_day: number
   biweekly_anchor_date: string | null
+  last_pay_date?: string | null
+  payroll_pay_type?: 'WEEKLY' | 'BIWEEKLY' | null
+  payroll_reminder_enabled?: boolean
   overtime_enabled: boolean
   overtime_threshold_hours_per_week: number
   overtime_multiplier_default: number
@@ -95,6 +186,7 @@ interface CompanySettings {
   cash_drawer_variance_threshold_cents?: number
   cash_drawer_allow_edit?: boolean
   cash_drawer_require_manager_review?: boolean
+  marketplace_enabled?: boolean
   marketplace_items?: { id: string; label: string; price_cents: number }[]
   schedule_day_start_hour?: number
   schedule_day_end_hour?: number
@@ -105,6 +197,8 @@ interface CompanySettings {
   kiosk_network_restriction_enabled?: boolean
   kiosk_allowed_ips?: string[]
   shift_notes_enabled?: boolean
+  auto_clock_out_enabled?: boolean
+  auto_clock_out_grace_minutes?: number
   punch_allowed_roles?: string[]
 }
 
@@ -126,15 +220,16 @@ interface CompanyInfo {
   admin: AdminInfo | null
 }
 
+type SettingsTab = 'info' | 'payroll' | 'cash' | 'marketplace' | 'location' | 'kiosk' | 'roles' | 'email'
+
 export default function AdminSettingsPage() {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const toast = useToast()
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [companyInfo, setCompanyInfo] = useState<CompanyInfo | null>(null)
-  const [activeTab, setActiveTab] = useState<
-    'info' | 'payroll' | 'cash' | 'location' | 'kiosk' | 'email'
-  >('info')
+  const [activeTab, setActiveTab] = useState<SettingsTab>('info')
   const [geofenceGettingLocation, setGeofenceGettingLocation] = useState(false)
   const [gmailHealth, setGmailHealth] = useState<any>(null)
   const [checkingGmail, setCheckingGmail] = useState(false)
@@ -178,6 +273,19 @@ export default function AdminSettingsPage() {
   
   const cashDrawerEnabled = watchCashDrawer('cash_drawer_enabled')
   const cashDrawerRequiredForAll = watchCashDrawer('cash_drawer_required_for_all')
+
+  const {
+    control: controlMarketplace,
+    handleSubmit: handleSubmitMarketplace,
+    reset: resetMarketplace,
+    watch: watchMarketplace,
+  } = useForm<MarketplaceSettingsForm>({
+    resolver: zodResolver(marketplaceSettingsSchema),
+    defaultValues: {
+      marketplace_enabled: false,
+    },
+  })
+  const marketplaceEnabled = watchMarketplace('marketplace_enabled')
   const [marketplaceItems, setMarketplaceItems] = useState<
     { id: string; label: string; price_cents: number }[]
   >([])
@@ -223,6 +331,21 @@ export default function AdminSettingsPage() {
     checkAdminAndFetch()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [router])
+
+  useEffect(() => {
+    const tab = searchParams.get('tab')
+    if (
+      tab === 'roles' ||
+      tab === 'payroll' ||
+      tab === 'cash' ||
+      tab === 'marketplace' ||
+      tab === 'location' ||
+      tab === 'kiosk' ||
+      tab === 'info'
+    ) {
+      setActiveTab(tab)
+    }
+  }, [searchParams])
 
   // Set kiosk URL on client side to avoid hydration mismatch
   useEffect(() => {
@@ -293,6 +416,9 @@ export default function AdminSettingsPage() {
           timezone: response.data.settings.timezone,
           payroll_week_start_day: response.data.settings.payroll_week_start_day,
           biweekly_anchor_date: response.data.settings.biweekly_anchor_date ? (typeof response.data.settings.biweekly_anchor_date === 'string' ? response.data.settings.biweekly_anchor_date.split('T')[0] : response.data.settings.biweekly_anchor_date) : '',
+          last_pay_date: response.data.settings.last_pay_date ? (typeof response.data.settings.last_pay_date === 'string' ? response.data.settings.last_pay_date.split('T')[0] : response.data.settings.last_pay_date) : '',
+          payroll_pay_type: response.data.settings.payroll_pay_type || 'WEEKLY',
+          payroll_reminder_enabled: response.data.settings.payroll_reminder_enabled !== false,
           overtime_enabled: response.data.settings.overtime_enabled,
           overtime_threshold_hours_per_week: response.data.settings.overtime_threshold_hours_per_week,
           overtime_multiplier_default: response.data.settings.overtime_multiplier_default.toString(),
@@ -301,6 +427,14 @@ export default function AdminSettingsPage() {
           schedule_day_start_hour: response.data.settings.schedule_day_start_hour ?? 7,
           schedule_day_end_hour: response.data.settings.schedule_day_end_hour ?? 7,
           shift_notes_enabled: response.data.settings.shift_notes_enabled ?? true,
+          auto_clock_out_enabled: response.data.settings.auto_clock_out_enabled ?? true,
+          auto_clock_out_grace_hours: Math.min(
+            12,
+            Math.max(
+              0,
+              Math.round((response.data.settings.auto_clock_out_grace_minutes ?? 0) / 60)
+            )
+          ),
           punch_allowed_roles:
             response.data.settings.punch_allowed_roles ?? [...DEFAULT_PUNCH_ALLOWED_ROLES],
         })
@@ -315,9 +449,13 @@ export default function AdminSettingsPage() {
           cash_drawer_variance_threshold_cents: response.data.settings.cash_drawer_variance_threshold_cents ?? 2000,
           cash_drawer_allow_edit: response.data.settings.cash_drawer_allow_edit ?? true,
           cash_drawer_require_manager_review: response.data.settings.cash_drawer_require_manager_review ?? false,
-          marketplace_items: response.data.settings.marketplace_items ?? [],
         })
-        setMarketplaceItems(response.data.settings.marketplace_items ?? [])
+        const items = response.data.settings.marketplace_items ?? []
+        setMarketplaceItems(items)
+        resetMarketplace({
+          marketplace_enabled:
+            response.data.settings.marketplace_enabled ?? items.length > 0,
+        })
         resetGeofence({
           geofence_enabled: response.data.settings.geofence_enabled ?? false,
           office_latitude: response.data.settings.office_latitude ?? undefined,
@@ -362,6 +500,9 @@ export default function AdminSettingsPage() {
         timezone: data.timezone,
         payroll_week_start_day: data.payroll_week_start_day,
         biweekly_anchor_date: data.biweekly_anchor_date || null,
+        last_pay_date: data.last_pay_date || null,
+        payroll_pay_type: data.payroll_pay_type || 'WEEKLY',
+        payroll_reminder_enabled: data.payroll_reminder_enabled !== false,
         overtime_enabled: data.overtime_enabled,
         overtime_threshold_hours_per_week: data.overtime_threshold_hours_per_week,
         overtime_multiplier_default: parseFloat(data.overtime_multiplier_default),
@@ -370,6 +511,8 @@ export default function AdminSettingsPage() {
         schedule_day_start_hour: data.schedule_day_start_hour,
         schedule_day_end_hour: data.schedule_day_end_hour,
         shift_notes_enabled: data.shift_notes_enabled,
+        auto_clock_out_enabled: data.auto_clock_out_enabled,
+        auto_clock_out_grace_minutes: data.auto_clock_out_grace_hours * 60,
         punch_allowed_roles: data.punch_allowed_roles || [],
       }
       
@@ -387,6 +530,9 @@ export default function AdminSettingsPage() {
           timezone: response.data.settings.timezone,
           payroll_week_start_day: response.data.settings.payroll_week_start_day,
           biweekly_anchor_date: response.data.settings.biweekly_anchor_date ? (typeof response.data.settings.biweekly_anchor_date === 'string' ? response.data.settings.biweekly_anchor_date.split('T')[0] : response.data.settings.biweekly_anchor_date) : '',
+          last_pay_date: response.data.settings.last_pay_date ? (typeof response.data.settings.last_pay_date === 'string' ? response.data.settings.last_pay_date.split('T')[0] : response.data.settings.last_pay_date) : '',
+          payroll_pay_type: response.data.settings.payroll_pay_type || 'WEEKLY',
+          payroll_reminder_enabled: response.data.settings.payroll_reminder_enabled !== false,
           overtime_enabled: response.data.settings.overtime_enabled,
           overtime_threshold_hours_per_week: response.data.settings.overtime_threshold_hours_per_week,
           overtime_multiplier_default: response.data.settings.overtime_multiplier_default.toString(),
@@ -395,6 +541,14 @@ export default function AdminSettingsPage() {
           schedule_day_start_hour: response.data.settings.schedule_day_start_hour ?? 7,
           schedule_day_end_hour: response.data.settings.schedule_day_end_hour ?? 7,
           shift_notes_enabled: response.data.settings.shift_notes_enabled ?? true,
+          auto_clock_out_enabled: response.data.settings.auto_clock_out_enabled ?? true,
+          auto_clock_out_grace_hours: Math.min(
+            12,
+            Math.max(
+              0,
+              Math.round((response.data.settings.auto_clock_out_grace_minutes ?? 0) / 60)
+            )
+          ),
           punch_allowed_roles:
             response.data.settings.punch_allowed_roles ?? [...DEFAULT_PUNCH_ALLOWED_ROLES],
         }, { keepDefaultValues: false })
@@ -420,12 +574,6 @@ export default function AdminSettingsPage() {
   const onSubmitCashDrawer = async (data: CashDrawerSettingsForm) => {
     setSaving(true)
     try {
-      const blankLabels = marketplaceItems.some((i) => !i.label.trim())
-      if (blankLabels) {
-        toast.error('Each marketplace item needs a label before saving.')
-        setSaving(false)
-        return
-      }
       const updateData: any = {
         cash_drawer_enabled: data.cash_drawer_enabled,
         cash_drawer_required_for_all: data.cash_drawer_required_for_all,
@@ -435,11 +583,6 @@ export default function AdminSettingsPage() {
         cash_drawer_variance_threshold_cents: data.cash_drawer_variance_threshold_cents,
         cash_drawer_allow_edit: data.cash_drawer_allow_edit,
         cash_drawer_require_manager_review: data.cash_drawer_require_manager_review,
-        marketplace_items: marketplaceItems.map((i) => ({
-          id: i.id,
-          label: i.label.trim(),
-          price_cents: Math.max(0, Math.round(Number(i.price_cents) || 0)),
-        })),
       }
       
       logger.debug('Updating cash drawer settings', { updateData })
@@ -448,7 +591,6 @@ export default function AdminSettingsPage() {
       logger.debug('Cash drawer settings updated successfully', { response: response.data })
       
       setCompanyInfo(response.data)
-      setMarketplaceItems(response.data.settings.marketplace_items ?? [])
       
       setTimeout(() => {
         resetCashDrawer({
@@ -460,7 +602,6 @@ export default function AdminSettingsPage() {
           cash_drawer_variance_threshold_cents: response.data.settings.cash_drawer_variance_threshold_cents ?? 2000,
           cash_drawer_allow_edit: response.data.settings.cash_drawer_allow_edit ?? true,
           cash_drawer_require_manager_review: response.data.settings.cash_drawer_require_manager_review ?? false,
-          marketplace_items: response.data.settings.marketplace_items ?? [],
         }, { keepDefaultValues: false })
       }, 50)
       
@@ -475,6 +616,45 @@ export default function AdminSettingsPage() {
         errorDetails: error.response?.data 
       })
       toast.error(error.response?.data?.detail || 'Failed to update cash drawer settings')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const onSubmitMarketplace = async (data: MarketplaceSettingsForm) => {
+    setSaving(true)
+    try {
+      if (data.marketplace_enabled) {
+        const blankLabels = marketplaceItems.some((i) => !i.label.trim())
+        if (blankLabels) {
+          toast.error('Each marketplace item needs a label before saving.')
+          setSaving(false)
+          return
+        }
+      }
+      const updateData = {
+        marketplace_enabled: data.marketplace_enabled,
+        marketplace_items: marketplaceItems.map((i) => ({
+          id: i.id,
+          label: i.label.trim(),
+          price_cents: Math.max(0, Math.round(Number(i.price_cents) || 0)),
+        })),
+      }
+      const response = await api.put('/admin/company/settings', updateData)
+      setCompanyInfo(response.data)
+      const items = response.data.settings.marketplace_items ?? []
+      setMarketplaceItems(items)
+      resetMarketplace({
+        marketplace_enabled:
+          response.data.settings.marketplace_enabled ?? items.length > 0,
+      })
+      toast.success('Marketplace settings updated successfully!')
+    } catch (error: any) {
+      logger.error('Failed to update marketplace settings', error as Error, {
+        endpoint: '/admin/company/settings',
+        errorDetails: error.response?.data,
+      })
+      toast.error(error.response?.data?.detail || 'Failed to update marketplace settings')
     } finally {
       setSaving(false)
     }
@@ -562,11 +742,34 @@ export default function AdminSettingsPage() {
     label: i === 0 ? '12 AM' : i < 12 ? `${i} AM` : i === 12 ? '12 PM' : `${i - 12} PM`,
   }))
 
+  const handleTabChange = (tab: SettingsTab) => {
+    setActiveTab(tab)
+    router.replace(`/settings?tab=${tab}`, { scroll: false })
+  }
+
+  const adminTabs: { id: SettingsTab; label: string }[] = [
+    { id: 'info', label: 'Company' },
+    { id: 'payroll', label: 'General' },
+    { id: 'cash', label: 'Cash Drawer' },
+    { id: 'marketplace', label: 'Marketplace' },
+    { id: 'location', label: 'Location' },
+    { id: 'kiosk', label: 'Kiosk' },
+    { id: 'roles', label: 'Roles' },
+  ]
+
   if (loading) {
     return (
       <Layout>
-        <div className="px-4 py-6 sm:px-0">
-          <div className="text-center py-8">Loading...</div>
+        <div className="relative mx-auto max-w-6xl py-16">
+          <div className="space-y-3">
+            <div className="h-40 animate-pulse rounded-2xl bg-slate-200/80" />
+            <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+              {[0, 1, 2, 3].map((i) => (
+                <div key={i} className="h-20 animate-pulse rounded-2xl bg-slate-100" />
+              ))}
+            </div>
+            <div className="h-72 animate-pulse rounded-2xl bg-slate-100" />
+          </div>
         </div>
       </Layout>
     )
@@ -575,128 +778,198 @@ export default function AdminSettingsPage() {
   if (!companyInfo && user?.role === 'ADMIN') {
     return (
       <Layout>
-        <div className="px-4 py-6 sm:px-0">
-          <div className="text-center py-8 text-slate-500">Company information not found</div>
+        <div className="relative mx-auto max-w-6xl py-16">
+          <div className="rounded-2xl border border-slate-200/80 bg-white px-6 py-12 text-center shadow-sm">
+            <p className="text-sm text-slate-500">Company information not found</p>
+          </div>
         </div>
       </Layout>
     )
   }
-  
 
   return (
     <Layout>
-      <div className="px-4 py-6 sm:px-0">
-        <h1 className="text-2xl font-bold mb-6">
-          {user?.role === 'DEVELOPER' ? 'Email Service' : 'Company Settings'}
-        </h1>
-
-        {/* Tabs */}
-        <div className="border-b border-slate-200 mb-6">
-          <nav className="-mb-px flex space-x-8">
-            {user?.role === 'ADMIN' && (
-              <>
-                <button
-                  onClick={() => setActiveTab('info')}
-                  className={`py-4 px-1 border-b-2 font-medium text-sm ${
-                    activeTab === 'info'
-                      ? 'border-blue-500 text-blue-600'
-                      : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'
-                  }`}
-                >
-                  Company Information
-                </button>
-                <button
-                  onClick={() => setActiveTab('payroll')}
-                  className={`py-4 px-1 border-b-2 font-medium text-sm ${
-                    activeTab === 'payroll'
-                      ? 'border-blue-500 text-blue-600'
-                      : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'
-                  }`}
-                >
-                  General Settings
-                </button>
-                <button
-                  onClick={() => setActiveTab('cash')}
-                  className={`py-4 px-1 border-b-2 font-medium text-sm ${
-                    activeTab === 'cash'
-                      ? 'border-blue-500 text-blue-600'
-                      : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'
-                  }`}
-                >
-                  Cash Drawer
-                </button>
-                <button
-                  onClick={() => setActiveTab('location')}
-                  className={`py-4 px-1 border-b-2 font-medium text-sm ${
-                    activeTab === 'location'
-                      ? 'border-blue-500 text-blue-600'
-                      : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'
-                  }`}
-                >
-                  Punch Location
-                </button>
-                <button
-                  onClick={() => setActiveTab('kiosk')}
-                  className={`py-4 px-1 border-b-2 font-medium text-sm ${
-                    activeTab === 'kiosk'
-                      ? 'border-blue-500 text-blue-600'
-                      : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'
-                  }`}
-                >
-                  Kiosk Network
-                </button>
-              </>
-            )}
-          </nav>
+      <div className="relative mx-auto max-w-6xl">
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-x-0 -top-4 h-52 overflow-hidden"
+        >
+          <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_rgba(15,23,42,0.06),_transparent_65%)]" />
+          <div
+            className="absolute inset-0 opacity-[0.35]"
+            style={{
+              backgroundImage:
+                'linear-gradient(to right, rgb(226 232 240 / 0.55) 1px, transparent 1px), linear-gradient(to bottom, rgb(226 232 240 / 0.55) 1px, transparent 1px)',
+              backgroundSize: '28px 28px',
+              maskImage: 'linear-gradient(to bottom, black, transparent)',
+            }}
+          />
         </div>
+
+        <div className="relative space-y-6 pb-8">
+          <header className="overflow-hidden rounded-2xl border border-slate-800/10 shadow-[0_20px_50px_-28px_rgba(15,23,42,0.45)]">
+            <div className="relative bg-slate-900 px-5 py-6 sm:px-7 sm:py-8 text-white">
+              <div
+                aria-hidden
+                className="absolute inset-0 opacity-40"
+                style={{
+                  backgroundImage:
+                    'radial-gradient(circle at 12% 20%, rgba(45,212,191,0.28), transparent 42%), radial-gradient(circle at 88% 10%, rgba(59,130,246,0.22), transparent 36%)',
+                }}
+              />
+              <div
+                aria-hidden
+                className="absolute inset-x-0 bottom-0 h-px bg-gradient-to-r from-transparent via-white/20 to-transparent"
+              />
+              <div className="relative min-w-0">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+                  {user?.role === 'DEVELOPER' ? 'Developer tools' : 'Administration'}
+                </p>
+                <h1 className="mt-1 text-2xl font-semibold tracking-tight sm:text-3xl">
+                  {user?.role === 'DEVELOPER' ? 'Email Service' : 'Company Settings'}
+                </h1>
+                {user?.role === 'ADMIN' && companyInfo && (
+                  <>
+                    <p className="mt-2 max-w-xl text-sm text-slate-300">{companyInfo.name}</p>
+                    <div className="mt-3 flex flex-wrap items-center gap-2">
+                      <span className="inline-flex items-center rounded-lg bg-white/10 px-2.5 py-1 text-xs font-medium text-slate-200 ring-1 ring-white/10">
+                        {companyInfo.slug}
+                      </span>
+                      <span
+                        className={`inline-flex items-center rounded-lg px-2.5 py-1 text-xs font-medium ring-1 ${
+                          companyInfo.kiosk_enabled
+                            ? 'bg-emerald-500/20 text-emerald-200 ring-emerald-400/30'
+                            : 'bg-amber-500/20 text-amber-200 ring-amber-400/30'
+                        }`}
+                      >
+                        Kiosk {companyInfo.kiosk_enabled ? 'enabled' : 'disabled'}
+                      </span>
+                    </div>
+                  </>
+                )}
+                {user?.role === 'DEVELOPER' && (
+                  <p className="mt-2 max-w-xl text-sm text-slate-300">
+                    Manage Gmail API authentication for sending verification emails.
+                  </p>
+                )}
+              </div>
+            </div>
+          </header>
+
+          {user?.role === 'ADMIN' && companyInfo && (
+            <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+              <StatCard
+                label="Timezone"
+                value={companyInfo.settings.timezone.replace(/_/g, ' ')}
+                hint="Payroll & schedules"
+              />
+              <StatCard
+                label="Overtime"
+                value={companyInfo.settings.overtime_enabled ? 'On' : 'Off'}
+                hint={
+                  companyInfo.settings.overtime_enabled
+                    ? `${companyInfo.settings.overtime_threshold_hours_per_week}h threshold`
+                    : 'Not configured'
+                }
+              />
+              <StatCard
+                label="Cash drawer"
+                value={companyInfo.settings.cash_drawer_enabled ? 'On' : 'Off'}
+                hint={companyInfo.settings.cash_drawer_enabled ? 'Active' : 'Disabled'}
+              />
+              <StatCard
+                label="Kiosk"
+                value={companyInfo.kiosk_enabled ? 'Enabled' : 'Disabled'}
+                hint={companyInfo.slug}
+              />
+            </div>
+          )}
+
+          {user?.role === 'ADMIN' && (
+            <div className="-mx-1 overflow-x-auto pb-1">
+              <nav className="flex min-w-max gap-2 px-1">
+                {adminTabs.map((tab) => {
+                  const active = activeTab === tab.id
+                  return (
+                    <button
+                      key={tab.id}
+                      type="button"
+                      onClick={() => handleTabChange(tab.id)}
+                      className={`shrink-0 rounded-xl px-4 py-2.5 text-sm font-semibold transition ${
+                        active
+                          ? 'bg-slate-900 text-white shadow-sm'
+                          : 'border border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:text-slate-900'
+                      }`}
+                    >
+                      {tab.label}
+                    </button>
+                  )
+                })}
+              </nav>
+            </div>
+          )}
 
         {/* Company Information Tab - Admin Only */}
         {activeTab === 'info' && user?.role === 'ADMIN' && (
           <div className="space-y-6">
             {/* Kiosk URL Section */}
-            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-              <h3 className="text-lg font-medium text-blue-900 mb-2">Kiosk URL</h3>
-              <p className="text-sm text-blue-700 mb-3">
-                Share this URL with your employees for clock-in/clock-out. This URL is unique to your company.
-              </p>
-              <div className="flex items-center gap-3">
-                <input
-                  type="text"
-                  readOnly
-                  value={kioskUrl}
-                  className="flex-1 px-3 py-2 bg-white border border-blue-300 rounded-md text-sm font-mono text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  onClick={(e) => (e.target as HTMLInputElement).select()}
-                />
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (kioskUrl) {
-                      navigator.clipboard.writeText(kioskUrl)
-                      toast.success('Kiosk URL copied to clipboard!')
-                    }
-                  }}
-                  className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm font-medium"
-                >
-                  Copy URL
-                </button>
-              </div>
-              {companyInfo && !companyInfo.kiosk_enabled && (
-                <p className="text-sm text-red-600 mt-2">
-                  ⚠️ Kiosk is currently disabled for your company.
+            <div className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm">
+              <div className="border-b border-slate-100 px-5 py-4 sm:px-6">
+                <h3 className="inline-flex items-center gap-1.5 text-sm font-semibold text-slate-900">
+                  Kiosk URL
+                  <InfoTip
+                    label="Kiosk URL"
+                    content="Share this unique link with employees for clock-in/clock-out on a shared tablet or station."
+                  />
+                </h3>
+                <p className="mt-0.5 text-xs text-slate-500">
+                  Share this URL with your employees for clock-in/clock-out. This URL is unique to your company.
                 </p>
-              )}
+              </div>
+              <div className="space-y-3 px-5 py-5 sm:px-6">
+                <div className="flex items-center gap-3">
+                  <input
+                    type="text"
+                    readOnly
+                    value={kioskUrl}
+                    className="flex-1 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm font-mono text-slate-700 outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-900/10"
+                    onClick={(e) => (e.target as HTMLInputElement).select()}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (kioskUrl) {
+                        navigator.clipboard.writeText(kioskUrl)
+                        toast.success('Kiosk URL copied to clipboard!')
+                      }
+                    }}
+                    className="shrink-0 rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-slate-900/20"
+                  >
+                    Copy URL
+                  </button>
+                </div>
+                {companyInfo && !companyInfo.kiosk_enabled && (
+                  <p className="text-sm font-medium text-amber-700">
+                    Warning: Kiosk is currently disabled for your company.
+                  </p>
+                )}
+              </div>
             </div>
 
-            <div className="bg-white shadow rounded-lg p-6">
-              <h2 className="text-xl font-semibold mb-4">Company Information</h2>
+            <div className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm">
+              <SectionTitle as="h2" tip="Basic company identity and primary administrator contact details.">
+                Company Information
+              </SectionTitle>
               {companyInfo ? (
-              <form onSubmit={handleSubmitName(onSubmitName)} className="space-y-6">
+              <form onSubmit={handleSubmitName(onSubmitName)} className="space-y-6 px-5 py-5 sm:px-6">
               <div>
-                <label className="block text-sm font-medium text-slate-700">Company Name</label>
+                <label className="block text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-400">
+                  Company Name
+                </label>
                 <input
                   {...registerName('name')}
                   type="text"
-                  className="mt-1 block w-full px-3 py-2 border border-slate-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                  className="mt-1.5 block w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-900/10"
                 />
                 {nameErrors.name && (
                   <p className="mt-1 text-sm text-red-600">{nameErrors.name.message}</p>
@@ -709,7 +982,7 @@ export default function AdminSettingsPage() {
                   type="text"
                   value={companyInfo.id}
                   disabled
-                  className="mt-1 block w-full px-3 py-2 border border-slate-300 rounded-md shadow-sm bg-slate-100 text-slate-500 sm:text-sm cursor-not-allowed"
+                  className="mt-1.5 block w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-500 cursor-not-allowed"
                 />
               </div>
 
@@ -719,7 +992,7 @@ export default function AdminSettingsPage() {
                   type="text"
                   value={new Date(companyInfo.created_at).toLocaleString()}
                   disabled
-                  className="mt-1 block w-full px-3 py-2 border border-slate-300 rounded-md shadow-sm bg-slate-100 text-slate-500 sm:text-sm cursor-not-allowed"
+                  className="mt-1.5 block w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-500 cursor-not-allowed"
                 />
               </div>
 
@@ -735,7 +1008,7 @@ export default function AdminSettingsPage() {
                       type="text"
                       value={companyInfo.admin.name}
                       disabled
-                      className="mt-1 block w-full px-3 py-2 border border-slate-300 rounded-md shadow-sm bg-slate-100 text-slate-500 sm:text-sm cursor-not-allowed"
+                      className="mt-1.5 block w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-500 cursor-not-allowed"
                     />
                   </div>
 
@@ -745,7 +1018,7 @@ export default function AdminSettingsPage() {
                       type="text"
                       value={companyInfo.admin.email}
                       disabled
-                      className="mt-1 block w-full px-3 py-2 border border-slate-300 rounded-md shadow-sm bg-slate-100 text-slate-500 sm:text-sm cursor-not-allowed"
+                      className="mt-1.5 block w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-500 cursor-not-allowed"
                     />
                   </div>
 
@@ -755,7 +1028,7 @@ export default function AdminSettingsPage() {
                       type="text"
                       value={companyInfo.admin.id}
                       disabled
-                      className="mt-1 block w-full px-3 py-2 border border-slate-300 rounded-md shadow-sm bg-slate-100 text-slate-500 sm:text-sm cursor-not-allowed"
+                      className="mt-1.5 block w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-500 cursor-not-allowed"
                     />
                   </div>
 
@@ -765,7 +1038,7 @@ export default function AdminSettingsPage() {
                       type="text"
                       value={new Date(companyInfo.admin.created_at).toLocaleString()}
                       disabled
-                      className="mt-1 block w-full px-3 py-2 border border-slate-300 rounded-md shadow-sm bg-slate-100 text-slate-500 sm:text-sm cursor-not-allowed"
+                      className="mt-1.5 block w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-500 cursor-not-allowed"
                     />
                   </div>
 
@@ -776,7 +1049,7 @@ export default function AdminSettingsPage() {
                         type="text"
                         value={new Date(companyInfo.admin.last_login_at).toLocaleString()}
                         disabled
-                        className="mt-1 block w-full px-3 py-2 border border-slate-300 rounded-md shadow-sm bg-slate-100 text-slate-500 sm:text-sm cursor-not-allowed"
+                        className="mt-1.5 block w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-500 cursor-not-allowed"
                       />
                     </div>
                   )}
@@ -787,7 +1060,7 @@ export default function AdminSettingsPage() {
                 <button
                   type="submit"
                   disabled={saving}
-                  className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="rounded-xl bg-slate-900 px-4 py-2 text-white hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {saving ? 'Saving...' : 'Save Changes'}
                 </button>
@@ -803,11 +1076,14 @@ export default function AdminSettingsPage() {
         {/* Email Service Tab - Developer Only */}
         {activeTab === 'email' && user?.role === 'DEVELOPER' && (
           <div className="space-y-6">
-            <div className="bg-white shadow rounded-lg p-6">
-              <h2 className="text-xl font-semibold mb-4">Gmail API Configuration</h2>
-              <p className="text-sm text-slate-600 mb-6">
-                Manage Gmail API authentication for sending verification emails. The refresh token expires after 6 months of non-use.
-              </p>
+            <div className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm">
+              <div className="border-b border-slate-100 px-5 py-4 sm:px-6">
+                <h2 className="text-sm font-semibold text-slate-900">Gmail API Configuration</h2>
+                <p className="mt-0.5 text-xs text-slate-500">
+                  Manage Gmail API authentication for sending verification emails. The refresh token expires after 6 months of non-use.
+                </p>
+              </div>
+              <div className="px-5 py-5 sm:px-6">
 
               {/* Health Status */}
               <div className="mb-6">
@@ -856,7 +1132,7 @@ export default function AdminSettingsPage() {
                     </p>
                     <ol className="list-decimal list-inside text-sm text-yellow-800 space-y-2 mb-4">
                       <li>Visit <a href="https://developers.google.com/oauthplayground/" target="_blank" rel="noopener noreferrer" className="underline">Google OAuth 2.0 Playground</a></li>
-                      <li><strong>⚠️ CRITICAL:</strong> Click the Settings icon (⚙️) and check &quot;Use your own OAuth credentials&quot;</li>
+                      <li><strong>Critical:</strong> Click the Settings icon and check &quot;Use your own OAuth credentials&quot;</li>
                       <li>Enter your Client ID and Client Secret from Google Cloud Console</li>
                       <li>Select &quot;Gmail API v1&quot; → &quot;https://www.googleapis.com/auth/gmail.send&quot;</li>
                       <li>Click &quot;Authorize APIs&quot; and complete OAuth flow</li>
@@ -866,7 +1142,7 @@ export default function AdminSettingsPage() {
                     </ol>
                     <div className="mt-3 p-3 bg-red-50 border border-red-200 rounded">
                       <p className="text-xs text-red-800 font-medium">
-                        ⚠️ <strong>Important:</strong> If you use default Playground credentials (don&apos;t configure your own), the refresh token will expire in 24 hours. Always use your own OAuth credentials for long-lived tokens.
+                        <strong>Important:</strong> If you use default Playground credentials (don&apos;t configure your own), the refresh token will expire in 24 hours. Always use your own OAuth credentials for long-lived tokens.
                       </p>
                     </div>
                     <p className="text-xs text-yellow-700">
@@ -989,7 +1265,7 @@ export default function AdminSettingsPage() {
                     <textarea
                       name="tokenJson"
                       rows={6}
-                      className="w-full px-3 py-2 border border-slate-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 font-mono text-sm"
+                      className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 font-mono text-sm text-slate-900 shadow-sm outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-900/10"
                       placeholder='{"refresh_token": "...", "client_id": "...", "client_secret": "...", "token_uri": "https://oauth2.googleapis.com/token", "scopes": ["https://www.googleapis.com/auth/gmail.send"]}'
                     />
                     <p className="mt-1 text-xs text-slate-500">
@@ -998,7 +1274,7 @@ export default function AdminSettingsPage() {
                   </div>
                   <button
                     type="submit"
-                    className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="rounded-xl bg-slate-900 px-4 py-2 text-white hover:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-slate-900/10"
                   >
                     Update Token
                   </button>
@@ -1006,17 +1282,18 @@ export default function AdminSettingsPage() {
               </div>
 
               {/* Test Email */}
-              <div className="border-t pt-6 mt-6">
-                <h3 className="text-lg font-medium mb-4">Test Email Sending</h3>
+              <div className="border-t border-slate-100 pt-6 mt-6">
+                <h3 className="text-sm font-semibold text-slate-900 mb-4">Test Email Sending</h3>
                 <p className="text-sm text-slate-600 mb-4">
                   Send a test email to verify Gmail API is working correctly.
                 </p>
                 <button
                   onClick={handleTestGmail}
-                  className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="rounded-xl bg-slate-900 px-4 py-2 text-white hover:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-slate-900/10"
                 >
                   Send Test Email
                 </button>
+              </div>
               </div>
             </div>
           </div>
@@ -1024,21 +1301,27 @@ export default function AdminSettingsPage() {
 
         {/* General Settings Tab - Admin Only */}
         {activeTab === 'payroll' && user?.role === 'ADMIN' && (
-          <div className="bg-white shadow rounded-lg p-6">
-            <h2 className="text-xl font-semibold mb-4">General Settings</h2>
-            <p className="text-sm text-slate-600 mb-6">
-              Configure general company settings including timezone, overtime, time rounding, break policies, shift notes, and schedule view. These settings affect time tracking and payroll calculations.
-            </p>
-            <form onSubmit={handleSubmitSettings(onSubmitSettings)} className="space-y-6">
+          <div className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm">
+            <SectionTitle
+              as="h2"
+              tip="Timezone, overtime, rounding, breaks, punch access, shift notes, auto clock-out, and schedule day hours. These affect time tracking and payroll."
+            >
+              General Settings
+            </SectionTitle>
+            <form onSubmit={handleSubmitSettings(onSubmitSettings)} className="space-y-6 px-5 py-5 sm:px-6">
               <div>
-                <label className="block text-sm font-medium text-slate-700">Timezone</label>
+                <label className="block">
+                  <FieldLabel tip="Used for schedules, punches, payroll periods, and auto clock-out times.">
+                    Timezone
+                  </FieldLabel>
+                </label>
                 <Controller
                   name="timezone"
                   control={controlSettings}
                   render={({ field }) => (
                     <select
                       {...field}
-                      className="mt-1 block w-full px-3 py-2 border border-slate-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                      className="mt-1.5 block w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-900/10"
                     >
                       {timezones.map((tz) => (
                         <option key={tz} value={tz}>
@@ -1048,14 +1331,17 @@ export default function AdminSettingsPage() {
                     </select>
                   )}
                 />
-                <p className="mt-1 text-xs text-slate-500">Timezone used for payroll calculations</p>
                 {settingsErrors.timezone && (
                   <p className="mt-1 text-sm text-red-600">{settingsErrors.timezone.message}</p>
                 )}
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-slate-700">Payroll Week Start Day</label>
+                <label className="block">
+                  <FieldLabel tip="First day of each payroll week (e.g. Monday). Weekly overtime and pay periods use this.">
+                    Payroll Week Start Day
+                  </FieldLabel>
+                </label>
                 <Controller
                   name="payroll_week_start_day"
                   control={controlSettings}
@@ -1064,7 +1350,7 @@ export default function AdminSettingsPage() {
                       {...field}
                       value={field.value}
                       onChange={(e) => field.onChange(parseInt(e.target.value))}
-                      className="mt-1 block w-full px-3 py-2 border border-slate-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                      className="mt-1.5 block w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-900/10"
                     >
                       {weekDays.map((day) => (
                         <option key={day.value} value={day.value}>
@@ -1074,14 +1360,17 @@ export default function AdminSettingsPage() {
                     </select>
                   )}
                 />
-                <p className="mt-1 text-xs text-slate-500">First day of the week for payroll calculations</p>
                 {settingsErrors.payroll_week_start_day && (
                   <p className="mt-1 text-sm text-red-600">{settingsErrors.payroll_week_start_day.message}</p>
                 )}
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-slate-700">Biweekly Anchor Date (Optional)</label>
+                <label className="block">
+                  <FieldLabel tip="Starting date for biweekly payroll periods. Leave empty for flexible biweekly periods.">
+                    Biweekly Anchor Date (Optional)
+                  </FieldLabel>
+                </label>
                 <Controller
                   name="biweekly_anchor_date"
                   control={controlSettings}
@@ -1091,16 +1380,84 @@ export default function AdminSettingsPage() {
                       value={field.value || ''}
                       onChange={(e) => field.onChange(e.target.value || null)}
                       onBlur={field.onBlur}
-                      className="mt-1 block w-full px-3 py-2 border border-slate-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                      className="mt-1.5 block w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-900/10"
                     />
                   )}
                 />
-                <p className="mt-1 text-xs text-slate-500">
-                  Starting date for biweekly payroll periods. Leave empty to use flexible biweekly periods.
-                </p>
                 {settingsErrors.biweekly_anchor_date && (
                   <p className="mt-1 text-sm text-red-600">{settingsErrors.biweekly_anchor_date.message}</p>
                 )}
+              </div>
+
+              <div className="rounded-xl border border-slate-200 bg-slate-50/80 p-4 space-y-4">
+                <div>
+                  <SectionTitle tip="Pay date is when payroll is issued. The pay period is the prior week (or two weeks if biweekly), based on your week-start day — for example, pay date Aug 14 → period Aug 3–9 when the week starts Monday.">
+                    Pay schedule
+                  </SectionTitle>
+                  <p className="text-xs text-slate-500 mt-1">
+                    Generation opens 4 days before payday. Admins get an in-app reminder and email.
+                  </p>
+                </div>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div>
+                    <label className="block">
+                      <FieldLabel tip="The most recent payday (issue date), not the end of the work period. Next payday rolls forward weekly or biweekly from this.">
+                        Last pay date
+                      </FieldLabel>
+                    </label>
+                    <Controller
+                      name="last_pay_date"
+                      control={controlSettings}
+                      render={({ field }) => (
+                        <input
+                          type="date"
+                          value={field.value || ''}
+                          onChange={(e) => field.onChange(e.target.value || null)}
+                          onBlur={field.onBlur}
+                          className="mt-1.5 block w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-900/10"
+                        />
+                      )}
+                    />
+                  </div>
+                  <div>
+                    <label className="block">
+                      <FieldLabel tip="How often payday repeats after the last pay date.">
+                        Payroll type
+                      </FieldLabel>
+                    </label>
+                    <Controller
+                      name="payroll_pay_type"
+                      control={controlSettings}
+                      render={({ field }) => (
+                        <select
+                          value={field.value || 'WEEKLY'}
+                          onChange={(e) => field.onChange(e.target.value)}
+                          onBlur={field.onBlur}
+                          className="mt-1.5 block w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-900/10"
+                        >
+                          <option value="WEEKLY">Weekly</option>
+                          <option value="BIWEEKLY">Biweekly</option>
+                        </select>
+                      )}
+                    />
+                  </div>
+                </div>
+                <Controller
+                  name="payroll_reminder_enabled"
+                  control={controlSettings}
+                  render={({ field }) => (
+                    <label className="flex items-center gap-2 text-sm text-slate-700">
+                      <input
+                        type="checkbox"
+                        checked={field.value !== false}
+                        onChange={(e) => field.onChange(e.target.checked)}
+                        onBlur={field.onBlur}
+                        className="rounded border-slate-300 text-slate-900 focus:ring-slate-900/20"
+                      />
+                      Email admins when generation opens (4 days before payday)
+                    </label>
+                  )}
+                />
               </div>
 
               <div>
@@ -1108,23 +1465,30 @@ export default function AdminSettingsPage() {
                   name="overtime_enabled"
                   control={controlSettings}
                   render={({ field }) => (
-                    <label className="flex items-center">
+                    <label className="flex items-center gap-1.5">
                       <input
                         type="checkbox"
                         checked={field.value}
                         onChange={(e) => field.onChange(e.target.checked)}
                         onBlur={field.onBlur}
-                        className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                        className="rounded border-slate-300 text-slate-900 focus:ring-slate-900/20"
                       />
-                      <span className="ml-2 text-sm text-slate-700">Enable Overtime Calculation</span>
+                      <span className="ml-1 text-sm text-slate-700">Enable Overtime Calculation</span>
+                      <InfoTip
+                        label="Enable Overtime"
+                        content="When enabled, hours over the weekly threshold are paid at the overtime multiplier."
+                      />
                     </label>
                   )}
                 />
-                <p className="mt-1 text-xs text-slate-500">When enabled, hours over the threshold are calculated as overtime</p>
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-slate-700">Overtime Threshold (Hours per Week)</label>
+                <label className="block">
+                  <FieldLabel tip="Hours worked per week before overtime applies (usually 40).">
+                    Overtime Threshold (Hours per Week)
+                  </FieldLabel>
+                </label>
                 <Controller
                   name="overtime_threshold_hours_per_week"
                   control={controlSettings}
@@ -1136,18 +1500,21 @@ export default function AdminSettingsPage() {
                       max="168"
                       value={field.value}
                       onChange={(e) => field.onChange(parseInt(e.target.value))}
-                      className="mt-1 block w-full px-3 py-2 border border-slate-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                      className="mt-1.5 block w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-900/10"
                     />
                   )}
                 />
-                <p className="mt-1 text-xs text-slate-500">Hours worked per week before overtime kicks in (default: 40)</p>
                 {settingsErrors.overtime_threshold_hours_per_week && (
                   <p className="mt-1 text-sm text-red-600">{settingsErrors.overtime_threshold_hours_per_week.message}</p>
                 )}
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-slate-700">Default Overtime Multiplier</label>
+                <label className="block">
+                  <FieldLabel tip="Pay rate multiplier for overtime hours (e.g. 1.5 = time and a half).">
+                    Default Overtime Multiplier
+                  </FieldLabel>
+                </label>
                 <Controller
                   name="overtime_multiplier_default"
                   control={controlSettings}
@@ -1158,25 +1525,28 @@ export default function AdminSettingsPage() {
                       step="0.1"
                       min="1"
                       max="3"
-                      className="mt-1 block w-full px-3 py-2 border border-slate-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                      className="mt-1.5 block w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-900/10"
                     />
                   )}
                 />
-                <p className="mt-1 text-xs text-slate-500">Multiplier for overtime pay (e.g., 1.5 = time and a half)</p>
                 {settingsErrors.overtime_multiplier_default && (
                   <p className="mt-1 text-sm text-red-600">{settingsErrors.overtime_multiplier_default.message}</p>
                 )}
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-slate-700">Time Rounding:</label>
+                <label className="block">
+                  <FieldLabel tip="Round punch times to the nearest interval. For 15 minutes, the 7-minute rule rounds down at ≤7 minutes into the quarter and up at ≥8.">
+                    Time Rounding
+                  </FieldLabel>
+                </label>
                 <Controller
                   name="rounding_policy"
                   control={controlSettings}
                   render={({ field }) => (
                     <select
                       {...field}
-                      className="mt-1 block w-full px-3 py-2 border border-slate-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                      className="mt-1.5 block w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-900/10"
                     >
                       <option value="none">None</option>
                       <option value="5">5 Minutes</option>
@@ -1187,7 +1557,6 @@ export default function AdminSettingsPage() {
                     </select>
                   )}
                 />
-                <p className="mt-1 text-xs text-slate-500">Round time entries to the nearest interval. The 7-minute rule for 15-minute rounding rounds down if ≤7 minutes and up if ≥8 minutes into the quarter hour.</p>
                 {settingsErrors.rounding_policy && (
                   <p className="mt-1 text-sm text-red-600">{settingsErrors.rounding_policy.message}</p>
                 )}
@@ -1198,33 +1567,33 @@ export default function AdminSettingsPage() {
                   name="breaks_paid"
                   control={controlSettings}
                   render={({ field }) => (
-                    <label className="flex items-center">
+                    <label className="flex items-center gap-1.5">
                       <input
                         type="checkbox"
                         checked={field.value}
                         onChange={(e) => field.onChange(e.target.checked)}
                         onBlur={field.onBlur}
-                        className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                        className="rounded border-slate-300 text-slate-900 focus:ring-slate-900/20"
                       />
-                      <span className="ml-2 text-sm text-slate-700">Breaks are Paid</span>
+                      <span className="ml-1 text-sm text-slate-700">Breaks are Paid</span>
+                      <InfoTip
+                        label="Breaks are Paid"
+                        content="When enabled, break time counts toward paid hours. When off (default), breaks are deducted from hours worked."
+                      />
                     </label>
                   )}
                 />
-                <p className="mt-1 text-xs text-slate-500">
-                  When enabled, break time is included in paid hours. When disabled (default), breaks are deducted from total hours worked.
-                </p>
               </div>
 
               <div className="border-t border-slate-200 pt-6">
-                <h3 className="text-lg font-semibold text-slate-900 mb-2">Punch In / Out access</h3>
-                <p className="text-sm text-slate-600 mb-4">
-                  Choose which employee types can use Punch In / Out on the dashboard. Unchecked roles will not see the punch button or recent punch activity.
-                </p>
+                <SectionTitle tip="Choose which employee types can use Punch In / Out on the dashboard. Unchecked roles will not see the punch button.">
+                  Punch In / Out access
+                </SectionTitle>
                 <Controller
                   name="punch_allowed_roles"
                   control={controlSettings}
                   render={({ field }) => (
-                    <div className="space-y-2">
+                    <div className="space-y-2 mt-4">
                       {PUNCH_ROLE_OPTIONS.map((role) => (
                         <label key={role.value} className="flex items-center">
                           <input
@@ -1239,7 +1608,7 @@ export default function AdminSettingsPage() {
                               }
                             }}
                             onBlur={field.onBlur}
-                            className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                            className="rounded border-slate-300 text-slate-900 focus:ring-slate-900/20"
                           />
                           <span className="ml-2 text-sm text-slate-700">{role.label}</span>
                         </label>
@@ -1250,40 +1619,96 @@ export default function AdminSettingsPage() {
               </div>
 
               <div className="border-t border-slate-200 pt-6">
-                <h3 className="text-lg font-semibold text-slate-900 mb-2">Shift notes</h3>
-                <p className="text-sm text-slate-600 mb-4">
-                  Let employees use the shift notepad on punch and the shared “recent notes” feed on the dashboard. When turned off, those employee features are hidden and their shift-note APIs are disabled.{' '}
-                  <span className="font-medium text-slate-700">Admin Shift Log</span> under Scheduling stays available so you can still review shifts, time entries, and any notes that were saved before.
-                </p>
+                <SectionTitle tip="Employee shift notepad and admin Shift Log. When off, employee Shift log and admin Shift Log are hidden; Punch Log stays available. Drawer Log follows Cash Drawer settings.">
+                  Shift notes
+                </SectionTitle>
                 <Controller
                   name="shift_notes_enabled"
                   control={controlSettings}
                   render={({ field }) => (
-                    <label className="flex items-center">
+                    <label className="flex items-center gap-1.5 mt-4">
                       <input
                         type="checkbox"
                         checked={field.value}
                         onChange={(e) => field.onChange(e.target.checked)}
                         onBlur={field.onBlur}
-                        className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                        className="rounded border-slate-300 text-slate-900 focus:ring-slate-900/20"
                       />
-                      <span className="ml-2 text-sm text-slate-700">Enable shift notes (shift notepad)</span>
+                      <span className="ml-1 text-sm text-slate-700">Enable shift notes (shift notepad)</span>
+                      <InfoTip
+                        label="Enable shift notes"
+                        content="Lets employees use the shift notepad on punch and share recent notes. Disabling hides those features and related APIs."
+                      />
                     </label>
                   )}
                 />
-                <p className="mt-1 text-xs text-slate-500">
-                  Disable if your company does not use employee shift notes. The employee Shift log page is hidden; admin team shift log and drawer log stay in the menu.
-                </p>
               </div>
 
               <div className="border-t border-slate-200 pt-6">
-                <h3 className="text-lg font-semibold text-slate-900 mb-2">Schedule View</h3>
-                <p className="text-sm text-slate-600 mb-4">
-                  Set when the scheduling day starts and ends. The weekly schedule timeline will use these hours to build time blocks. Use the same time for both to show a full 24-hour day (e.g. 7 AM to 7 AM next day).
-                </p>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                <SectionTitle tip="If someone forgets to punch out, the system waits past their scheduled end, then clocks them out using the scheduled end time (not the later real time). Example: end 3 PM, wait 2 hours → at 5 PM they are clocked out for 3 PM.">
+                  Auto clock-out
+                </SectionTitle>
+                <Controller
+                  name="auto_clock_out_enabled"
+                  control={controlSettings}
+                  render={({ field }) => (
+                    <label className="flex items-center gap-1.5 mt-4">
+                      <input
+                        type="checkbox"
+                        checked={field.value}
+                        onChange={(e) => field.onChange(e.target.checked)}
+                        onBlur={field.onBlur}
+                        className="rounded border-slate-300 text-slate-900 focus:ring-slate-900/20"
+                      />
+                      <span className="ml-1 text-sm text-slate-700">
+                        Enable auto clock-out after scheduled shift end
+                      </span>
+                      <InfoTip
+                        label="Enable auto clock-out"
+                        content="Automatically close open punches after the schedule end plus the wait below. Cash drawers left open are flagged for review."
+                      />
+                    </label>
+                  )}
+                />
+                <div className="mt-4 max-w-xs">
+                  <label className="block">
+                    <FieldLabel tip="How long to wait after the schedule end before auto clock-out runs. The recorded punch-out time is still the scheduled end.">
+                      Wait after scheduled end
+                    </FieldLabel>
+                  </label>
+                  <Controller
+                    name="auto_clock_out_grace_hours"
+                    control={controlSettings}
+                    render={({ field }) => (
+                      <select
+                        {...field}
+                        value={field.value}
+                        onChange={(e) => field.onChange(parseInt(e.target.value, 10))}
+                        className="mt-1.5 block w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-900/10"
+                      >
+                        <option value={0}>Immediately at scheduled end</option>
+                        {[1, 2, 3, 4, 5, 6, 8, 10, 12].map((h) => (
+                          <option key={h} value={h}>
+                            {h} hour{h === 1 ? '' : 's'} after scheduled end
+                          </option>
+                        ))}
+                      </select>
+                    )}
+                  />
+                </div>
+              </div>
+
+              <div className="border-t border-slate-200 pt-6">
+                <SectionTitle tip="Controls the weekly schedule timeline. Same start and end hour shows a full 24-hour day (e.g. 7 AM to 7 AM next day).">
+                  Schedule View
+                </SectionTitle>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 mt-4">
                   <div>
-                    <label className="block text-sm font-medium text-slate-700">Schedule day starts at</label>
+                    <label className="block">
+                      <FieldLabel tip="First hour shown on the schedule timeline (company schedule day start).">
+                        Schedule day starts at
+                      </FieldLabel>
+                    </label>
                     <Controller
                       name="schedule_day_start_hour"
                       control={controlSettings}
@@ -1292,7 +1717,7 @@ export default function AdminSettingsPage() {
                           {...field}
                           value={field.value}
                           onChange={(e) => field.onChange(parseInt(e.target.value))}
-                          className="mt-1 block w-full px-3 py-2 border border-slate-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                          className="mt-1.5 block w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-900/10"
                         >
                           {scheduleHourOptions.map((opt) => (
                             <option key={opt.value} value={opt.value}>
@@ -1304,7 +1729,11 @@ export default function AdminSettingsPage() {
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-slate-700">Schedule day ends at</label>
+                    <label className="block">
+                      <FieldLabel tip="Last hour of the schedule day. Same as start = 24-hour day (e.g. 7 AM–7 AM next day).">
+                        Schedule day ends at
+                      </FieldLabel>
+                    </label>
                     <Controller
                       name="schedule_day_end_hour"
                       control={controlSettings}
@@ -1313,7 +1742,7 @@ export default function AdminSettingsPage() {
                           {...field}
                           value={field.value}
                           onChange={(e) => field.onChange(parseInt(e.target.value))}
-                          className="mt-1 block w-full px-3 py-2 border border-slate-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                          className="mt-1.5 block w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-900/10"
                         >
                           {scheduleHourOptions.map((opt) => (
                             <option key={opt.value} value={opt.value}>
@@ -1323,7 +1752,6 @@ export default function AdminSettingsPage() {
                         </select>
                       )}
                     />
-                    <p className="mt-1 text-xs text-slate-500">Same as start = 24-hour day (e.g. 7 AM–7 AM next day)</p>
                   </div>
                 </div>
               </div>
@@ -1332,7 +1760,7 @@ export default function AdminSettingsPage() {
                 <button
                   type="submit"
                   disabled={saving}
-                  className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="rounded-xl bg-slate-900 px-4 py-2 text-white hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {saving ? 'Saving...' : 'Save Settings'}
                 </button>
@@ -1343,30 +1771,35 @@ export default function AdminSettingsPage() {
 
         {/* Cash Drawer Settings Tab - Admin Only */}
         {activeTab === 'cash' && user?.role === 'ADMIN' && (
-          <div className="bg-white shadow rounded-lg p-6">
-            <h2 className="text-xl font-semibold mb-4">Cash Drawer Settings</h2>
-            <p className="text-sm text-slate-600 mb-6">
-              Configure cash drawer management settings. Employees will be prompted to enter cash counts when clocking in/out.
-            </p>
-            <form onSubmit={handleSubmitCashDrawer(onSubmitCashDrawer)} className="space-y-6">
+          <div className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm">
+            <SectionTitle
+              as="h2"
+              tip="Employees enter starting and ending cash counts when clocking in/out. Variance over the threshold is flagged for review. When off, Drawer Log is hidden from navigation."
+            >
+              Cash Drawer Settings
+            </SectionTitle>
+            <form onSubmit={handleSubmitCashDrawer(onSubmitCashDrawer)} className="space-y-6 px-5 py-5 sm:px-6">
               <div>
                 <Controller
                   name="cash_drawer_enabled"
                   control={controlCashDrawer}
                   render={({ field }) => (
-                    <label className="flex items-center">
+                    <label className="flex items-center gap-1.5">
                       <input
                         type="checkbox"
                         checked={field.value}
                         onChange={(e) => field.onChange(e.target.checked)}
                         onBlur={field.onBlur}
-                        className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                        className="rounded border-slate-300 text-slate-900 focus:ring-slate-900/20"
                       />
-                      <span className="ml-2 text-sm text-slate-700">Enable Cash Drawer Management</span>
+                      <span className="ml-1 text-sm text-slate-700">Enable Cash Drawer Management</span>
+                      <InfoTip
+                        label="Enable Cash Drawer"
+                        content="When enabled, employees enter cash counts when clocking in and out, and Drawer Log appears under Logs."
+                      />
                     </label>
                   )}
                 />
-                <p className="mt-1 text-xs text-slate-500">When enabled, employees will be required to enter cash counts when clocking in/out</p>
               </div>
 
               <div>
@@ -1374,24 +1807,31 @@ export default function AdminSettingsPage() {
                   name="cash_drawer_required_for_all"
                   control={controlCashDrawer}
                   render={({ field }) => (
-                    <label className="flex items-center">
+                    <label className="flex items-center gap-1.5">
                       <input
                         type="checkbox"
                         checked={field.value}
                         onChange={(e) => field.onChange(e.target.checked)}
                         onBlur={field.onBlur}
                         disabled={!cashDrawerEnabled}
-                        className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 disabled:opacity-50"
+                        className="rounded border-slate-300 text-slate-900 focus:ring-slate-900/20 disabled:opacity-50"
                       />
-                      <span className="ml-2 text-sm text-slate-700">Require Cash Drawer for All Employees</span>
+                      <span className="ml-1 text-sm text-slate-700">Require Cash Drawer for All Employees</span>
+                      <InfoTip
+                        label="Require for all"
+                        content="When on, every employee must enter cash counts. When off, only the selected roles below are required."
+                      />
                     </label>
                   )}
                 />
-                <p className="mt-1 text-xs text-slate-500">When enabled, all employees must enter cash counts. When disabled, only specified roles are required.</p>
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-slate-700">Required Roles</label>
+                <label className="block">
+                  <FieldLabel tip="Roles that must enter cash counts when “Require for All” is off.">
+                    Required Roles
+                  </FieldLabel>
+                </label>
                 <Controller
                   name="cash_drawer_required_roles"
                   control={controlCashDrawer}
@@ -1418,7 +1858,7 @@ export default function AdminSettingsPage() {
                             }}
                             onBlur={field.onBlur}
                             disabled={!cashDrawerEnabled || cashDrawerRequiredForAll}
-                            className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 disabled:opacity-50"
+                            className="rounded border-slate-300 text-slate-900 focus:ring-slate-900/20 disabled:opacity-50"
                           />
                           <span className="ml-2 text-sm text-slate-700">{role.label}</span>
                         </label>
@@ -1426,11 +1866,14 @@ export default function AdminSettingsPage() {
                     </div>
                   )}
                 />
-                <p className="mt-1 text-xs text-slate-500">Select which roles require cash drawer entry (only applies if &quot;Require for All&quot; is disabled)</p>
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-slate-700">Currency</label>
+                <label className="block">
+                  <FieldLabel tip="Currency used for cash drawer amounts and reports.">
+                    Currency
+                  </FieldLabel>
+                </label>
                 <Controller
                   name="cash_drawer_currency"
                   control={controlCashDrawer}
@@ -1438,7 +1881,7 @@ export default function AdminSettingsPage() {
                     <select
                       {...field}
                       disabled={!cashDrawerEnabled}
-                      className="mt-1 block w-full px-3 py-2 border border-slate-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm disabled:opacity-50"
+                      className="mt-1.5 block w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-900/10 disabled:opacity-50"
                     >
                       <option value="USD">USD - US Dollar</option>
                       <option value="EUR">EUR - Euro</option>
@@ -1448,14 +1891,17 @@ export default function AdminSettingsPage() {
                     </select>
                   )}
                 />
-                <p className="mt-1 text-xs text-slate-500">Currency used for cash drawer amounts</p>
                 {cashDrawerErrors.cash_drawer_currency && (
                   <p className="mt-1 text-sm text-red-600">{cashDrawerErrors.cash_drawer_currency.message}</p>
                 )}
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-slate-700">Starting Cash Count ($)</label>
+                <label className="block">
+                  <FieldLabel tip="Default starting cash amount. Can be used as a reference or pre-filled value when employees clock in.">
+                    Starting Cash Count ($)
+                  </FieldLabel>
+                </label>
                 <Controller
                   name="cash_drawer_starting_amount_cents"
                   control={controlCashDrawer}
@@ -1468,18 +1914,21 @@ export default function AdminSettingsPage() {
                       value={(field.value || 0) / 100}
                       onChange={(e) => field.onChange(Math.round(parseFloat(e.target.value || '0') * 100))}
                       disabled={!cashDrawerEnabled}
-                      className="mt-1 block w-full px-3 py-2 border border-slate-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm disabled:opacity-50"
+                      className="mt-1.5 block w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-900/10 disabled:opacity-50"
                     />
                   )}
                 />
-                <p className="mt-1 text-xs text-slate-500">Default starting cash amount in dollars. This can be used as a reference or pre-filled value when employees clock in (default: $0.00)</p>
                 {cashDrawerErrors.cash_drawer_starting_amount_cents && (
                   <p className="mt-1 text-sm text-red-600">{cashDrawerErrors.cash_drawer_starting_amount_cents.message}</p>
                 )}
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-slate-700">Variance Threshold ($)</label>
+                <label className="block">
+                  <FieldLabel tip="If the difference between expected and counted cash exceeds this amount, the session is flagged for review.">
+                    Variance Threshold ($)
+                  </FieldLabel>
+                </label>
                 <Controller
                   name="cash_drawer_variance_threshold_cents"
                   control={controlCashDrawer}
@@ -1492,11 +1941,10 @@ export default function AdminSettingsPage() {
                       value={(field.value || 0) / 100}
                       onChange={(e) => field.onChange(Math.round(parseFloat(e.target.value || '0') * 100))}
                       disabled={!cashDrawerEnabled}
-                      className="mt-1 block w-full px-3 py-2 border border-slate-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm disabled:opacity-50"
+                      className="mt-1.5 block w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-900/10 disabled:opacity-50"
                     />
                   )}
                 />
-                <p className="mt-1 text-xs text-slate-500">Cash variance threshold in dollars. Sessions exceeding this amount will be flagged for review (default: $20.00)</p>
                 {cashDrawerErrors.cash_drawer_variance_threshold_cents && (
                   <p className="mt-1 text-sm text-red-600">{cashDrawerErrors.cash_drawer_variance_threshold_cents.message}</p>
                 )}
@@ -1507,20 +1955,23 @@ export default function AdminSettingsPage() {
                   name="cash_drawer_allow_edit"
                   control={controlCashDrawer}
                   render={({ field }) => (
-                    <label className="flex items-center">
+                    <label className="flex items-center gap-1.5">
                       <input
                         type="checkbox"
                         checked={field.value}
                         onChange={(e) => field.onChange(e.target.checked)}
                         onBlur={field.onBlur}
                         disabled={!cashDrawerEnabled}
-                        className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 disabled:opacity-50"
+                        className="rounded border-slate-300 text-slate-900 focus:ring-slate-900/20 disabled:opacity-50"
                       />
-                      <span className="ml-2 text-sm text-slate-700">Allow Editing Cash Drawer Sessions</span>
+                      <span className="ml-1 text-sm text-slate-700">Allow Editing Cash Drawer Sessions</span>
+                      <InfoTip
+                        label="Allow editing"
+                        content="When enabled, admins can edit cash drawer amounts after the session is created."
+                      />
                     </label>
                   )}
                 />
-                <p className="mt-1 text-xs text-slate-500">When enabled, admins can edit cash drawer session amounts after they are created</p>
               </div>
 
               <div>
@@ -1528,32 +1979,86 @@ export default function AdminSettingsPage() {
                   name="cash_drawer_require_manager_review"
                   control={controlCashDrawer}
                   render={({ field }) => (
-                    <label className="flex items-center">
+                    <label className="flex items-center gap-1.5">
                       <input
                         type="checkbox"
                         checked={field.value}
                         onChange={(e) => field.onChange(e.target.checked)}
                         onBlur={field.onBlur}
                         disabled={!cashDrawerEnabled}
-                        className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 disabled:opacity-50"
+                        className="rounded border-slate-300 text-slate-900 focus:ring-slate-900/20 disabled:opacity-50"
                       />
-                      <span className="ml-2 text-sm text-slate-700">Require Manager Review for Variances</span>
+                      <span className="ml-1 text-sm text-slate-700">Require Manager Review for Variances</span>
+                      <InfoTip
+                        label="Manager review"
+                        content="When enabled, sessions over the variance threshold need manager approval in Drawer Log."
+                      />
                     </label>
                   )}
                 />
-                <p className="mt-1 text-xs text-slate-500">When enabled, sessions with variances exceeding the threshold must be reviewed and approved by a manager</p>
               </div>
 
-              <div className="border-t border-slate-200 pt-6">
-                <div className="flex items-center justify-between gap-3 mb-2">
-                  <div>
-                    <h3 className="text-sm font-semibold text-slate-900">Marketplace items</h3>
-                    <p className="mt-0.5 text-xs text-slate-500">
-                      Front Desk tap-to-count products on the dashboard. Prices are used for Marketplace sales totals.
-                    </p>
-                  </div>
+              <div className="flex justify-end">
+                <button
+                  type="submit"
+                  disabled={saving}
+                  className="rounded-xl bg-slate-900 px-4 py-2 text-white hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {saving ? 'Saving...' : 'Save Settings'}
+                </button>
+              </div>
+            </form>
+          </div>
+        )}
+
+        {/* Marketplace Settings Tab - Admin Only */}
+        {activeTab === 'marketplace' && user?.role === 'ADMIN' && (
+          <div className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm">
+            <SectionTitle
+              as="h2"
+              tip="Front Desk tap-to-count products and cash/card sales on the dashboard. Requires Cash Drawer to be enabled for the shift."
+            >
+              Marketplace Settings
+            </SectionTitle>
+            <form
+              onSubmit={handleSubmitMarketplace(onSubmitMarketplace)}
+              className="space-y-6 px-5 py-5 sm:px-6"
+            >
+              <div>
+                <Controller
+                  name="marketplace_enabled"
+                  control={controlMarketplace}
+                  render={({ field }) => (
+                    <label className="flex items-center gap-1.5">
+                      <input
+                        type="checkbox"
+                        checked={field.value}
+                        onChange={(e) => field.onChange(e.target.checked)}
+                        onBlur={field.onBlur}
+                        className="rounded border-slate-300 text-slate-900 focus:ring-slate-900/20"
+                      />
+                      <span className="ml-1 text-sm text-slate-700">Enable Marketplace</span>
+                      <InfoTip
+                        label="Enable Marketplace"
+                        content="When enabled, Front Desk can build a cart and take cash/card payment for marketplace items while clocked in with the cash drawer."
+                      />
+                    </label>
+                  )}
+                />
+              </div>
+
+              <div className={!marketplaceEnabled ? 'pointer-events-none opacity-50' : ''}>
+                <div className="mb-2 flex items-center justify-between gap-3">
+                  <span className="inline-flex items-center gap-1.5 text-sm font-semibold text-slate-900">
+                    Marketplace items
+                    <InfoTip
+                      label="Marketplace items"
+                      content="Products shown as tap buttons on the Front Desk dashboard. Prices are used for cart totals and sales."
+                    />
+                  </span>
                   <button
                     type="button"
+                    disabled={!marketplaceEnabled}
                     onClick={() =>
                       setMarketplaceItems((prev) => [
                         ...prev,
@@ -1567,13 +2072,16 @@ export default function AdminSettingsPage() {
                         },
                       ])
                     }
-                    className="shrink-0 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50"
+                    className="shrink-0 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-50"
                   >
                     Add item
                   </button>
                 </div>
                 {marketplaceItems.length === 0 ? (
-                  <p className="text-sm text-slate-500 italic">No marketplace items configured. Add items and click Save Settings — Front Desk will see them on the dashboard while clocked in.</p>
+                  <p className="text-sm italic text-slate-500">
+                    No marketplace items configured. Add items and save — Front Desk will see
+                    them on the dashboard while clocked in.
+                  </p>
                 ) : (
                   <ul className="space-y-3">
                     {marketplaceItems.map((item, idx) => (
@@ -1582,27 +2090,33 @@ export default function AdminSettingsPage() {
                         className="flex flex-col gap-2 sm:flex-row sm:items-end sm:gap-3"
                       >
                         <div className="flex-1">
-                          <label className="mb-1 block text-xs font-medium text-slate-600">Label</label>
+                          <label className="mb-1 block text-xs font-medium text-slate-600">
+                            Label
+                          </label>
                           <input
                             type="text"
                             value={item.label}
+                            disabled={!marketplaceEnabled}
                             onChange={(e) => {
                               const label = e.target.value
                               setMarketplaceItems((prev) =>
                                 prev.map((row, i) => (i === idx ? { ...row, label } : row))
                               )
                             }}
-                            className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+                            className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-900/10 disabled:opacity-50"
                             placeholder="e.g. Water"
                             maxLength={100}
                           />
                         </div>
                         <div className="w-full sm:w-36">
-                          <label className="mb-1 block text-xs font-medium text-slate-600">Price ($)</label>
+                          <label className="mb-1 block text-xs font-medium text-slate-600">
+                            Price ($)
+                          </label>
                           <input
                             type="number"
                             step="0.01"
                             min="0"
+                            disabled={!marketplaceEnabled}
                             value={(item.price_cents / 100).toFixed(2)}
                             onChange={(e) => {
                               const dollars = parseFloat(e.target.value)
@@ -1613,15 +2127,16 @@ export default function AdminSettingsPage() {
                                 prev.map((row, i) => (i === idx ? { ...row, price_cents } : row))
                               )
                             }}
-                            className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+                            className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-900/10 disabled:opacity-50"
                           />
                         </div>
                         <button
                           type="button"
+                          disabled={!marketplaceEnabled}
                           onClick={() =>
                             setMarketplaceItems((prev) => prev.filter((_, i) => i !== idx))
                           }
-                          className="rounded-md px-3 py-2 text-sm text-red-600 hover:bg-red-50"
+                          className="rounded-md px-3 py-2 text-sm text-red-600 hover:bg-red-50 disabled:opacity-50"
                         >
                           Remove
                         </button>
@@ -1635,7 +2150,7 @@ export default function AdminSettingsPage() {
                 <button
                   type="submit"
                   disabled={saving}
-                  className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="rounded-xl bg-slate-900 px-4 py-2 text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   {saving ? 'Saving...' : 'Save Settings'}
                 </button>
@@ -1646,30 +2161,35 @@ export default function AdminSettingsPage() {
 
         {/* Punch Location (Geofence) Tab - Admin Only */}
         {activeTab === 'location' && user?.role === 'ADMIN' && (
-          <div className="bg-white shadow rounded-lg p-6">
-            <h2 className="text-xl font-semibold mb-4">Punch Location</h2>
-            <p className="text-sm text-slate-600 mb-6">
-              Require employees to be at the office to punch in or out. When enabled, punch requests are only accepted when the employee&apos;s device is within the configured radius of the office location.
-            </p>
-            <form onSubmit={handleSubmitGeofence(onSubmitGeofence)} className="space-y-6">
+          <div className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm">
+            <SectionTitle
+              as="h2"
+              tip="Require employees to be at the office to punch. Punches are only accepted when the device is within the radius of the office location."
+            >
+              Punch Location
+            </SectionTitle>
+            <form onSubmit={handleSubmitGeofence(onSubmitGeofence)} className="space-y-6 px-5 py-5 sm:px-6">
               <div>
                 <Controller
                   name="geofence_enabled"
                   control={controlGeofence}
                   render={({ field }) => (
-                    <label className="flex items-center">
+                    <label className="flex items-center gap-1.5">
                       <input
                         type="checkbox"
                         checked={field.value}
                         onChange={(e) => field.onChange(e.target.checked)}
                         onBlur={field.onBlur}
-                        className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                        className="rounded border-slate-300 text-slate-900 focus:ring-slate-900/20"
                       />
-                      <span className="ml-2 text-sm text-slate-700">Require punch at office location</span>
+                      <span className="ml-1 text-sm text-slate-700">Require punch at office location</span>
+                      <InfoTip
+                        label="Require punch at office"
+                        content="When enabled, employees must be within the radius below to clock in or out."
+                      />
                     </label>
                   )}
                 />
-                <p className="mt-1 text-xs text-slate-500">When enabled, employees must be within the radius below to clock in/out</p>
               </div>
               <div className="flex flex-wrap items-center gap-3 mb-2">
                 <button
@@ -1688,7 +2208,7 @@ export default function AdminSettingsPage() {
                       { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 }
                     )
                   }}
-                  className="px-3 py-1.5 text-sm bg-slate-100 text-slate-700 rounded-md hover:bg-slate-200 disabled:opacity-50 border border-slate-300"
+                  className="rounded-xl border border-slate-200 bg-slate-100 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-200 disabled:opacity-50"
                 >
                   {geofenceGettingLocation ? 'Getting location…' : 'Use current location'}
                 </button>
@@ -1698,7 +2218,11 @@ export default function AdminSettingsPage() {
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-slate-700">Office latitude</label>
+                  <label className="block">
+                    <FieldLabel tip="Office latitude (−90 to 90). Use “Use current location” to fill from this device.">
+                      Office latitude
+                    </FieldLabel>
+                  </label>
                   <Controller
                     name="office_latitude"
                     control={controlGeofence}
@@ -1710,17 +2234,20 @@ export default function AdminSettingsPage() {
                         value={field.value ?? ''}
                         onChange={(e) => field.onChange(e.target.value === '' ? undefined : e.target.value)}
                         onBlur={field.onBlur}
-                        className="mt-1 block w-full px-3 py-2 border border-slate-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                        className="mt-1.5 block w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-900/10"
                       />
                     )}
                   />
-                  <p className="mt-1 text-xs text-slate-500">-90 to 90</p>
                   {geofenceErrors.office_latitude && (
                     <p className="mt-1 text-sm text-red-600">{geofenceErrors.office_latitude.message}</p>
                   )}
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-slate-700">Office longitude</label>
+                  <label className="block">
+                    <FieldLabel tip="Office longitude (−180 to 180).">
+                      Office longitude
+                    </FieldLabel>
+                  </label>
                   <Controller
                     name="office_longitude"
                     control={controlGeofence}
@@ -1732,18 +2259,21 @@ export default function AdminSettingsPage() {
                         value={field.value ?? ''}
                         onChange={(e) => field.onChange(e.target.value === '' ? undefined : e.target.value)}
                         onBlur={field.onBlur}
-                        className="mt-1 block w-full px-3 py-2 border border-slate-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                        className="mt-1.5 block w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-900/10"
                       />
                     )}
                   />
-                  <p className="mt-1 text-xs text-slate-500">-180 to 180</p>
                   {geofenceErrors.office_longitude && (
                     <p className="mt-1 text-sm text-red-600">{geofenceErrors.office_longitude.message}</p>
                   )}
                 </div>
               </div>
               <div>
-                <label className="block text-sm font-medium text-slate-700">Allowed radius (meters)</label>
+                <label className="block">
+                  <FieldLabel tip="Employees must be within this distance of the office to punch (10–5000 meters).">
+                    Allowed radius (meters)
+                  </FieldLabel>
+                </label>
                 <Controller
                   name="geofence_radius_meters"
                   control={controlGeofence}
@@ -1753,11 +2283,10 @@ export default function AdminSettingsPage() {
                       type="number"
                       min={10}
                       max={5000}
-                      className="mt-1 block w-full px-3 py-2 border border-slate-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                      className="mt-1.5 block w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-900/10"
                     />
                   )}
                 />
-                <p className="mt-1 text-xs text-slate-500">Employees must be within this distance of the office to punch (10–5000 m)</p>
                 {geofenceErrors.geofence_radius_meters && (
                   <p className="mt-1 text-sm text-red-600">{geofenceErrors.geofence_radius_meters.message}</p>
                 )}
@@ -1766,7 +2295,7 @@ export default function AdminSettingsPage() {
                 <button
                   type="submit"
                   disabled={saving}
-                  className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="rounded-xl bg-slate-900 px-4 py-2 text-white hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {saving ? 'Saving...' : 'Save Settings'}
                 </button>
@@ -1777,25 +2306,34 @@ export default function AdminSettingsPage() {
 
         {/* Kiosk Network Tab - Admin Only */}
         {activeTab === 'kiosk' && user?.role === 'ADMIN' && (
-          <div className="bg-white shadow rounded-lg p-6">
-            <h2 className="text-xl font-semibold mb-4">Kiosk Network</h2>
-            <p className="text-sm text-slate-600 mb-6">
-              Restrict the kiosk so it only works when opened from the office network. Add the office IP range or specific IPs below. Requests from other networks will be blocked.
-            </p>
-            <div className="space-y-6">
-              <label className="flex items-center gap-2">
+          <div className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm">
+            <SectionTitle
+              as="h2"
+              tip="Restrict the kiosk so it only works on the office network. Requests from other IPs are blocked."
+            >
+              Kiosk Network
+            </SectionTitle>
+            <div className="space-y-6 px-5 py-5 sm:px-6">
+              <label className="flex items-center gap-1.5">
                 <input
                   type="checkbox"
                   checked={kioskNetworkRestrictionEnabled}
                   onChange={(e) => setKioskNetworkRestrictionEnabled(e.target.checked)}
-                  className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                  className="rounded border-slate-300 text-slate-900 focus:ring-slate-900/20"
                 />
                 <span className="text-sm font-medium text-slate-700">Restrict kiosk to office network only</span>
+                <InfoTip
+                  label="Restrict kiosk network"
+                  content="When enabled, the kiosk page and clock-in/out only work from the IPs or CIDR ranges listed below."
+                />
               </label>
-              <p className="text-xs text-slate-500">When enabled, the kiosk page and clock-in/out will only work from the IPs or ranges listed below.</p>
               <div>
                 <div className="flex items-center justify-between gap-2 mb-1">
-                  <label className="block text-sm font-medium text-slate-700">Allowed IPs or CIDR ranges (one per line)</label>
+                  <label className="block">
+                    <FieldLabel tip="One IP or CIDR range per line (e.g. 203.0.113.10 or 203.0.113.0/24). Use “Add my current IP” while on the office network.">
+                      Allowed IPs or CIDR ranges (one per line)
+                    </FieldLabel>
+                  </label>
                   <button
                     type="button"
                     disabled={kioskFetchingMyIp}
@@ -1816,7 +2354,7 @@ export default function AdminSettingsPage() {
                         setKioskFetchingMyIp(false)
                       }
                     }}
-                    className="px-3 py-1.5 text-sm bg-slate-100 text-slate-700 rounded-md hover:bg-slate-200 disabled:opacity-50 border border-slate-300"
+                    className="rounded-xl border border-slate-200 bg-slate-100 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-200 disabled:opacity-50"
                   >
                     {kioskFetchingMyIp ? 'Getting…' : 'Add my current IP'}
                   </button>
@@ -1826,7 +2364,7 @@ export default function AdminSettingsPage() {
                   onChange={(e) => setKioskAllowedIpsText(e.target.value)}
                   placeholder={'192.168.1.0/24\n10.0.0.1'}
                   rows={5}
-                  className="mt-1 block w-full px-3 py-2 border border-slate-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm font-mono"
+                  className="mt-1.5 block w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-900/10 font-mono"
                 />
                 <p className="mt-1 text-xs text-slate-500">Examples: 192.168.1.0/24 (entire subnet), 10.0.0.1 (single IP). Use “Add my current IP” when at the office to add this device.</p>
                 <p className="mt-1 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1">If the same IP is added from different networks, configure your reverse proxy to send the real client IP (e.g. nginx: <code className="bg-amber-100 px-1">proxy_set_header X-Real-IP $remote_addr</code>; Cloudflare uses CF-Connecting-IP automatically).</p>
@@ -1836,7 +2374,7 @@ export default function AdminSettingsPage() {
                   type="button"
                   onClick={onSubmitKioskNetwork}
                   disabled={saving}
-                  className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50"
+                  className="rounded-xl bg-slate-900 px-4 py-2 text-white hover:bg-slate-800 disabled:opacity-50"
                 >
                   {saving ? 'Saving...' : 'Save Settings'}
                 </button>
@@ -1845,6 +2383,9 @@ export default function AdminSettingsPage() {
           </div>
         )}
 
+        {activeTab === 'roles' && user?.role === 'ADMIN' && <RolesPermissionsTab />}
+
+        </div>
       </div>
     </Layout>
   )
