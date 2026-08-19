@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, type ReactNode } from 'react'
+import { useEffect, useState, type ReactNode, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Layout from '@/components/Layout'
 import api from '@/lib/api'
@@ -226,7 +226,7 @@ interface CompanyInfo {
 
 type SettingsTab = 'info' | 'payroll' | 'cash' | 'marketplace' | 'location' | 'kiosk' | 'roles' | 'email'
 
-export default function AdminSettingsPage() {
+function AdminSettingsPageInner() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const toast = useToast()
@@ -2480,5 +2480,25 @@ export default function AdminSettingsPage() {
         </div>
       </div>
     </Layout>
+  )
+}
+
+export default function AdminSettingsPage() {
+  return (
+    <Suspense
+      fallback={
+        <Layout>
+          <div className="flex min-h-[40vh] items-center justify-center">
+            <div
+              className="h-9 w-9 animate-spin rounded-full border-2 border-slate-200 border-t-blue-600"
+              role="status"
+              aria-label="Loading settings"
+            />
+          </div>
+        </Layout>
+      }
+    >
+      <AdminSettingsPageInner />
+    </Suspense>
   )
 }

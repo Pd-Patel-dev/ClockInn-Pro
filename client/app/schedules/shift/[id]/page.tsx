@@ -43,6 +43,9 @@ export default function ShiftDetailPage() {
   const [error, setError] = useState<string | null>(null)
   const [user, setUser] = useState<User | null>(null)
   const [deleting, setDeleting] = useState(false)
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const { can } = usePermissions(user)
+  const canEditSchedule = can('schedule_edit')
 
   useEffect(() => {
     const fetchData = async () => {
@@ -68,8 +71,6 @@ export default function ShiftDetailPage() {
 
     if (shiftId) fetchData()
   }, [shiftId, router])
-
-  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
 
   const handleDelete = () => {
     if (!shift) return
@@ -170,9 +171,6 @@ export default function ShiftDetailPage() {
   const { startAt, endAt } = normalizeShift(shift)
   const durationHours = (endAt.getTime() - startAt.getTime()) / (1000 * 60 * 60)
   const workHours = durationHours - (shift.break_minutes / 60)
-
-  const { can } = usePermissions(user)
-  const canEditSchedule = can('schedule_edit')
 
   return (
     <Layout>

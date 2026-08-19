@@ -115,8 +115,8 @@ const EVEN_DISPLAY_HOURS = [0, 4, 8, 12, 16, 20]
 
 function isIdSelected(selectedIds: ReadonlySet<string> | string[] | undefined, id: string) {
   if (!selectedIds) return false
-  if (selectedIds instanceof Set) return selectedIds.has(id)
-  return selectedIds.includes(id)
+  if (Array.isArray(selectedIds)) return selectedIds.includes(id)
+  return selectedIds.has(id)
 }
 
 export function ShiftTimeline({

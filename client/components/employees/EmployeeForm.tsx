@@ -37,12 +37,14 @@ const optionalPayRate = z
   .string()
   .optional()
   .or(z.literal(''))
-  .transform((val) => {
-    if (!val || val === '') return undefined
-    const num = parseFloat(val)
-    return isNaN(num) ? undefined : num
-  })
-  .pipe(z.number().min(0).optional().or(z.undefined()))
+  .refine(
+    (val) => {
+      if (!val || val === '') return true
+      const num = parseFloat(val)
+      return !isNaN(num) && num >= 0
+    },
+    { message: 'Pay rate must be a valid non-negative number' }
+  )
 
 export const createEmployeeSchema = z.object({
   name: z.string().min(1, 'Name is required'),
@@ -337,16 +339,20 @@ export default function EmployeeForm({
 
 /** Build API payload from create form values. */
 export function toCreatePayload(data: CreateEmployeeFormValues) {
-  return {
+  const payload: Record<string, unknown> = {
     name: data.name.trim(),
     email: data.email.trim(),
     role: data.role,
     pin: data.pin || undefined,
-    pay_rate: data.pay_rate,
     preferred_name: data.preferred_name?.trim() || undefined,
     phone: data.phone?.trim() || undefined,
     job_role: data.job_role?.trim() || undefined,
   }
+  if (data.pay_rate !== undefined && data.pay_rate !== '') {
+    const num = parseFloat(data.pay_rate)
+    if (!isNaN(num)) payload.pay_rate = num
+  }
+  return payload
 }
 
 /** Build API payload from edit form values. */

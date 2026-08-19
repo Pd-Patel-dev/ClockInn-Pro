@@ -310,8 +310,8 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         className={`fixed top-0 left-0 z-50 h-full w-72 max-w-[85vw] border-r border-border/80 bg-surface/95 shadow-lifted backdrop-blur-xl transition-transform duration-200 ease-out min-[950px]:hidden ${
           sideMenuOpen ? 'translate-x-0' : '-translate-x-full'
         }`}
-        aria-modal="true"
         aria-label="Main navigation"
+        {...(sideMenuOpen ? { role: 'dialog', 'aria-modal': true as const } : {})}
       >
         <div className="flex flex-col h-full">
           <div className="flex items-center justify-between gap-3 px-4 py-4 border-b border-border/80">
