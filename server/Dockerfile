@@ -2,11 +2,13 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# Install system dependencies
+# Install system dependencies (LibreOffice for HK Excel → PDF print)
 RUN apt-get update && apt-get install -y \
     gcc \
     postgresql-client \
     curl \
+    libreoffice-calc-nogui \
+    fonts-dejavu-core \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements

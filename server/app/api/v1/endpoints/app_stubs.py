@@ -1,7 +1,8 @@
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Request
 from pydantic import BaseModel, Field
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.dependencies import get_current_active_user, get_db
@@ -101,11 +102,59 @@ async def list_notifications(
 class FeedbackBody(BaseModel):
     message: str = Field(..., min_length=1, max_length=10000)
     type: str | None = Field(None, max_length=32)
+    page_path: str | None = Field(None, max_length=500)
 
 
 @feedback_router.post("")
 async def submit_feedback(
     body: FeedbackBody,
+    request: Request,
     current_user: User = Depends(get_current_active_user),
+    db: AsyncSession = Depends(get_db),
 ):
-    return {"ok": True}
+    from app.models.company import Company
+    from app.models.support_ticket import SupportTicket, SupportTicketType, SupportTicketStatus
+
+    raw_type = (body.type or "support").strip().lower()
+    allowed = {t.value for t in SupportTicketType}
+    ticket_type = raw_type if raw_type in allowed else SupportTicketType.SUPPORT.value
+
+    company_name = None
+    if current_user.company_id:
+        result = await db.execute(select(Company.name).where(Company.id == current_user.company_id))
+        company_name = result.scalar_one_or_none()
+
+    ua = request.headers.get("user-agent") or request.headers.get("User-Agent")
+    if ua and len(ua) > 500:
+        ua = ua[:500]
+
+    ip = None
+    forwarded = request.headers.get("x-forwarded-for") or request.headers.get("X-Forwarded-For")
+    if forwarded:
+        ip = forwarded.split(",")[0].strip()[:64]
+    elif request.client and request.client.host:
+        ip = request.client.host[:64]
+
+    page_path = (body.page_path or "").strip() or None
+    if page_path and len(page_path) > 500:
+        page_path = page_path[:500]
+
+    ticket = SupportTicket(
+        user_id=current_user.id,
+        company_id=current_user.company_id,
+        type=ticket_type,
+        status=SupportTicketStatus.OPEN.value,
+        message=body.message.strip(),
+        user_name=current_user.name,
+        user_email=current_user.email,
+        user_role=current_user.role.value if current_user.role else None,
+        company_name=company_name,
+        page_path=page_path,
+        user_agent=ua,
+        ip_address=ip,
+    )
+    db.add(ticket)
+    await db.commit()
+    await db.refresh(ticket)
+    return {"ok": True, "id": str(ticket.id)}
+

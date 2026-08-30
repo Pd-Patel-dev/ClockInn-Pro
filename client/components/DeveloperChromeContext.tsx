@@ -7,7 +7,7 @@ import { KeyboardShortcutsModal } from '@/components/KeyboardShortcutsModal'
 import { FeedbackModal } from '@/components/FeedbackModal'
 import { ChangelogDrawer } from '@/components/ChangelogDrawer'
 
-export type FeedbackKind = 'feedback' | 'bug'
+export type FeedbackKind = 'feedback' | 'bug' | 'support'
 
 export interface DeveloperChromeContextValue {
   openCommandPalette: () => void

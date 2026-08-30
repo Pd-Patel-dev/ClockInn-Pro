@@ -40,6 +40,11 @@ class PayRateType(str, enum.Enum):
     HOURLY = "HOURLY"
 
 
+class PayMethod(str, enum.Enum):
+    HOURLY = "HOURLY"
+    PER_ROOM = "PER_ROOM"
+
+
 class User(Base):
     __tablename__ = "users"
 
@@ -56,6 +61,12 @@ class User(Base):
     pay_rate = Column(Numeric(10, 2), nullable=True)  # Legacy field, kept for backward compatibility
     pay_rate_cents = Column(Integer, nullable=False, default=0)  # Pay rate in cents (e.g., 2500 = $25.00)
     pay_rate_type = Column(Enum(PayRateType, values_callable=lambda x: [e.value for e in x]), nullable=False, default=PayRateType.HOURLY)
+    pay_method = Column(
+        Enum(PayMethod, values_callable=lambda x: [e.value for e in x]),
+        nullable=False,
+        default=PayMethod.HOURLY,
+        server_default="HOURLY",
+    )
     overtime_multiplier = Column(Numeric(4, 2), nullable=True)  # Employee-specific override, defaults to company setting
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)

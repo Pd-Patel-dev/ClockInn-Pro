@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import Layout from '@/components/Layout'
+import PageAtmosphere from '@/components/PageAtmosphere'
 import BackButton from '@/components/BackButton'
 import api from '@/lib/api'
 import { getCurrentUser } from '@/lib/auth'
@@ -15,6 +16,8 @@ import EmployeeForm, {
   CreateEmployeeFormValues,
   EMPLOYEE_ROLE_OPTIONS,
   toCreatePayload,
+  formatPayRateDisplay,
+  payMethodLabel,
 } from '@/components/employees/EmployeeForm'
 
 function roleLabel(role?: string) {
@@ -31,6 +34,7 @@ export default function CreateEmployeePage() {
     register,
     handleSubmit,
     watch,
+    setValue,
     formState: { errors },
   } = useForm<CreateEmployeeFormValues>({
     resolver: zodResolver(createEmployeeSchema),
@@ -40,6 +44,7 @@ export default function CreateEmployeePage() {
       phone: '',
       pin: '',
       job_role: '',
+      pay_method: 'HOURLY',
       pay_rate: '',
     },
   })
@@ -51,7 +56,16 @@ export default function CreateEmployeePage() {
   const email = preview.email?.trim()
   const jobTitle = preview.job_role?.trim()
   const payRate = preview.pay_rate
+  const role = preview.role || 'FRONTDESK'
+  const payMethod =
+    role === 'HOUSEKEEPING' ? preview.pay_method || 'HOURLY' : 'HOURLY'
   const hasPin = Boolean(preview.pin && String(preview.pin).length === 4)
+
+  useEffect(() => {
+    if (role !== 'HOUSEKEEPING' && preview.pay_method === 'PER_ROOM') {
+      setValue('pay_method', 'HOURLY')
+    }
+  }, [role, preview.pay_method, setValue])
 
   useEffect(() => {
     const checkAccess = async () => {
@@ -94,21 +108,7 @@ export default function CreateEmployeePage() {
   return (
     <Layout>
       <div className="relative max-w-6xl mx-auto px-1 pb-8">
-        <div
-          aria-hidden
-          className="pointer-events-none absolute inset-x-0 -top-4 h-56 overflow-hidden"
-        >
-          <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_rgba(15,23,42,0.06),_transparent_65%)]" />
-          <div
-            className="absolute inset-0 opacity-[0.35]"
-            style={{
-              backgroundImage:
-                'linear-gradient(to right, rgb(226 232 240 / 0.55) 1px, transparent 1px), linear-gradient(to bottom, rgb(226 232 240 / 0.55) 1px, transparent 1px)',
-              backgroundSize: '28px 28px',
-              maskImage: 'linear-gradient(to bottom, black, transparent)',
-            }}
-          />
-        </div>
+        <PageAtmosphere tall />
 
         <div className="relative space-y-6">
           <div>
@@ -176,6 +176,8 @@ export default function CreateEmployeePage() {
                 submitting={submitting}
                 onCancel={() => router.push('/employees')}
                 showActions
+                payMethod={payMethod}
+                role={role}
               />
             </form>
 
@@ -224,10 +226,14 @@ export default function CreateEmployeePage() {
                     </dd>
                   </div>
                   <div className="flex justify-between gap-3">
+                    <dt className="text-slate-400">Pay method</dt>
+                    <dd className="font-medium text-slate-800">{payMethodLabel(payMethod)}</dd>
+                  </div>
+                  <div className="flex justify-between gap-3">
                     <dt className="text-slate-400">Pay</dt>
                     <dd className="font-medium text-slate-800 tabular-nums">
                       {payRate !== undefined && payRate !== '' && !Number.isNaN(Number(payRate))
-                        ? `$${Number(payRate).toFixed(2)}/hr`
+                        ? formatPayRateDisplay(Number(payRate), payMethod)
                         : '—'}
                     </dd>
                   </div>

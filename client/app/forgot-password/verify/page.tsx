@@ -2,10 +2,23 @@
 
 import { useState, useRef, useEffect, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import BackButton from '@/components/BackButton'
+import Link from 'next/link'
 import api from '@/lib/api'
+import { AuthShell } from '@/components/auth/AuthShell'
+import { Button } from '@/components/ui/Button'
 
 const OTP_STORAGE_KEY = 'forgot_password_otp'
+
+function AuthLoadingFallback() {
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-page">
+      <div
+        className="h-9 w-9 animate-spin rounded-full border-2 border-border border-t-accent"
+        aria-hidden
+      />
+    </div>
+  )
+}
 
 function VerifyCodeContent() {
   const router = useRouter()
@@ -89,123 +102,118 @@ function VerifyCodeContent() {
       router.replace('/forgot-password')
       return
     }
+    setLoading(true)
     try {
       sessionStorage.setItem(OTP_STORAGE_KEY, otp)
       router.push(`/forgot-password/set-password?email=${encodeURIComponent(email)}`)
     } catch {
       setError('Could not continue. Please try again.')
+      setLoading(false)
     }
   }
 
   if (!email) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-50">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600" />
-      </div>
-    )
+    return <AuthLoadingFallback />
   }
 
   return (
-    <div className="min-h-screen flex">
-      <div className="hidden lg:flex lg:w-1/2 bg-gradient-to-br from-blue-600 via-blue-700 to-blue-800 relative overflow-hidden">
-        <div className="absolute inset-0 bg-black/10" />
-        <div className="relative z-10 flex flex-col justify-center px-12 text-white">
-          <h1 className="text-5xl font-bold mb-4">ClockInn</h1>
-          <p className="text-xl text-blue-100">Time & Attendance Management</p>
-        </div>
-      </div>
-      <div className="w-full lg:w-1/2 flex items-center justify-center bg-slate-50 px-4 sm:px-6 lg:px-8">
-        <div className="w-full max-w-md">
-          <div className="lg:hidden text-center mb-8">
-            <h1 className="text-3xl font-bold text-slate-900">ClockInn</h1>
+    <AuthShell
+      eyebrow="Account recovery"
+      headline="Check your inbox"
+      description="Enter the 6-digit code we sent to your registered email, then choose a new password."
+      bullets={[
+        'Code expires in 15 minutes',
+        'Check spam if you don’t see the email',
+        'You can resend after a short wait',
+      ]}
+      mobileSubtitle="Verify code"
+      formTitle="Enter verification code"
+      formDescription={
+        <>
+          Code sent to <span className="font-medium text-foreground">{email}</span>
+        </>
+      }
+      footer={
+        <Link href="/login" className="font-medium text-accent hover:text-accent-hover">
+          Back to sign in
+        </Link>
+      }
+    >
+      <div className="space-y-5">
+        {error && (
+          <div
+            className="rounded-xl border border-red-200 bg-red-50 px-3.5 py-3 dark:border-red-500/30 dark:bg-red-500/10"
+            role="alert"
+          >
+            <p className="text-sm text-red-800 dark:text-red-200">{error}</p>
           </div>
-          <div className="bg-white rounded-2xl shadow-xl p-8 sm:p-10">
-            <h2 className="text-3xl font-bold text-slate-900 mb-2">Enter verification code</h2>
-            <p className="text-slate-600 mb-6">
-              We sent a 6-digit code to your registered email only.
-            </p>
-            <p className="text-sm text-slate-600 mb-6">
-              Code sent to <strong className="text-slate-700">{email}</strong>
-            </p>
+        )}
 
-            {error && (
-              <div className="mb-6 rounded-lg bg-red-50 border border-red-200 p-4 text-sm text-red-800">
-                {error}
-              </div>
-            )}
-
-            <div className="space-y-6">
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-3 text-center">
-                  Verification code
-                </label>
-                <div className="flex gap-2 justify-center" onPaste={handlePaste}>
-                  {pin.map((digit, i) => (
-                    <input
-                      key={i}
-                      ref={(el) => { inputRefs.current[i] = el }}
-                      type="text"
-                      inputMode="numeric"
-                      maxLength={1}
-                      value={digit}
-                      onChange={(e) => handlePinChange(i, e.target.value)}
-                      onKeyDown={(e) => handlePinKeyDown(i, e)}
-                      disabled={loading}
-                      className="w-12 h-14 text-center text-xl font-semibold border-2 border-slate-300 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
-                    />
-                  ))}
-                </div>
-              </div>
-
-              <button
-                type="button"
-                onClick={handleContinue}
-                disabled={loading || pin.some((d) => d === '')}
-                className="w-full py-3 px-4 rounded-lg text-sm font-medium text-white bg-gradient-to-r from-blue-600 to-blue-600 hover:from-blue-700 hover:to-blue-700 focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
-              >
-                Continue
-              </button>
-
-              <div className="text-center">
-                <button
-                  type="button"
-                  onClick={() => requestOtp(email)}
-                  disabled={resendCooldown > 0 || sending}
-                  className="text-sm text-blue-600 hover:text-blue-700 disabled:text-slate-400 disabled:cursor-not-allowed"
-                >
-                  {sending ? 'Sending...' : resendCooldown > 0 ? `Resend code in ${resendCooldown}s` : 'Resend code'}
-                </button>
-              </div>
-            </div>
-
-            <div className="mt-6 text-center">
-              <BackButton fallbackHref="/login" className="text-sm text-slate-500 hover:text-slate-700">
-                Back to login
-              </BackButton>
-            </div>
-
-            <p className="mt-6 text-xs text-slate-500 text-center">
-              Code expires in 15 minutes. Check spam if you don&apos;t see the email. If nothing
-              arrives, ask your administrator to confirm Email Service is connected, or use{' '}
-              <span className="font-medium text-slate-600">Employees → Resend invite</span> for
-              new accounts.
-            </p>
+        <div>
+          <label className="mb-3 block text-center text-sm font-medium text-foreground-muted">
+            Verification code
+          </label>
+          <div className="flex justify-center gap-2" onPaste={handlePaste}>
+            {pin.map((digit, i) => (
+              <input
+                key={i}
+                ref={(el) => {
+                  inputRefs.current[i] = el
+                }}
+                type="text"
+                inputMode="numeric"
+                maxLength={1}
+                value={digit}
+                onChange={(e) => handlePinChange(i, e.target.value)}
+                onKeyDown={(e) => handlePinKeyDown(i, e)}
+                disabled={loading}
+                aria-label={`Digit ${i + 1}`}
+                className="h-12 w-11 rounded-xl border border-border bg-surface text-center text-lg font-semibold text-foreground shadow-sm transition focus:border-transparent focus:outline-none focus:ring-2 focus:ring-accent disabled:opacity-60 sm:h-14 sm:w-12 sm:text-xl"
+              />
+            ))}
           </div>
         </div>
+
+        <Button
+          type="button"
+          variant="primary"
+          size="lg"
+          className="w-full"
+          loading={loading}
+          disabled={pin.some((d) => d === '')}
+          onClick={handleContinue}
+        >
+          Continue
+        </Button>
+
+        <div className="text-center">
+          <button
+            type="button"
+            onClick={() => requestOtp(email)}
+            disabled={resendCooldown > 0 || sending}
+            className="text-sm font-medium text-accent hover:text-accent-hover disabled:cursor-not-allowed disabled:text-foreground-subtle"
+          >
+            {sending
+              ? 'Sending…'
+              : resendCooldown > 0
+                ? `Resend code in ${resendCooldown}s`
+                : 'Resend code'}
+          </button>
+        </div>
+
+        <p className="text-center text-xs leading-relaxed text-foreground-subtle">
+          If nothing arrives, ask your administrator to confirm Email Service is connected, or use{' '}
+          <span className="font-medium text-foreground-muted">Employees → Resend invite</span> for
+          new accounts.
+        </p>
       </div>
-    </div>
+    </AuthShell>
   )
 }
 
 export default function VerifyCodePage() {
   return (
-    <Suspense
-      fallback={
-        <div className="min-h-screen flex items-center justify-center bg-slate-50">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600" />
-        </div>
-      }
-    >
+    <Suspense fallback={<AuthLoadingFallback />}>
       <VerifyCodeContent />
     </Suspense>
   )

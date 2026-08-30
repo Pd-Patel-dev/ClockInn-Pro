@@ -30,13 +30,13 @@ from app.services.payroll_service import (
     void_payroll_run,
     delete_payroll_run,
     get_company_settings,
+    sum_rooms_cleaned_from_line_items,
 )
 from app.services.payroll_schedule_service import pay_date_for_run
 from app.services.export_service import (
-    generate_payroll_pdf,
     generate_payroll_excel,
+    render_payroll_report_pdf,
 )
-from app.pdf_templates.payroll_report import generate_payroll_report_pdf
 from app.models.company import Company
 import uuid
 
@@ -73,6 +73,7 @@ async def payroll_review_preview_endpoint(
     payroll_type: PayrollType = Query(...),
     start_date: date = Query(...),
     include_inactive: bool = Query(False),
+    bypass_schedule: bool = Query(False),
     current_user: User = Depends(require_permission("payroll")),
     db: AsyncSession = Depends(get_db),
 ):
@@ -90,6 +91,7 @@ async def payroll_review_preview_endpoint(
         payroll_type,
         start_date,
         include_inactive,
+        bypass_schedule=bypass_schedule,
     )
 
 
@@ -174,6 +176,8 @@ async def generate_payroll_endpoint(
         request.employee_ids,
         allow_duplicate=False,
         entry_hour_overrides=request.entry_hour_overrides,
+        bypass_schedule=request.bypass_schedule,
+        room_count_overrides=request.room_count_overrides,
     )
     
     # Load line items with employees
@@ -225,6 +229,7 @@ async def generate_payroll_endpoint(
         total_regular_hours=payroll_run.total_regular_hours,
         total_overtime_hours=payroll_run.total_overtime_hours,
         total_gross_pay_cents=payroll_run.total_gross_pay_cents,
+        total_rooms_cleaned=sum_rooms_cleaned_from_line_items(payroll_run.line_items),
         created_at=payroll_run.created_at,
         updated_at=payroll_run.updated_at,
         line_items=line_items,
@@ -267,6 +272,7 @@ async def list_payroll_runs_endpoint(
         )
         run_with_items = result.scalar_one()
         employee_count = len(run_with_items.line_items)
+        rooms_cleaned = sum_rooms_cleaned_from_line_items(run_with_items.line_items)
         
         summaries.append(
             PayrollRunSummaryResponse(
@@ -281,6 +287,7 @@ async def list_payroll_runs_endpoint(
                 total_overtime_hours=run.total_overtime_hours,
                 total_gross_pay_cents=run.total_gross_pay_cents,
                 employee_count=employee_count,
+                total_rooms_cleaned=rooms_cleaned,
             )
         )
     
@@ -352,6 +359,7 @@ async def get_payroll_run_endpoint(
         total_regular_hours=payroll_run.total_regular_hours,
         total_overtime_hours=payroll_run.total_overtime_hours,
         total_gross_pay_cents=payroll_run.total_gross_pay_cents,
+        total_rooms_cleaned=sum_rooms_cleaned_from_line_items(payroll_run.line_items),
         created_at=payroll_run.created_at,
         updated_at=payroll_run.updated_at,
         line_items=line_items,
@@ -397,51 +405,8 @@ async def get_payroll_report_pdf_endpoint(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Payroll run not found",
         )
-    
-    # Prepare data for PDF generator
-    company_name = payroll_run.company.name if payroll_run.company else "Company"
-    payroll_type = payroll_run.payroll_type.value
-    status_str = payroll_run.status.value.title()
-    generated_by_name = payroll_run.generator.name if payroll_run.generator else "System"
-    
-    # Prepare employee rows
-    rows = []
-    for item in payroll_run.line_items:
-        employee_name = item.employee.name if item.employee else "Unknown"
-        regular_hours = float(item.regular_minutes) / 60.0
-        ot_hours = float(item.overtime_minutes) / 60.0
-        rate = float(item.pay_rate_cents) / 100.0
-        regular_pay = float(item.regular_pay_cents) / 100.0
-        ot_pay = float(item.overtime_pay_cents) / 100.0
-        total_pay = float(item.total_pay_cents) / 100.0
-        exceptions = "-" if item.exceptions_count == 0 else f"{item.exceptions_count} exception(s)"
-        
-        rows.append({
-            'employee_name': employee_name,
-            'regular_hours': regular_hours,
-            'ot_hours': ot_hours,
-            'rate': rate,
-            'regular_pay': regular_pay,
-            'ot_pay': ot_pay,
-            'total_pay': total_pay,
-            'exceptions': exceptions,
-        })
-    
-    # Generate PDF
-    pdf_bytes = generate_payroll_report_pdf(
-        company_name=company_name,
-        payroll_type=payroll_type,
-        period_start=payroll_run.period_start_date,
-        period_end=payroll_run.period_end_date,
-        generated_at=payroll_run.generated_at,
-        generated_by=generated_by_name,
-        status=status_str,
-        rows=rows,
-        pay_date=pay_date_for_run(
-            payroll_run.period_end_date,
-            await _company_settings_for(db, payroll_run.company_id, payroll_run.company),
-        ),
-    )
+
+    pdf_bytes = render_payroll_report_pdf(payroll_run)
     
     # Create filename
     filename = f"payroll-report-{payroll_run.period_start_date}-{payroll_run.period_end_date}.pdf"
@@ -522,6 +487,7 @@ async def finalize_payroll_run_endpoint(
         total_regular_hours=payroll_run.total_regular_hours,
         total_overtime_hours=payroll_run.total_overtime_hours,
         total_gross_pay_cents=payroll_run.total_gross_pay_cents,
+        total_rooms_cleaned=sum_rooms_cleaned_from_line_items(payroll_run.line_items),
         created_at=payroll_run.created_at,
         updated_at=payroll_run.updated_at,
         line_items=line_items,
@@ -595,6 +561,7 @@ async def void_payroll_run_endpoint(
         total_regular_hours=payroll_run.total_regular_hours,
         total_overtime_hours=payroll_run.total_overtime_hours,
         total_gross_pay_cents=payroll_run.total_gross_pay_cents,
+        total_rooms_cleaned=sum_rooms_cleaned_from_line_items(payroll_run.line_items),
         created_at=payroll_run.created_at,
         updated_at=payroll_run.updated_at,
         line_items=line_items,
@@ -664,53 +631,9 @@ async def export_payroll_endpoint(
     await db.commit()
     
     if format == "pdf":
-        # Use new professional PDF template
         from io import BytesIO
-        
-        # Prepare data for new PDF generator
-        company_name = payroll_run.company.name if payroll_run.company else "Company"
-        payroll_type = payroll_run.payroll_type.value
-        status_str = payroll_run.status.value.title()
-        generated_by_name = payroll_run.generator.name if payroll_run.generator else "System"
-        
-        # Prepare employee rows
-        rows = []
-        for item in payroll_run.line_items:
-            employee_name = item.employee.name if item.employee else "Unknown"
-            regular_hours = float(item.regular_minutes) / 60.0
-            ot_hours = float(item.overtime_minutes) / 60.0
-            rate = float(item.pay_rate_cents) / 100.0
-            regular_pay = float(item.regular_pay_cents) / 100.0
-            ot_pay = float(item.overtime_pay_cents) / 100.0
-            total_pay = float(item.total_pay_cents) / 100.0
-            exceptions = "-" if item.exceptions_count == 0 else f"{item.exceptions_count} exception(s)"
-            
-            rows.append({
-                'employee_name': employee_name,
-                'regular_hours': regular_hours,
-                'ot_hours': ot_hours,
-                'rate': rate,
-                'regular_pay': regular_pay,
-                'ot_pay': ot_pay,
-                'total_pay': total_pay,
-                'exceptions': exceptions,
-            })
-        
-        # Generate PDF using new template
-        pdf_bytes = generate_payroll_report_pdf(
-            company_name=company_name,
-            payroll_type=payroll_type,
-            period_start=payroll_run.period_start_date,
-            period_end=payroll_run.period_end_date,
-            generated_at=payroll_run.generated_at,
-            generated_by=generated_by_name,
-            status=status_str,
-            rows=rows,
-            pay_date=pay_date_for_run(
-                payroll_run.period_end_date,
-                await _company_settings_for(db, payroll_run.company_id, payroll_run.company),
-            ),
-        )
+
+        pdf_bytes = render_payroll_report_pdf(payroll_run)
         
         return StreamingResponse(
             BytesIO(pdf_bytes),

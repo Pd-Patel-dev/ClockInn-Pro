@@ -3,7 +3,7 @@ from typing import Optional
 from datetime import datetime
 from decimal import Decimal
 from uuid import UUID
-from app.models.user import UserRole, UserStatus
+from app.models.user import UserRole, UserStatus, PayMethod
 
 
 def _normalize_email_value(email: str) -> str:
@@ -23,6 +23,7 @@ class UserCreate(BaseModel):
     role: UserRole = UserRole.FRONTDESK
     pin: Optional[str] = Field(None, min_length=4, max_length=4, pattern="^[0-9]{4}$")
     pay_rate: Optional[float] = Field(None, ge=0)
+    pay_method: Optional[PayMethod] = PayMethod.HOURLY
     preferred_name: Optional[str] = Field(None, max_length=100)
     phone: Optional[str] = Field(None, max_length=30)
     job_role: Optional[str] = Field(None, max_length=255)
@@ -39,6 +40,8 @@ class UserCreate(BaseModel):
         # Admin employee APIs must never create platform developers
         if self.role == UserRole.DEVELOPER:
             raise ValueError("Cannot create DEVELOPER users through tenant employee APIs")
+        if self.pay_method == PayMethod.PER_ROOM and self.role != UserRole.HOUSEKEEPING:
+            raise ValueError("Per room pay method is only available for Housekeeping employees")
         return self
 
 
@@ -48,6 +51,7 @@ class UserUpdate(BaseModel):
     role: Optional[UserRole] = None
     pin: Optional[str] = Field(None, min_length=0, max_length=4)
     pay_rate: Optional[float] = Field(None, ge=0)
+    pay_method: Optional[PayMethod] = None
     preferred_name: Optional[str] = Field(None, max_length=100)
     phone: Optional[str] = Field(None, max_length=30)
     job_role: Optional[str] = Field(None, max_length=255)
@@ -80,6 +84,13 @@ class UserUpdate(BaseModel):
         if self.role is not None and self.role != UserRole.DEVELOPER and self.company_id is None:
             # company_id optional on update body; only enforce when explicitly provided as null with role
             pass
+        # When both are present on the body, enforce immediately
+        if (
+            self.pay_method == PayMethod.PER_ROOM
+            and self.role is not None
+            and self.role != UserRole.HOUSEKEEPING
+        ):
+            raise ValueError("Per room pay method is only available for Housekeeping employees")
         return self
 
 
@@ -103,6 +114,7 @@ class TenantUserCreate(BaseModel):
     role: UserRole
     pin: Optional[str] = Field(default=None, pattern=r"^\d{4}$")
     pay_rate: Optional[Decimal] = Field(default=None, ge=0)
+    pay_method: Optional[PayMethod] = PayMethod.HOURLY
     email_verified: bool = Field(default=False)
 
     @field_validator("role")
@@ -117,6 +129,12 @@ class TenantUserCreate(BaseModel):
     def normalize_email(cls, v: EmailStr) -> str:
         return _normalize_email_value(str(v))
 
+    @model_validator(mode="after")
+    def validate_pay_method_role(self):
+        if self.pay_method == PayMethod.PER_ROOM and self.role != UserRole.HOUSEKEEPING:
+            raise ValueError("Per room pay method is only available for Housekeeping employees")
+        return self
+
 
 class UserResponse(BaseModel):
     id: UUID
@@ -127,6 +145,7 @@ class UserResponse(BaseModel):
     status: UserStatus
     has_pin: bool
     pay_rate: Optional[float] = None
+    pay_method: PayMethod = PayMethod.HOURLY
     preferred_name: Optional[str] = None
     phone: Optional[str] = None
     job_role: Optional[str] = None
@@ -134,6 +153,8 @@ class UserResponse(BaseModel):
     last_login_at: Optional[datetime] = None
     last_punch_at: Optional[datetime] = None
     is_clocked_in: Optional[bool] = None
+    # True while a set-password invite is outstanding (hide "Resend invite" when false)
+    password_setup_pending: bool = False
 
     class Config:
         from_attributes = True
@@ -230,6 +251,7 @@ class DeveloperUserResponse(BaseModel):
     last_login_at: Optional[datetime] = None
     has_pin: bool = False
     pay_rate: Optional[float] = None
+    pay_method: PayMethod = PayMethod.HOURLY
 
     class Config:
         from_attributes = True
@@ -252,6 +274,7 @@ class DeveloperUserUpdate(BaseModel):
     verification_required: Optional[bool] = None
     pin: Optional[str] = Field(None, min_length=0, max_length=4)
     pay_rate: Optional[float] = Field(None, ge=0)
+    pay_method: Optional[PayMethod] = None
 
     @field_validator("pin")
     @classmethod

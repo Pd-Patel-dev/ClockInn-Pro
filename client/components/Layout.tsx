@@ -160,6 +160,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       { href: '/my-schedule', label: 'My Schedule', permission: 'schedule' },
       { href: '/logs', label: 'My Logs', permission: 'clock' },
       { href: '/leave', label: 'Leave', permission: 'leave' },
+      { href: '/housekeeping', label: 'Housekeeping', permission: 'housekeeping' },
     ]
     return all.filter((l) => can(l.permission))
   }, [can])
@@ -184,6 +185,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         type: 'single' as const,
         items: [
           { href: '/schedules', label: 'Schedules', permission: 'schedule' },
+          { href: '/housekeeping', label: 'Housekeeping', permission: 'housekeeping' },
         ],
       },
       {
@@ -280,7 +282,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
 
   return (
     <DeveloperChromeProvider isDeveloper={isDeveloper}>
-      <div className="min-h-screen bg-border-subtle/30">
+      <div className="min-h-screen bg-page">
         <AppHeader
           user={user}
           onLogout={handleLogout}

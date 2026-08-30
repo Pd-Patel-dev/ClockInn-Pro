@@ -13,6 +13,10 @@ class PayrollGenerateRequest(BaseModel):
     employee_ids: Optional[List[UUID]] = None
     # entry_id -> paid hours as reviewed in the generate dialog
     entry_hour_overrides: Optional[Dict[str, float]] = None
+    # employee_id -> rooms cleaned as reviewed in the generate dialog
+    room_count_overrides: Optional[Dict[str, int]] = None
+    # Honored only when ENVIRONMENT is not production (ignored otherwise).
+    bypass_schedule: bool = False
     
     @model_validator(mode='after')
     def validate_start_date(self):
@@ -56,6 +60,7 @@ class PayrollRunResponse(BaseModel):
     total_regular_hours: Decimal
     total_overtime_hours: Decimal
     total_gross_pay_cents: int
+    total_rooms_cleaned: int = 0
     created_at: datetime
     updated_at: datetime
     line_items: List[PayrollLineItemResponse] = []
@@ -76,6 +81,7 @@ class PayrollRunSummaryResponse(BaseModel):
     total_overtime_hours: Decimal
     total_gross_pay_cents: int
     employee_count: int
+    total_rooms_cleaned: int = 0
 
     class Config:
         from_attributes = True
@@ -143,8 +149,12 @@ class PayrollReviewEntry(BaseModel):
 class PayrollReviewEmployee(BaseModel):
     employee_id: str
     employee_name: str
+    pay_method: str = "HOURLY"
     pay_rate_cents: int
     overtime_multiplier: float
+    rooms_cleaned: Optional[int] = None
+    estimated_pay_cents: Optional[int] = None
+    room_numbers: List[str] = []
     regular_minutes: int
     overtime_minutes: int
     total_minutes: int

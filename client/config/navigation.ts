@@ -12,6 +12,7 @@ export const NAV_ITEMS: NavItem[] = [
   { label: 'Employees', href: '/employees', permission: 'user_management' },
   { label: 'Leave Requests', href: '/leave-requests', permission: 'user_management' },
   { label: 'Schedules', href: '/schedules', permission: 'schedule' },
+  { label: 'Housekeeping', href: '/housekeeping', permission: 'housekeeping' },
   { label: 'Punch Log', href: '/admin/punch-log', permission: 'common_log' },
   { label: 'Drawer Log', href: '/admin/drawer-log', permission: 'common_log' },
   { label: 'Payroll', href: '/payroll', permission: 'payroll' },
@@ -28,4 +29,5 @@ export const ROUTE_PERMISSIONS: Record<string, string> = {
   '/employees': 'user_management',
   '/leave-requests': 'user_management',
   '/settings': 'settings',
+  '/housekeeping': 'housekeeping',
 }

@@ -592,12 +592,7 @@ export function AppHeader({
                     <MenuItem onClick={() => chrome.openShortcuts()} shortcut="?">
                       Keyboard shortcuts
                     </MenuItem>
-                    <MenuItem
-                      onClick={() => window.open('https://docs.clockinn.pro', '_blank', 'noopener,noreferrer')}
-                    >
-                      Documentation
-                    </MenuItem>
-                    <MenuItem onClick={() => chrome.openFeedback({ kind: 'feedback' })}>Contact support</MenuItem>
+                    <MenuItem onClick={() => chrome.openFeedback({ kind: 'support' })}>Contact support</MenuItem>
                   </MenuSection>
                 </MenuContent>
               </MenuRoot>

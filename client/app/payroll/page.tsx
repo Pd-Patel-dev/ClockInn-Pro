@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import Layout from '@/components/Layout'
+import PageAtmosphere from '@/components/PageAtmosphere'
 import api from '@/lib/api'
 import { getCurrentUser } from '@/lib/auth'
 import { format, parseISO, startOfMonth, endOfMonth, getYear, getMonth } from 'date-fns'
@@ -44,6 +45,7 @@ interface PayrollRunSummary {
   total_overtime_hours: number | string
   total_gross_pay_cents: number
   employee_count: number
+  total_rooms_cleaned?: number
 }
 
 function toHours(value: number | string | null | undefined): number {
@@ -155,6 +157,8 @@ export default function AdminPayrollPage() {
   const [payrollRuns, setPayrollRuns] = useState<PayrollRunSummary[]>([])
   const [schedule, setSchedule] = useState<PayrollSchedule | null>(null)
   const [showGenerateForm, setShowGenerateForm] = useState(false)
+  const [testMode, setTestMode] = useState(false)
+  const isDev = process.env.NODE_ENV === 'development'
   const [generateDefaults, setGenerateDefaults] = useState<PayrollGenerateFormValues>({
     payroll_type: 'WEEKLY',
     start_date: '',
@@ -231,8 +235,11 @@ export default function AdminPayrollPage() {
         start_date: data.start_date,
         include_inactive: data.include_inactive,
         entry_hour_overrides: data.entry_hour_overrides || undefined,
+        room_count_overrides: data.room_count_overrides || undefined,
+        bypass_schedule: Boolean(data.bypass_schedule),
       })
       setShowGenerateForm(false)
+      setTestMode(false)
       await Promise.all([fetchPayrollRuns(), fetchSchedule()])
       router.push(`/payroll/${response.data.id}`)
     } catch (error: any) {
@@ -246,6 +253,7 @@ export default function AdminPayrollPage() {
   }
 
   const openGenerateForm = () => {
+    setTestMode(false)
     if (schedule?.configured) {
       if (!schedule.can_generate) {
         if (schedule.existing_run_id) {
@@ -267,6 +275,18 @@ export default function AdminPayrollPage() {
         include_inactive: false,
       })
     }
+    setShowGenerateForm(true)
+  }
+
+  const openTestPayrollForm = () => {
+    const fallbackStart = format(new Date(Date.now() - 6 * 24 * 60 * 60 * 1000), 'yyyy-MM-dd')
+    setTestMode(true)
+    setGenerateDefaults({
+      payroll_type: (schedule?.payroll_type as 'WEEKLY' | 'BIWEEKLY') || 'WEEKLY',
+      start_date: schedule?.period_start || fallbackStart,
+      include_inactive: false,
+      bypass_schedule: true,
+    })
     setShowGenerateForm(true)
   }
   const hasFilters = Boolean(
@@ -347,6 +367,7 @@ export default function AdminPayrollPage() {
     const otHours = active.reduce((sum, r) => sum + toHours(r.total_overtime_hours), 0)
     const totalHours = regularHours + otHours
     const employeesPaid = finalized.reduce((sum, r) => sum + (r.employee_count || 0), 0)
+    const totalRooms = active.reduce((sum, r) => sum + (r.total_rooms_cleaned || 0), 0)
     const avgGross =
       finalized.length > 0
         ? Math.round(
@@ -366,6 +387,7 @@ export default function AdminPayrollPage() {
       totalHours,
       otHours,
       employeesPaid,
+      totalRooms,
       avgGross,
       otShare: totalHours > 0 ? Math.round((otHours / totalHours) * 100) : 0,
       latest,
@@ -393,21 +415,7 @@ export default function AdminPayrollPage() {
   return (
     <Layout>
       <div className="relative mx-auto max-w-6xl">
-        <div
-          aria-hidden
-          className="pointer-events-none absolute inset-x-0 -top-4 h-52 overflow-hidden"
-        >
-          <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_rgba(15,23,42,0.06),_transparent_65%)]" />
-          <div
-            className="absolute inset-0 opacity-[0.35]"
-            style={{
-              backgroundImage:
-                'linear-gradient(to right, rgb(226 232 240 / 0.55) 1px, transparent 1px), linear-gradient(to bottom, rgb(226 232 240 / 0.55) 1px, transparent 1px)',
-              backgroundSize: '28px 28px',
-              maskImage: 'linear-gradient(to bottom, black, transparent)',
-            }}
-          />
-        </div>
+        <PageAtmosphere />
 
         <div className="relative space-y-6 pb-8">
           <header className="overflow-hidden rounded-2xl border border-slate-800/10 shadow-[0_20px_50px_-28px_rgba(15,23,42,0.45)]">
@@ -459,13 +467,24 @@ export default function AdminPayrollPage() {
                       </p>
                     </div>
                   )}
-                  <button
-                    type="button"
-                    onClick={openGenerateForm}
-                    className="inline-flex items-center justify-center gap-2 rounded-xl bg-white px-4 py-2.5 text-sm font-semibold text-slate-900 shadow-sm hover:bg-slate-100"
-                  >
-                    Generate payroll
-                  </button>
+                  <div className="flex flex-col sm:flex-row items-stretch gap-2">
+                    {isDev && (
+                      <button
+                        type="button"
+                        onClick={openTestPayrollForm}
+                        className="inline-flex items-center justify-center gap-2 rounded-xl border border-amber-400/50 bg-amber-500/15 px-4 py-2.5 text-sm font-semibold text-amber-100 hover:bg-amber-500/25"
+                      >
+                        Test payroll
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={openGenerateForm}
+                      className="inline-flex items-center justify-center gap-2 rounded-xl bg-white px-4 py-2.5 text-sm font-semibold text-slate-900 shadow-sm hover:bg-slate-100"
+                    >
+                      Generate payroll
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
@@ -543,6 +562,15 @@ export default function AdminPayrollPage() {
                       Open current run
                     </Link>
                   )}
+                  {isDev && !schedule.can_generate && (
+                    <button
+                      type="button"
+                      onClick={openTestPayrollForm}
+                      className="rounded-xl border border-amber-300 bg-amber-50 px-3.5 py-2 text-sm font-semibold text-amber-800 hover:bg-amber-100"
+                    >
+                      Test payroll
+                    </button>
+                  )}
                   {schedule.can_generate && (
                     <button
                       type="button"
@@ -575,10 +603,9 @@ export default function AdminPayrollPage() {
               tone="success"
             />
             <StatCard
-              label="Drafts"
-              value={kpis.drafts}
-              hint={kpis.drafts > 0 ? 'Awaiting finalize' : 'All clear'}
-              tone={kpis.drafts > 0 ? 'warning' : 'default'}
+              label="Total rooms"
+              value={kpis.totalRooms}
+              hint="Matching filters · excludes void"
             />
           </div>
 
@@ -594,12 +621,6 @@ export default function AdminPayrollPage() {
               value={kpis.otHours.toFixed(1)}
               hint="Across active runs"
               tone={kpis.otHours > 0 ? 'warning' : 'default'}
-            />
-            <StatCard
-              label="Employees paid"
-              value={kpis.employeesPaid}
-              hint="Sum of finalized runs"
-              tone="success"
             />
           </div>
 
@@ -760,66 +781,70 @@ export default function AdminPayrollPage() {
                 )}
               </div>
             ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full table-fixed min-w-[820px]">
+              <div className="overflow-hidden">
+                <table className="w-full table-fixed">
                   <colgroup>
-                    <col className="w-[22%]" />
-                    <col className="w-[12%]" />
+                    <col className="w-[26%]" />
+                    <col className="w-[9%]" />
+                    <col className="w-[7%]" />
+                    <col className="w-[8%]" />
                     <col className="w-[10%]" />
+                    <col className="w-[8%]" />
                     <col className="w-[12%]" />
                     <col className="w-[12%]" />
-                    <col className="w-[14%]" />
-                    <col className="w-[10%]" />
                     <col className="w-[8%]" />
                   </colgroup>
                   <thead>
                     <tr className="border-b border-slate-100">
-                      <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-400">
+                      <th className="px-3 py-3 text-left text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-400">
                         Period
                       </th>
-                      <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-400">
+                      <th className="px-2 py-3 text-left text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-400">
                         Type
                       </th>
-                      <th className="px-4 py-3 text-right text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-400">
+                      <th className="px-2 py-3 text-right text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-400">
                         Staff
                       </th>
-                      <th className="px-4 py-3 text-right text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-400">
+                      <th className="px-2 py-3 text-right text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-400">
+                        Rooms
+                      </th>
+                      <th className="px-2 py-3 text-right text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-400">
                         Regular
                       </th>
-                      <th className="px-4 py-3 text-right text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-400">
+                      <th className="px-2 py-3 text-right text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-400">
                         OT
                       </th>
-                      <th className="px-4 py-3 text-right text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-400">
+                      <th className="px-2 py-3 text-right text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-400">
                         Gross
                       </th>
-                      <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-400">
+                      <th className="px-2 py-3 text-left text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-400">
                         Status
                       </th>
-                      <th className="px-4 py-3 text-right text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-400">
-                        
+                      <th className="px-3 py-3 text-right text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-400">
+                        <span className="sr-only">Open</span>
                       </th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
                     {payrollRuns.map((run) => (
                       <tr key={run.id} className="hover:bg-slate-50/90 transition-colors">
-                        <td className="px-4 py-3.5 align-middle">
+                        <td className="min-w-0 px-3 py-3.5 align-middle">
                           <Link
                             href={`/payroll/${run.id}`}
-                            className="block text-sm font-semibold text-slate-900 hover:underline"
+                            className="block truncate text-sm font-semibold text-slate-900 hover:underline"
                           >
                             {formatPeriodMonthYear(run.period_start_date)}
                           </Link>
-                          <p className="mt-0.5 text-xs text-slate-500 tabular-nums">
+                          <p className="mt-0.5 truncate text-xs text-slate-500 tabular-nums">
                             {formatPeriod(run.period_start_date, run.period_end_date)}
                           </p>
                           {formatPayDate(run.pay_date) ? (
-                            <p className="mt-0.5 text-xs text-slate-500 tabular-nums">
-                              Pay date {formatPayDate(run.pay_date)}
+                            <p className="mt-0.5 truncate text-xs text-slate-500 tabular-nums">
+                              Pay {formatPayDate(run.pay_date)}
                             </p>
                           ) : null}
-                          <p className="mt-0.5 text-xs text-slate-400 tabular-nums">
-                            Generated{' '}
+                          <p className="mt-0.5 truncate text-xs text-slate-400 tabular-nums">
+                            Gen{' '}
                             {(() => {
                               try {
                                 return format(parseISO(run.generated_at), 'MMM d, yyyy')
@@ -829,32 +854,35 @@ export default function AdminPayrollPage() {
                             })()}
                           </p>
                         </td>
-                        <td className="px-4 py-3.5 align-middle text-sm text-slate-700 capitalize">
+                        <td className="px-2 py-3.5 align-middle text-sm text-slate-700 capitalize">
                           {run.payroll_type.toLowerCase()}
                         </td>
-                        <td className="px-4 py-3.5 align-middle text-right text-sm tabular-nums text-slate-900">
+                        <td className="px-2 py-3.5 align-middle text-right text-sm tabular-nums text-slate-900">
                           {run.employee_count}
                         </td>
-                        <td className="px-4 py-3.5 align-middle text-right text-sm tabular-nums text-slate-900">
+                        <td className="px-2 py-3.5 align-middle text-right text-sm tabular-nums text-slate-900">
+                          {run.total_rooms_cleaned ?? 0}
+                        </td>
+                        <td className="px-2 py-3.5 align-middle text-right text-sm tabular-nums text-slate-900">
                           {formatHours(run.total_regular_hours)}
                         </td>
-                        <td className="px-4 py-3.5 align-middle text-right text-sm tabular-nums text-slate-900">
+                        <td className="px-2 py-3.5 align-middle text-right text-sm tabular-nums text-slate-900">
                           {formatHours(run.total_overtime_hours)}
                         </td>
-                        <td className="px-4 py-3.5 align-middle text-right text-sm font-semibold tabular-nums text-slate-900">
+                        <td className="px-2 py-3.5 align-middle text-right text-sm font-semibold tabular-nums text-slate-900">
                           {formatCurrency(run.total_gross_pay_cents)}
                         </td>
-                        <td className="px-4 py-3.5 align-middle">
+                        <td className="px-2 py-3.5 align-middle">
                           <span
                             className={`inline-flex rounded-md px-2 py-0.5 text-[11px] font-medium ring-1 ring-inset capitalize ${statusChipClass(run.status)}`}
                           >
                             {run.status.toLowerCase()}
                           </span>
                         </td>
-                        <td className="px-4 py-3.5 align-middle text-right">
+                        <td className="px-3 py-3.5 align-middle text-right">
                           <Link
                             href={`/payroll/${run.id}`}
-                            className="text-sm font-semibold text-slate-700 hover:text-slate-900"
+                            className="text-sm font-semibold text-slate-700 hover:text-slate-900 whitespace-nowrap"
                           >
                             Open →
                           </Link>
@@ -870,11 +898,15 @@ export default function AdminPayrollPage() {
 
         <PayrollGenerateReviewModal
           open={showGenerateForm}
-          scheduleLocked={Boolean(schedule?.configured)}
+          scheduleLocked={Boolean(schedule?.configured) && !testMode}
+          testMode={testMode}
           nextPayDate={schedule?.next_pay_date}
           initialValues={generateDefaults}
           generating={generating}
-          onClose={() => setShowGenerateForm(false)}
+          onClose={() => {
+            setShowGenerateForm(false)
+            setTestMode(false)
+          }}
           onGenerate={onGeneratePayroll}
           onError={(message) => toast.error(message)}
           onInfo={(message) => toast.success(message)}

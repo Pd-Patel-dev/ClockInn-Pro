@@ -613,6 +613,7 @@ async def create_company_with_admin_developer(
             status=admin.status,
             has_pin=admin.pin_hash is not None,
             pay_rate=float(admin.pay_rate) if admin.pay_rate is not None else None,
+            pay_method=admin.pay_method,
             created_at=admin.created_at,
             last_login_at=admin.last_login_at,
             last_punch_at=getattr(admin, "last_punch_at", None),
@@ -663,6 +664,7 @@ async def create_company_user_developer(
             last_login_at=user.last_login_at,
             has_pin=user.pin_hash is not None,
             pay_rate=float(user.pay_rate) if user.pay_rate is not None else None,
+            pay_method=user.pay_method,
         ),
         temp_password=temp_password,
         password_setup_email_sent=setup_email_sent,
@@ -815,6 +817,7 @@ async def list_company_users_developer(
             last_login_at=u.last_login_at,
             has_pin=u.pin_hash is not None,
             pay_rate=float(u.pay_rate) if u.pay_rate is not None else None,
+            pay_method=u.pay_method,
         )
         for u in users
     ]
@@ -874,6 +877,7 @@ async def list_all_users_developer(
             last_login_at=u.last_login_at,
             has_pin=u.pin_hash is not None,
             pay_rate=float(u.pay_rate) if u.pay_rate is not None else None,
+            pay_method=u.pay_method,
         )
         for u in users
     ]
@@ -906,6 +910,7 @@ async def get_user_developer(
         last_login_at=user.last_login_at,
         has_pin=user.pin_hash is not None,
         pay_rate=float(user.pay_rate) if user.pay_rate is not None else None,
+        pay_method=user.pay_method,
     )
 
 
@@ -936,6 +941,7 @@ async def update_user_developer_endpoint(
         last_login_at=user.last_login_at,
         has_pin=user.pin_hash is not None,
         pay_rate=float(user.pay_rate) if user.pay_rate is not None else None,
+        pay_method=user.pay_method,
     )
 
 
@@ -952,3 +958,96 @@ async def send_password_reset_developer(
     """
     uid = parse_uuid(user_id, "User ID")
     return await send_password_reset_link_as_developer(db, uid, actor_user_id=current_user.id)
+
+
+class SupportTicketStatusUpdate(BaseModel):
+    status: str = Field(..., pattern="^(open|resolved)$")
+
+
+def _ticket_out(ticket) -> Dict[str, Any]:
+    return {
+        "id": str(ticket.id),
+        "type": ticket.type,
+        "status": ticket.status,
+        "message": ticket.message,
+        "user_id": str(ticket.user_id) if ticket.user_id else None,
+        "user_name": ticket.user_name,
+        "user_email": ticket.user_email,
+        "user_role": ticket.user_role,
+        "company_id": str(ticket.company_id) if ticket.company_id else None,
+        "company_name": ticket.company_name,
+        "page_path": ticket.page_path,
+        "user_agent": ticket.user_agent,
+        "ip_address": ticket.ip_address,
+        "created_at": ticket.created_at.isoformat() if ticket.created_at else None,
+        "resolved_at": ticket.resolved_at.isoformat() if ticket.resolved_at else None,
+        "resolved_by_id": str(ticket.resolved_by_id) if ticket.resolved_by_id else None,
+    }
+
+
+@router.get("/support-tickets")
+@handle_endpoint_errors(operation_name="list_support_tickets")
+async def list_support_tickets(
+    status_filter: Optional[str] = Query(None, alias="status"),
+    type_filter: Optional[str] = Query(None, alias="type"),
+    q: Optional[str] = Query(None, description="Search name, email, company, or message"),
+    limit: int = Query(100, ge=1, le=500),
+    current_user: User = Depends(get_current_developer),
+    db: AsyncSession = Depends(get_db),
+):
+    """List contact support / feedback / bug submissions for the developer portal."""
+    from app.models.support_ticket import SupportTicket
+
+    stmt = select(SupportTicket).order_by(SupportTicket.created_at.desc()).limit(limit)
+    if status_filter in ("open", "resolved"):
+        stmt = stmt.where(SupportTicket.status == status_filter)
+    if type_filter in ("support", "feedback", "bug"):
+        stmt = stmt.where(SupportTicket.type == type_filter)
+    if q and q.strip():
+        like = f"%{q.strip()}%"
+        stmt = stmt.where(
+            (SupportTicket.user_name.ilike(like))
+            | (SupportTicket.user_email.ilike(like))
+            | (SupportTicket.company_name.ilike(like))
+            | (SupportTicket.message.ilike(like))
+        )
+
+    result = await db.execute(stmt)
+    tickets = result.scalars().all()
+    open_count_result = await db.execute(
+        select(func.count(SupportTicket.id)).where(SupportTicket.status == "open")
+    )
+    return {
+        "items": [_ticket_out(t) for t in tickets],
+        "open_count": open_count_result.scalar_one() or 0,
+    }
+
+
+@router.patch("/support-tickets/{ticket_id}")
+@handle_endpoint_errors(operation_name="update_support_ticket")
+async def update_support_ticket(
+    ticket_id: str,
+    body: SupportTicketStatusUpdate,
+    current_user: User = Depends(get_current_developer),
+    db: AsyncSession = Depends(get_db),
+):
+    """Mark a support ticket open or resolved."""
+    from app.models.support_ticket import SupportTicket, SupportTicketStatus
+
+    tid = parse_uuid(ticket_id, "Ticket ID")
+    result = await db.execute(select(SupportTicket).where(SupportTicket.id == tid))
+    ticket = result.scalar_one_or_none()
+    if not ticket:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Ticket not found")
+
+    ticket.status = body.status
+    if body.status == SupportTicketStatus.RESOLVED.value:
+        ticket.resolved_at = datetime.now(timezone.utc)
+        ticket.resolved_by_id = current_user.id
+    else:
+        ticket.resolved_at = None
+        ticket.resolved_by_id = None
+
+    await db.commit()
+    await db.refresh(ticket)
+    return _ticket_out(ticket)

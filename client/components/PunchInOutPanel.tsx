@@ -904,10 +904,10 @@ export default function PunchInOutPanel({ user, compact = false }: PunchInOutPan
       )}
 
       {/* Top row — Punch in / out */}
-      <div className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm">
+      <div className="overflow-hidden rounded-2xl border border-border/80 bg-surface shadow-sm">
         <div className="flex flex-col gap-4 p-4 sm:flex-row sm:items-center sm:justify-between sm:gap-6 sm:p-5">
           <div className="min-w-0">
-            <p className="text-xs font-medium uppercase tracking-[0.14em] text-slate-400">Punch in / out</p>
+            <p className="text-xs font-medium uppercase tracking-[0.14em] text-foreground-subtle">Punch in / out</p>
             <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1">
               {currentStatus === 'in' ? (
                 <div className="flex items-center gap-2">
@@ -915,12 +915,12 @@ export default function PunchInOutPanel({ user, compact = false }: PunchInOutPan
                     <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-60" />
                     <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
                   </span>
-                  <span className="text-lg font-semibold tracking-tight text-slate-900">Clocked in</span>
+                  <span className="text-lg font-semibold tracking-tight text-foreground">Clocked in</span>
                 </div>
               ) : (
                 <div className="flex items-center gap-2">
                   <span className="h-2 w-2 rounded-full bg-slate-300" />
-                  <span className="text-lg font-semibold tracking-tight text-slate-900">Clocked out</span>
+                  <span className="text-lg font-semibold tracking-tight text-foreground">Clocked out</span>
                 </div>
               )}
               {currentStatus === 'in' && activeClockInAt ? (
@@ -976,12 +976,12 @@ export default function PunchInOutPanel({ user, compact = false }: PunchInOutPan
         marketplaceConfigured &&
         ownsActiveDrawer && (
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_14rem]">
-          <div className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm sm:p-5">
+          <div className="overflow-hidden rounded-2xl border border-border/80 bg-surface p-4 shadow-sm sm:p-5">
             <div className="grid grid-cols-1 gap-5 lg:grid-cols-2 lg:gap-6">
               {/* Current cart + pay */}
-              <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-3 sm:p-4">
+              <div className="rounded-xl border border-border bg-border-subtle/70 p-3 sm:p-4">
                 <div className="mb-2 flex items-center justify-between gap-2">
-                  <h3 className="text-sm font-semibold text-slate-900">Current cart</h3>
+                  <h3 className="text-sm font-semibold text-foreground">Current cart</h3>
                   {cartRows.length > 0 && (
                     <button
                       type="button"
@@ -1027,7 +1027,7 @@ export default function PunchInOutPanel({ user, compact = false }: PunchInOutPan
                   </ul>
                 )}
                 <div className="mt-3 flex items-baseline justify-between border-t border-slate-200 pt-3">
-                  <span className="text-sm font-semibold text-slate-900">Due</span>
+                  <span className="text-sm font-semibold text-foreground">Due</span>
                   <span className="text-base font-semibold tabular-nums text-slate-900">
                     {formatCurrencyCents(cartTotalCents)}
                   </span>
@@ -1046,7 +1046,7 @@ export default function PunchInOutPanel({ user, compact = false }: PunchInOutPan
 
               {/* Items → cart */}
               <div>
-                <h3 className="mb-1 text-sm font-semibold text-slate-900">Marketplace</h3>
+                <h3 className="mb-1 text-sm font-semibold text-foreground">Marketplace</h3>
                 <p className="mb-3 text-xs text-slate-400">Tap items to add to the current cart</p>
                 <div className="flex flex-wrap gap-2">
                   {catalogItems.map((item) => (
@@ -1073,7 +1073,7 @@ export default function PunchInOutPanel({ user, compact = false }: PunchInOutPan
             {/* Shift sales (finalized) */}
             <div className="mt-5 border-t border-slate-100 pt-4">
               <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
-                <h3 className="text-sm font-semibold text-slate-900">Today&apos;s sales</h3>
+                <h3 className="text-sm font-semibold text-foreground">Today&apos;s sales</h3>
                 <p className="text-sm font-semibold tabular-nums text-slate-900">
                   {formatCurrencyCents(marketplaceTotalCents)}
                 </p>
@@ -1096,23 +1096,23 @@ export default function PunchInOutPanel({ user, compact = false }: PunchInOutPan
           </div>
 
           {/* Last shift summary */}
-          <div className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm">
+          <div className="overflow-hidden rounded-2xl border border-border/80 bg-surface p-4 shadow-sm">
             <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
               Last shift
             </p>
             {lastShift ? (
               <div className="mt-3 space-y-3">
-                <div className="rounded-xl border border-slate-100 bg-slate-50/80 px-3 py-2.5">
+                <div className="rounded-xl border border-border-subtle bg-border-subtle/80 px-3 py-2.5">
                   <p className="text-xs text-slate-500">Drawer balance</p>
-                  <p className="mt-0.5 text-lg font-semibold tabular-nums tracking-tight text-slate-900">
+                  <p className="mt-0.5 text-lg font-semibold tabular-nums tracking-tight text-foreground">
                     {lastShift.end_cash_cents != null
                       ? formatCurrencyCents(lastShift.end_cash_cents)
                       : '—'}
                   </p>
                 </div>
-                <div className="rounded-xl border border-slate-100 bg-slate-50/80 px-3 py-2.5">
+                <div className="rounded-xl border border-border-subtle bg-border-subtle/80 px-3 py-2.5">
                   <p className="text-xs text-slate-500">Sales</p>
-                  <p className="mt-0.5 text-lg font-semibold tabular-nums tracking-tight text-slate-900">
+                  <p className="mt-0.5 text-lg font-semibold tabular-nums tracking-tight text-foreground">
                     {formatCurrencyCents(lastShift.marketplace_sales_cents)}
                   </p>
                   <div className="mt-1 space-y-0.5 text-[11px] text-slate-500">
@@ -1159,9 +1159,9 @@ export default function PunchInOutPanel({ user, compact = false }: PunchInOutPan
 
       {/* Bottom row — Recent activity | Schedule */}
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-        <div className="flex min-h-[260px] flex-col overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm">
-          <div className="border-b border-slate-100 px-4 py-3 sm:px-5">
-            <h3 className="text-sm font-semibold text-slate-900">Recent activity</h3>
+        <div className="flex min-h-[260px] flex-col overflow-hidden rounded-2xl border border-border/80 bg-surface shadow-sm">
+          <div className="border-b border-border-subtle px-4 py-3 sm:px-5">
+            <h3 className="text-sm font-semibold text-foreground">Recent activity</h3>
           </div>
           <div className="flex-1">
             {loadingList ? (
@@ -1203,9 +1203,9 @@ export default function PunchInOutPanel({ user, compact = false }: PunchInOutPan
           </div>
         </div>
 
-        <div className="flex min-h-[260px] flex-col overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm">
-          <div className="flex items-center justify-between gap-3 border-b border-slate-100 px-4 py-3 sm:px-5">
-            <h3 className="text-sm font-semibold text-slate-900">Schedule</h3>
+        <div className="flex min-h-[260px] flex-col overflow-hidden rounded-2xl border border-border/80 bg-surface shadow-sm">
+          <div className="flex items-center justify-between gap-3 border-b border-border-subtle px-4 py-3 sm:px-5">
+            <h3 className="text-sm font-semibold text-foreground">Schedule</h3>
             <Link href="/my-schedule" className="text-xs font-medium text-blue-600 hover:text-blue-700">
               View all
             </Link>
@@ -1320,7 +1320,7 @@ export default function PunchInOutPanel({ user, compact = false }: PunchInOutPan
         typeof document !== 'undefined' &&
         createPortal(
           <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/40 p-4">
-            <div className="w-full max-w-sm rounded-2xl border border-slate-200 bg-white p-5 shadow-xl">
+            <div className="w-full max-w-sm rounded-2xl border border-border bg-surface p-5 shadow-xl">
               <h3 className="text-lg font-semibold text-slate-900">Take payment</h3>
               <p className="mt-1 text-sm text-slate-500">
                 Cart total {formatCurrencyCents(cartTotalCents)}. Split across cash and
@@ -1404,8 +1404,8 @@ export default function PunchInOutPanel({ user, compact = false }: PunchInOutPan
         typeof document !== 'undefined' &&
         createPortal(
           <div className="fixed inset-0 z-[9999] flex h-full w-full items-center justify-center overflow-y-auto bg-black/40 p-4">
-            <div className="relative m-4 w-full max-w-md rounded-2xl border border-slate-200 bg-white shadow-xl">
-              <div className="border-b border-slate-100 px-5 py-4 sm:px-6">
+            <div className="relative m-4 w-full max-w-md rounded-2xl border border-border bg-surface shadow-xl">
+              <div className="border-b border-border-subtle px-5 py-4 sm:px-6">
                 <h3 className="text-lg font-semibold text-slate-900">
                   {currentStatus === 'in' ? 'Ending cash count' : 'Starting cash count'}
                 </h3>

@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import Layout from '@/components/Layout'
+import PageAtmosphere from '@/components/PageAtmosphere'
 import api from '@/lib/api'
 import { getCurrentUser, User } from '@/lib/auth'
 import { addWeeks, endOfWeek, format, startOfWeek } from 'date-fns'
@@ -431,21 +432,7 @@ export default function AdminShiftLogPage() {
   return (
     <Layout>
       <div className="relative mx-auto max-w-6xl">
-        <div
-          aria-hidden
-          className="pointer-events-none absolute inset-x-0 -top-4 h-52 overflow-hidden"
-        >
-          <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_rgba(15,23,42,0.06),_transparent_65%)]" />
-          <div
-            className="absolute inset-0 opacity-[0.35]"
-            style={{
-              backgroundImage:
-                'linear-gradient(to right, rgb(226 232 240 / 0.55) 1px, transparent 1px), linear-gradient(to bottom, rgb(226 232 240 / 0.55) 1px, transparent 1px)',
-              backgroundSize: '28px 28px',
-              maskImage: 'linear-gradient(to bottom, black, transparent)',
-            }}
-          />
-        </div>
+        <PageAtmosphere />
 
         <div className="relative space-y-6 pb-8">
           <header className="overflow-hidden rounded-2xl border border-slate-800/10 shadow-[0_20px_50px_-28px_rgba(15,23,42,0.45)]">

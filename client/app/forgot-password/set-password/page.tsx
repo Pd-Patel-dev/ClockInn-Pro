@@ -2,11 +2,18 @@
 
 import { useState, useEffect, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import BackButton from '@/components/BackButton'
+import Link from 'next/link'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import api from '@/lib/api'
+import {
+  AuthShell,
+  AuthFieldError,
+  authInputClass,
+  authLabelClass,
+} from '@/components/auth/AuthShell'
+import { Button } from '@/components/ui/Button'
 
 const OTP_STORAGE_KEY = 'forgot_password_otp'
 
@@ -26,6 +33,17 @@ const passwordSchema = z
   })
 
 type PasswordForm = z.infer<typeof passwordSchema>
+
+function AuthLoadingFallback() {
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-page">
+      <div
+        className="h-9 w-9 animate-spin rounded-full border-2 border-border border-t-accent"
+        aria-hidden
+      />
+    </div>
+  )
+}
 
 function SetPasswordContent() {
   const router = useRouter()
@@ -80,15 +98,15 @@ function SetPasswordContent() {
       setSuccess(true)
       setTimeout(() => router.push('/login'), 2000)
     } catch (err: unknown) {
-      const ax = err as { response?: { data?: { detail?: string | Array<{ msg?: string; loc?: string[] }> } } }
+      const ax = err as {
+        response?: { data?: { detail?: string | Array<{ msg?: string; loc?: string[] }> } }
+      }
       const detail = ax.response?.data?.detail
       let message = 'Failed to reset password. Please try again.'
       if (typeof detail === 'string') {
         message = detail
       } else if (Array.isArray(detail) && detail.length > 0 && detail[0]?.msg) {
         message = detail[0].msg
-      } else if (Array.isArray(detail) && detail.length > 0 && typeof detail[0] === 'object' && 'msg' in detail[0]) {
-        message = (detail[0] as { msg?: string }).msg || message
       }
       setError(message)
     } finally {
@@ -97,124 +115,120 @@ function SetPasswordContent() {
   }
 
   if (!ready) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-50">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600" />
-      </div>
-    )
+    return <AuthLoadingFallback />
   }
 
   if (success) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-50 py-12 px-4">
-        <div className="max-w-md w-full">
-          <div className="bg-white rounded-2xl shadow-xl p-8 text-center">
-            <div className="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-green-100 mb-4">
-              <svg className="h-6 w-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-              </svg>
-            </div>
-            <h1 className="text-2xl font-bold text-slate-900 mb-2">Password reset successfully</h1>
-            <p className="text-slate-600">Redirecting to login...</p>
+      <AuthShell
+        eyebrow="Account recovery"
+        headline="You’re all set"
+        description="Your password has been updated. You can sign in with your new credentials."
+        bullets={[]}
+        mobileSubtitle="Password updated"
+        formTitle="Password reset successfully"
+        formDescription="Redirecting to sign in…"
+        footer={
+          <Link href="/login" className="font-medium text-accent hover:text-accent-hover">
+            Go to sign in
+          </Link>
+        }
+      >
+        <div className="flex flex-col items-center py-2 text-center">
+          <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-emerald-500/15 ring-1 ring-inset ring-emerald-500/25">
+            <svg
+              className="h-6 w-6 text-emerald-500"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+              aria-hidden
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+            </svg>
           </div>
+          <p className="text-sm text-foreground-muted">Taking you back to the login page.</p>
         </div>
-      </div>
+      </AuthShell>
     )
   }
 
   return (
-    <div className="min-h-screen flex">
-      <div className="hidden lg:flex lg:w-1/2 bg-gradient-to-br from-blue-600 via-blue-700 to-blue-800 relative overflow-hidden">
-        <div className="absolute inset-0 bg-black/10" />
-        <div className="relative z-10 flex flex-col justify-center px-12 text-white">
-          <h1 className="text-5xl font-bold mb-4">ClockInn</h1>
-          <p className="text-xl text-blue-100">Time & Attendance Management</p>
-        </div>
-      </div>
-      <div className="w-full lg:w-1/2 flex items-center justify-center bg-slate-50 px-4 sm:px-6 lg:px-8">
-        <div className="w-full max-w-md">
-          <div className="lg:hidden text-center mb-8">
-            <h1 className="text-3xl font-bold text-slate-900">ClockInn</h1>
+    <AuthShell
+      eyebrow="Account recovery"
+      headline="Choose a new password"
+      description="Pick something strong and unique. You’ll use it the next time you sign in."
+      bullets={[
+        'At least 8 characters',
+        'Include upper and lowercase letters',
+        'Include at least one number',
+      ]}
+      mobileSubtitle="Set new password"
+      formTitle="Set new password"
+      formDescription={
+        <>
+          Account: <span className="font-medium text-foreground">{email}</span>
+        </>
+      }
+      footer={
+        <Link href="/login" className="font-medium text-accent hover:text-accent-hover">
+          Back to sign in
+        </Link>
+      }
+    >
+      <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-5">
+        {error && (
+          <div
+            className="rounded-xl border border-red-200 bg-red-50 px-3.5 py-3 dark:border-red-500/30 dark:bg-red-500/10"
+            role="alert"
+          >
+            <p className="text-sm text-red-800 dark:text-red-200">{error}</p>
           </div>
-          <div className="bg-white rounded-2xl shadow-xl p-8 sm:p-10">
-            <h2 className="text-3xl font-bold text-slate-900 mb-2">Set new password</h2>
-            <p className="text-slate-600 mb-6">
-              Enter your new password for your account. Code was sent to your registered email only.
-            </p>
-            <p className="text-sm text-slate-600 mb-6">
-              Account: <strong className="text-slate-700">{email}</strong>
-            </p>
+        )}
 
-            {error && (
-              <div className="mb-6 rounded-lg bg-red-50 border border-red-200 p-4 text-sm text-red-800">
-                {error}
-              </div>
-            )}
-
-            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-              <div>
-                <label htmlFor="new_password" className="block text-sm font-medium text-slate-700 mb-2">
-                  New password
-                </label>
-                <input
-                  {...form.register('new_password')}
-                  type="password"
-                  autoComplete="new-password"
-                  className="block w-full px-3 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                  placeholder="New password"
-                />
-                {form.formState.errors.new_password && (
-                  <p className="mt-1 text-sm text-red-600">{form.formState.errors.new_password.message}</p>
-                )}
-                <p className="mt-1 text-xs text-slate-500">
-                  At least 8 characters, with uppercase, lowercase, and a number
-                </p>
-              </div>
-              <div>
-                <label htmlFor="confirm_password" className="block text-sm font-medium text-slate-700 mb-2">
-                  Confirm password
-                </label>
-                <input
-                  {...form.register('confirm_password')}
-                  type="password"
-                  autoComplete="new-password"
-                  className="block w-full px-3 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                  placeholder="Confirm password"
-                />
-                {form.formState.errors.confirm_password && (
-                  <p className="mt-1 text-sm text-red-600">{form.formState.errors.confirm_password.message}</p>
-                )}
-              </div>
-              <button
-                type="submit"
-                disabled={loading}
-                className="w-full py-3 px-4 rounded-lg text-sm font-medium text-white bg-gradient-to-r from-blue-600 to-blue-600 hover:from-blue-700 hover:to-blue-700 focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
-              >
-                {loading ? 'Resetting...' : 'Reset password'}
-              </button>
-            </form>
-
-            <div className="mt-6 text-center">
-              <BackButton fallbackHref="/login" className="text-sm text-slate-500 hover:text-slate-700">
-                Back to login
-              </BackButton>
-            </div>
-          </div>
+        <div>
+          <label htmlFor="new_password" className={authLabelClass}>
+            New password
+          </label>
+          <input
+            {...form.register('new_password')}
+            id="new_password"
+            type="password"
+            autoComplete="new-password"
+            className={authInputClass}
+            placeholder="New password"
+          />
+          <AuthFieldError message={form.formState.errors.new_password?.message} />
+          <p className="mt-2 text-xs text-foreground-subtle">
+            At least 8 characters, with uppercase, lowercase, and a number.
+          </p>
         </div>
-      </div>
-    </div>
+
+        <div>
+          <label htmlFor="confirm_password" className={authLabelClass}>
+            Confirm password
+          </label>
+          <input
+            {...form.register('confirm_password')}
+            id="confirm_password"
+            type="password"
+            autoComplete="new-password"
+            className={authInputClass}
+            placeholder="Confirm password"
+          />
+          <AuthFieldError message={form.formState.errors.confirm_password?.message} />
+        </div>
+
+        <Button type="submit" variant="primary" size="lg" className="w-full" loading={loading}>
+          {loading ? 'Resetting…' : 'Reset password'}
+        </Button>
+      </form>
+    </AuthShell>
   )
 }
 
 export default function SetPasswordPage() {
   return (
-    <Suspense
-      fallback={
-        <div className="min-h-screen flex items-center justify-center bg-slate-50">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600" />
-        </div>
-      }
-    >
+    <Suspense fallback={<AuthLoadingFallback />}>
       <SetPasswordContent />
     </Suspense>
   )

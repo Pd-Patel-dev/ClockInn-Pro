@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useRouter, useParams } from 'next/navigation'
 import Link from 'next/link'
 import Layout from '@/components/Layout'
+import PageAtmosphere from '@/components/PageAtmosphere'
 import api from '@/lib/api'
 import { getCurrentUser } from '@/lib/auth'
 import { format, parseISO } from 'date-fns'
@@ -27,6 +28,9 @@ interface PayrollLineItem {
   total_pay_cents: number
   exceptions_count: number
   details_json?: {
+    pay_method?: string
+    rooms_cleaned?: number
+    rate_cents_per_room?: number
     exceptions?: PayrollExceptionDetail[]
     week_blocks?: Array<{
       entries?: Array<{
@@ -66,6 +70,7 @@ interface PayrollRun {
   total_regular_hours: number | string
   total_overtime_hours: number | string
   total_gross_pay_cents: number
+  total_rooms_cleaned?: number
   created_at: string
   updated_at: string
   line_items: PayrollLineItem[]
@@ -314,7 +319,10 @@ export default function PayrollDetailsPage() {
 
   const handleExport = async (fileFormat: 'pdf' | 'xlsx') => {
     // Open tab during the click gesture so the browser allows PDF preview
-    const previewWindow = fileFormat === 'pdf' ? openPreviewTab() : null
+    const payrollTabTitle = payrollRun
+      ? `Payroll · ${formatPeriod(payrollRun.period_start_date, payrollRun.period_end_date)}`
+      : 'Payroll'
+    const previewWindow = fileFormat === 'pdf' ? openPreviewTab(payrollTabTitle) : null
     setExporting(true)
     try {
       const response = await api.post(
@@ -326,6 +334,7 @@ export default function PayrollDetailsPage() {
       const result = deliverExportBlob(response.data, filename, {
         previewInBrowser: fileFormat === 'pdf',
         previewWindow,
+        title: payrollTabTitle,
         mimeType:
           fileFormat === 'pdf'
             ? 'application/pdf'
@@ -385,18 +394,34 @@ export default function PayrollDetailsPage() {
         avgPay: 0,
         exceptions: 0,
         topEarner: null as PayrollLineItem | null,
+        roomsCleaned: 0,
+        roomsAndHoursLabel: '0.00',
       }
     }
     const regularHours = toHours(payrollRun.total_regular_hours)
     const otHours = toHours(payrollRun.total_overtime_hours)
     const totalHours = regularHours + otHours
     const exceptions = lineItems.reduce((sum, i) => sum + (i.exceptions_count || 0), 0)
+    const roomsCleaned =
+      payrollRun.total_rooms_cleaned ??
+      lineItems.reduce((sum, i) => {
+        if (i.details_json?.pay_method !== 'PER_ROOM') return sum
+        return sum + (i.details_json.rooms_cleaned || 0)
+      }, 0)
     const avgPay =
       lineItems.length > 0
         ? Math.round(payrollRun.total_gross_pay_cents / lineItems.length)
         : 0
     const topEarner =
       [...lineItems].sort((a, b) => b.total_pay_cents - a.total_pay_cents)[0] || null
+
+    const hoursLabel = regularHours.toFixed(2)
+    const roomsAndHoursLabel =
+      roomsCleaned > 0
+        ? regularHours > 0
+          ? `${hoursLabel}h · ${roomsCleaned}rm`
+          : `${roomsCleaned}rm`
+        : hoursLabel
 
     return {
       employees: lineItems.length,
@@ -406,6 +431,8 @@ export default function PayrollDetailsPage() {
       otShare: totalHours > 0 ? Math.round((otHours / totalHours) * 100) : 0,
       avgPay,
       exceptions,
+      roomsCleaned,
+      roomsAndHoursLabel,
       topEarner,
     }
   }, [payrollRun, lineItems])
@@ -449,21 +476,7 @@ export default function PayrollDetailsPage() {
   return (
     <Layout>
       <div className="relative mx-auto max-w-6xl">
-        <div
-          aria-hidden
-          className="pointer-events-none absolute inset-x-0 -top-4 h-52 overflow-hidden"
-        >
-          <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_rgba(15,23,42,0.06),_transparent_65%)]" />
-          <div
-            className="absolute inset-0 opacity-[0.35]"
-            style={{
-              backgroundImage:
-                'linear-gradient(to right, rgb(226 232 240 / 0.55) 1px, transparent 1px), linear-gradient(to bottom, rgb(226 232 240 / 0.55) 1px, transparent 1px)',
-              backgroundSize: '28px 28px',
-              maskImage: 'linear-gradient(to bottom, black, transparent)',
-            }}
-          />
-        </div>
+        <PageAtmosphere />
 
         <div className="relative space-y-6 pb-8">
           <div>
@@ -613,11 +626,16 @@ export default function PayrollDetailsPage() {
             />
           </div>
 
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
             <StatCard
               label="Regular hours"
               value={kpis.regularHours.toFixed(1)}
               hint="This period"
+            />
+            <StatCard
+              label="Rooms cleaned"
+              value={kpis.roomsCleaned}
+              hint="Per-room pay"
             />
             <StatCard
               label="OT hours"
@@ -681,25 +699,25 @@ export default function PayrollDetailsPage() {
                       <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-400">
                         Employee
                       </th>
-                      <th className="px-4 py-3 text-right text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-400">
-                        Reg
+                      <th className="px-4 py-3 text-center text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-400">
+                        Hrs / Rms
                       </th>
-                      <th className="px-4 py-3 text-right text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-400">
-                        OT
+                      <th className="px-4 py-3 text-center text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-400">
+                        OT Hrs
                       </th>
-                      <th className="px-4 py-3 text-right text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-400">
+                      <th className="px-4 py-3 text-center text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-400">
                         Rate
                       </th>
-                      <th className="px-4 py-3 text-right text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-400">
-                        Reg pay
+                      <th className="px-4 py-3 text-center text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-400">
+                        Reg Pay
                       </th>
-                      <th className="px-4 py-3 text-right text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-400">
-                        OT pay
+                      <th className="px-4 py-3 text-center text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-400">
+                        OT Pay
                       </th>
-                      <th className="px-4 py-3 text-right text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-400">
+                      <th className="px-4 py-3 text-center text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-400">
                         Total
                       </th>
-                      <th className="px-4 py-3 text-right text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-400">
+                      <th className="px-4 py-3 text-center text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-400">
                         Exc
                       </th>
                     </tr>
@@ -715,30 +733,45 @@ export default function PayrollDetailsPage() {
                             <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-900 text-[10px] font-semibold text-white">
                               {initials(item.employee_name)}
                             </div>
-                            <p className="truncate text-sm font-medium text-slate-900">
-                              {item.employee_name}
-                            </p>
+                            <div className="min-w-0">
+                              <p className="truncate text-sm font-medium text-slate-900">
+                                {item.employee_name}
+                              </p>
+                              {item.details_json?.pay_method === 'PER_ROOM' && (
+                                <p className="truncate text-xs text-slate-500">
+                                  Per room · {item.details_json.rooms_cleaned ?? 0} room
+                                  {(item.details_json.rooms_cleaned ?? 0) === 1 ? '' : 's'}
+                                </p>
+                              )}
+                            </div>
                           </div>
                         </td>
-                        <td className="px-4 py-3.5 align-middle text-right text-sm tabular-nums text-slate-900">
-                          {minutesToHours(item.regular_minutes)}
+                        <td className="px-4 py-3.5 align-middle text-center text-sm tabular-nums text-slate-900">
+                          {item.details_json?.pay_method === 'PER_ROOM'
+                            ? `${item.details_json.rooms_cleaned ?? 0} rm${(item.details_json.rooms_cleaned ?? 0) === 1 ? '' : 's'}`
+                            : minutesToHours(item.regular_minutes)}
                         </td>
-                        <td className="px-4 py-3.5 align-middle text-right text-sm tabular-nums text-slate-900">
-                          {minutesToHours(item.overtime_minutes)}
+                        <td className="px-4 py-3.5 align-middle text-center text-sm tabular-nums text-slate-900">
+                          {item.details_json?.pay_method === 'PER_ROOM'
+                            ? '—'
+                            : minutesToHours(item.overtime_minutes)}
                         </td>
-                        <td className="px-4 py-3.5 align-middle text-right text-sm tabular-nums text-slate-700">
+                        <td className="px-4 py-3.5 align-middle text-center text-sm tabular-nums text-slate-700">
                           {formatCurrency(item.pay_rate_cents)}
+                          {item.details_json?.pay_method === 'PER_ROOM' ? (
+                            <span className="text-xs text-slate-400">/rm</span>
+                          ) : null}
                         </td>
-                        <td className="px-4 py-3.5 align-middle text-right text-sm tabular-nums text-slate-900">
+                        <td className="px-4 py-3.5 align-middle text-center text-sm tabular-nums text-slate-900">
                           {formatCurrency(item.regular_pay_cents)}
                         </td>
-                        <td className="px-4 py-3.5 align-middle text-right text-sm tabular-nums text-slate-900">
+                        <td className="px-4 py-3.5 align-middle text-center text-sm tabular-nums text-slate-900">
                           {formatCurrency(item.overtime_pay_cents)}
                         </td>
-                        <td className="px-4 py-3.5 align-middle text-right text-sm font-semibold tabular-nums text-slate-900">
+                        <td className="px-4 py-3.5 align-middle text-center text-sm font-semibold tabular-nums text-slate-900">
                           {formatCurrency(item.total_pay_cents)}
                         </td>
-                        <td className="px-4 py-3.5 align-middle text-right text-sm tabular-nums">
+                        <td className="px-4 py-3.5 align-middle text-center text-sm tabular-nums">
                           {item.exceptions_count > 0 ? (
                             <button
                               type="button"
@@ -760,19 +793,19 @@ export default function PayrollDetailsPage() {
                       <td className="px-4 py-3.5 text-sm font-semibold text-slate-900">
                         Totals
                       </td>
-                      <td className="px-4 py-3.5 text-right text-sm font-semibold tabular-nums text-slate-900">
-                        {toHours(payrollRun.total_regular_hours).toFixed(2)}
+                      <td className="whitespace-nowrap px-4 py-3.5 text-center text-sm font-semibold tabular-nums text-slate-900">
+                        {kpis.roomsAndHoursLabel}
                       </td>
-                      <td className="px-4 py-3.5 text-right text-sm font-semibold tabular-nums text-slate-900">
+                      <td className="px-4 py-3.5 text-center text-sm font-semibold tabular-nums text-slate-900">
                         {toHours(payrollRun.total_overtime_hours).toFixed(2)}
                       </td>
                       <td className="px-4 py-3.5" />
                       <td className="px-4 py-3.5" />
                       <td className="px-4 py-3.5" />
-                      <td className="px-4 py-3.5 text-right text-sm font-semibold tabular-nums text-slate-900">
+                      <td className="px-4 py-3.5 text-center text-sm font-semibold tabular-nums text-slate-900">
                         {formatCurrency(payrollRun.total_gross_pay_cents)}
                       </td>
-                      <td className="px-4 py-3.5 text-right text-sm font-semibold tabular-nums text-slate-900">
+                      <td className="px-4 py-3.5 text-center text-sm font-semibold tabular-nums text-slate-900">
                         {kpis.exceptions > 0 ? kpis.exceptions : '—'}
                       </td>
                     </tr>

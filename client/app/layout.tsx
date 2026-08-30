@@ -10,6 +10,13 @@ const inter = Inter({ subsets: ['latin'] })
 export const metadata: Metadata = {
   title: 'ClockInn - Time & Attendance',
   description: 'Multi-tenant clock-in/clock-out system',
+  icons: {
+    icon: [
+      { url: '/favicon.svg', type: 'image/svg+xml' },
+      { url: '/icon', type: 'image/png', sizes: '32x32' },
+    ],
+    shortcut: '/favicon.svg',
+  },
 }
 
 export default function RootLayout({

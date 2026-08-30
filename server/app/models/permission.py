@@ -20,6 +20,7 @@ class PermissionCategory(str, enum.Enum):
     SETTINGS = "SETTINGS"
     LEAVE_REQUESTS = "LEAVE_REQUESTS"
     CASH_DRAWER = "CASH_DRAWER"
+    HOUSEKEEPING = "HOUSEKEEPING"
     ADMIN = "ADMIN"
 
 

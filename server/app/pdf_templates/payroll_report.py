@@ -13,7 +13,7 @@ from io import BytesIO
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import letter
 from reportlab.lib.units import inch
-from reportlab.lib.enums import TA_LEFT, TA_RIGHT, TA_CENTER
+from reportlab.lib.enums import TA_LEFT, TA_CENTER
 from reportlab.platypus import (
     SimpleDocTemplate,
     Table,
@@ -36,20 +36,37 @@ class PayrollReportTotals(TypedDict):
     employee_count: int
     total_regular_hours: float
     total_ot_hours: float
+    total_rooms: int
     total_gross_pay: float
     total_regular_pay: float
     total_ot_pay: float
+    has_per_room: bool
+
+
+def _is_per_room_row(row: dict) -> bool:
+    return str(row.get("pay_method") or "").upper() == "PER_ROOM"
+
+
+def _row_rooms(row: dict) -> int:
+    try:
+        return int(row.get("rooms_cleaned") or 0)
+    except (TypeError, ValueError):
+        return 0
 
 
 def compute_payroll_report_totals(rows: List[dict]) -> PayrollReportTotals:
     """Sum row fields the same way as the PDF generator (unit-test this; PDF streams may be compressed)."""
+    hourly = [row for row in rows if not _is_per_room_row(row)]
+    per_room = [row for row in rows if _is_per_room_row(row)]
     return {
         "employee_count": len(rows),
-        "total_regular_hours": sum(float(row.get("regular_hours", 0)) for row in rows),
-        "total_ot_hours": sum(float(row.get("ot_hours", 0)) for row in rows),
-        "total_gross_pay": sum(float(row.get("total_pay", 0)) for row in rows),
-        "total_regular_pay": sum(float(row.get("regular_pay", 0)) for row in rows),
-        "total_ot_pay": sum(float(row.get("ot_pay", 0)) for row in rows),
+        "total_regular_hours": sum(float(row.get("regular_hours", 0) or 0) for row in hourly),
+        "total_ot_hours": sum(float(row.get("ot_hours", 0) or 0) for row in hourly),
+        "total_rooms": sum(_row_rooms(row) for row in per_room),
+        "total_gross_pay": sum(float(row.get("total_pay", 0) or 0) for row in rows),
+        "total_regular_pay": sum(float(row.get("regular_pay", 0) or 0) for row in rows),
+        "total_ot_pay": sum(float(row.get("ot_pay", 0) or 0) for row in rows),
+        "has_per_room": bool(per_room),
     }
 
 
@@ -218,7 +235,8 @@ def generate_payroll_report_pdf(
     Generate professional payroll report PDF.
 
     rows keys: employee_name, regular_hours, ot_hours, rate,
-               regular_pay, ot_pay, total_pay, exceptions (optional)
+               regular_pay, ot_pay, total_pay,
+               pay_method (HOURLY | PER_ROOM), rooms_cleaned (per-room)
     """
     buffer = BytesIO()
     doc = SimpleDocTemplate(
@@ -302,8 +320,8 @@ def generate_payroll_report_pdf(
                 ("BOX", (0, 0), (-1, -1), 0.6, slate_200),
                 ("LINEBELOW", (0, 0), (-1, 0), 0.4, slate_200),
                 ("TOPPADDING", (0, 0), (-1, 0), 8),
-                ("BOTTOMPADDING", (0, 0), (-1, 0), 2),
-                ("TOPPADDING", (0, 1), (-1, 1), 2),
+                ("BOTTOMPADDING", (0, 0), (-1, 0), 4),
+                ("TOPPADDING", (0, 1), (-1, 1), 8),
                 ("BOTTOMPADDING", (0, 1), (-1, 1), 10),
                 ("LEFTPADDING", (0, 0), (-1, -1), 10),
                 ("RIGHTPADDING", (0, 0), (-1, -1), 8),
@@ -317,15 +335,22 @@ def generate_payroll_report_pdf(
     # ========== KPI CARDS ==========
     card_w = 1.775 * inch
     gap = 0.1 * inch
+    if totals["has_per_room"]:
+        kpi_items = [
+            AccentCard(f"{totals['employee_count']}", "Employees", sky_500, card_w),
+            AccentCard(f"{totals['total_regular_hours']:,.1f}", "Regular Hours", slate_700, card_w),
+            AccentCard(f"{totals['total_rooms']:,}", "Rooms Cleaned", amber_500, card_w),
+            AccentCard(f"${totals['total_gross_pay']:,.2f}", "Gross Pay", emerald_600, card_w),
+        ]
+    else:
+        kpi_items = [
+            AccentCard(f"{totals['employee_count']}", "Employees", sky_500, card_w),
+            AccentCard(f"{totals['total_regular_hours']:,.1f}", "Regular Hours", slate_700, card_w),
+            AccentCard(f"{totals['total_ot_hours']:,.1f}", "Overtime Hours", amber_500, card_w),
+            AccentCard(f"${totals['total_gross_pay']:,.2f}", "Gross Pay", emerald_600, card_w),
+        ]
     kpi_row = Table(
-        [
-            [
-                AccentCard(f"{totals['employee_count']}", "Employees", sky_500, card_w),
-                AccentCard(f"{totals['total_regular_hours']:,.1f}", "Regular Hours", slate_700, card_w),
-                AccentCard(f"{totals['total_ot_hours']:,.1f}", "Overtime Hours", amber_500, card_w),
-                AccentCard(f"${totals['total_gross_pay']:,.2f}", "Gross Pay", emerald_600, card_w),
-            ]
-        ],
+        [kpi_items],
         colWidths=[card_w + gap] * 3 + [card_w],
     )
     kpi_row.setStyle(
@@ -364,7 +389,10 @@ def generate_payroll_report_pdf(
     story.append(Paragraph("Employee earnings", section_style))
     story.append(
         Paragraph(
-            "Hours and pay by employee for this payroll period. Amounts shown in USD.",
+            "Hours and pay by employee for this payroll period. Amounts shown in USD. "
+            "Per-room employees are paid rooms cleaned × rate."
+            if totals["has_per_room"]
+            else "Hours and pay by employee for this payroll period. Amounts shown in USD.",
             section_sub,
         )
     )
@@ -393,13 +421,13 @@ def generate_payroll_report_pdf(
         alignment=TA_LEFT,
         leading=10,
     )
-    cell_right = ParagraphStyle(
-        "CellR",
+    cell_center = ParagraphStyle(
+        "CellC",
         parent=styles["Normal"],
         fontSize=8,
         fontName="Helvetica",
         textColor=slate_700,
-        alignment=TA_RIGHT,
+        alignment=TA_CENTER,
         leading=10,
     )
     cell_total = ParagraphStyle(
@@ -408,17 +436,8 @@ def generate_payroll_report_pdf(
         fontSize=8,
         fontName="Helvetica-Bold",
         textColor=slate_900,
-        alignment=TA_RIGHT,
-        leading=10,
-    )
-    cell_exc = ParagraphStyle(
-        "CellExc",
-        parent=styles["Normal"],
-        fontSize=7.5,
-        fontName="Helvetica",
-        textColor=slate_500,
         alignment=TA_CENTER,
-        leading=9,
+        leading=10,
     )
     totals_left = ParagraphStyle(
         "TotL",
@@ -429,13 +448,13 @@ def generate_payroll_report_pdf(
         alignment=TA_LEFT,
         leading=10,
     )
-    totals_right = ParagraphStyle(
-        "TotR",
+    totals_center = ParagraphStyle(
+        "TotC",
         parent=styles["Normal"],
-        fontSize=8,
+        fontSize=7.5,
         fontName="Helvetica-Bold",
         textColor=colors.white,
-        alignment=TA_RIGHT,
+        alignment=TA_CENTER,
         leading=10,
     )
 
@@ -444,61 +463,69 @@ def generate_payroll_report_pdf(
     table_data = [
         [
             Paragraph("Employee", header_left),
-            Paragraph("Reg Hrs", header_cell),
+            Paragraph("Hrs / Rms", header_cell),
             Paragraph("OT Hrs", header_cell),
             Paragraph("Rate", header_cell),
             Paragraph("Reg Pay", header_cell),
             Paragraph("OT Pay", header_cell),
             Paragraph("Total", header_cell),
-            Paragraph("Exc.", header_cell),
         ]
     ]
 
     for row in sorted_rows:
-        exc_raw = row.get("exceptions", "-")
-        if exc_raw in (None, "", "-", "0", "0 exception(s)"):
-            exc_display = "—"
+        total_pay = float(row.get("total_pay", 0) or 0)
+        per_room = _is_per_room_row(row)
+        rooms = _row_rooms(row)
+        if per_room:
+            hours_cell = f"{rooms} rm" if rooms == 1 else f"{rooms} rms"
+            ot_cell = "—"
+            rate_cell = f"${float(row.get('rate', 0) or 0):,.2f}/rm"
         else:
-            # Shorten "3 exception(s)" → "3"
-            m = re.match(r"^(\d+)", str(exc_raw))
-            exc_display = m.group(1) if m else str(exc_raw)
+            hours_cell = f"{float(row.get('regular_hours', 0) or 0):,.2f}"
+            ot_cell = f"{float(row.get('ot_hours', 0) or 0):,.2f}"
+            rate_cell = f"${float(row.get('rate', 0) or 0):,.2f}"
 
-        total_pay = float(row.get("total_pay", 0))
         table_data.append(
             [
                 Paragraph(sanitize_html(str(row.get("employee_name", ""))), cell_left),
-                Paragraph(f"{float(row.get('regular_hours', 0)):,.2f}", cell_right),
-                Paragraph(f"{float(row.get('ot_hours', 0)):,.2f}", cell_right),
-                Paragraph(f"${float(row.get('rate', 0)):,.2f}", cell_right),
-                Paragraph(f"${float(row.get('regular_pay', 0)):,.2f}", cell_right),
-                Paragraph(f"${float(row.get('ot_pay', 0)):,.2f}", cell_right),
+                Paragraph(hours_cell, cell_center),
+                Paragraph(ot_cell, cell_center),
+                Paragraph(rate_cell, cell_center),
+                Paragraph(f"${float(row.get('regular_pay', 0) or 0):,.2f}", cell_center),
+                Paragraph(f"${float(row.get('ot_pay', 0) or 0):,.2f}", cell_center),
                 Paragraph(f"${total_pay:,.2f}", cell_total),
-                Paragraph(sanitize_html(exc_display), cell_exc),
             ]
         )
+
+    if totals["has_per_room"] and totals["total_rooms"]:
+        hours_total = (
+            f"{totals['total_regular_hours']:.1f}h · {totals['total_rooms']}rm"
+            if totals["total_regular_hours"]
+            else f"{totals['total_rooms']}rm"
+        )
+    else:
+        hours_total = f"{totals['total_regular_hours']:.2f}"
 
     table_data.append(
         [
             Paragraph("TOTALS", totals_left),
-            Paragraph(f"{totals['total_regular_hours']:,.2f}", totals_right),
-            Paragraph(f"{totals['total_ot_hours']:,.2f}", totals_right),
-            Paragraph("", totals_right),
-            Paragraph(f"${totals['total_regular_pay']:,.2f}", totals_right),
-            Paragraph(f"${totals['total_ot_pay']:,.2f}", totals_right),
-            Paragraph(f"${totals['total_gross_pay']:,.2f}", totals_right),
-            Paragraph("", totals_right),
+            Paragraph(f"<nobr>{hours_total}</nobr>", totals_center),
+            Paragraph(f"{totals['total_ot_hours']:,.2f}", totals_center),
+            Paragraph("", totals_center),
+            Paragraph(f"${totals['total_regular_pay']:,.2f}", totals_center),
+            Paragraph(f"${totals['total_ot_pay']:,.2f}", totals_center),
+            Paragraph(f"${totals['total_gross_pay']:,.2f}", totals_center),
         ]
     )
 
     col_widths = [
-        1.55 * inch,
-        0.72 * inch,
-        0.68 * inch,
-        0.72 * inch,
-        0.88 * inch,
-        0.82 * inch,
+        1.70 * inch,
+        1.15 * inch,
+        0.70 * inch,
+        0.90 * inch,
         0.95 * inch,
-        0.48 * inch,
+        0.90 * inch,
+        1.10 * inch,
     ]
     table = Table(table_data, colWidths=col_widths, repeatRows=1)
 
@@ -518,67 +545,15 @@ def generate_payroll_report_pdf(
         ("BOTTOMPADDING", (0, -1), (-1, -1), 10),
         # Shared
         ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-        ("LEFTPADDING", (0, 0), (-1, -1), 6),
-        ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+        ("ALIGN", (0, 0), (0, -1), "LEFT"),
+        ("ALIGN", (1, 0), (-1, -1), "CENTER"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 4),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 4),
         ("BOX", (0, 0), (-1, -1), 0.6, slate_200),
     ]
 
-    # Soft highlight for exception rows
-    for i, row in enumerate(sorted_rows, start=1):
-        exc = row.get("exceptions", "-")
-        if exc not in (None, "", "-", "0", "0 exception(s)"):
-            style_cmds.append(("BACKGROUND", (0, i), (-1, i), colors.HexColor("#fff7ed")))
-
     table.setStyle(TableStyle(style_cmds))
     story.append(table)
-    story.append(Spacer(1, 0.26 * inch))
-
-    # ========== NOTES ==========
-    notes_title = ParagraphStyle(
-        "NotesTitle",
-        parent=styles["Normal"],
-        fontSize=8,
-        fontName="Helvetica-Bold",
-        textColor=slate_900,
-        spaceAfter=3,
-        leading=10,
-    )
-    notes_body = ParagraphStyle(
-        "NotesBody",
-        parent=styles["Normal"],
-        fontSize=7.5,
-        textColor=slate_500,
-        leading=10,
-    )
-    notes = Table(
-        [
-            [
-                [
-                    Paragraph("Notes", notes_title),
-                    Paragraph(
-                        "Exception counts appear in the Exc. column when an employee has "
-                        "missing punches, pending approvals, or other flags. This report "
-                        "reflects payroll as of the generated timestamp.",
-                        notes_body,
-                    ),
-                ]
-            ]
-        ],
-        colWidths=[CONTENT_WIDTH],
-    )
-    notes.setStyle(
-        TableStyle(
-            [
-                ("BACKGROUND", (0, 0), (-1, -1), slate_50),
-                ("BOX", (0, 0), (-1, -1), 0.5, slate_200),
-                ("TOPPADDING", (0, 0), (-1, -1), 10),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), 10),
-                ("LEFTPADDING", (0, 0), (-1, -1), 12),
-                ("RIGHTPADDING", (0, 0), (-1, -1), 12),
-            ]
-        )
-    )
-    story.append(notes)
 
     # ========== FOOTER ==========
     def add_footer(canvas_obj, doc_obj):

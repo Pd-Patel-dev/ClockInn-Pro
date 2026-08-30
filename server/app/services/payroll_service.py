@@ -3,16 +3,17 @@ from uuid import UUID
 from datetime import datetime, date, timedelta
 from decimal import Decimal, ROUND_HALF_UP
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_, or_, func, delete
+from sqlalchemy import select, and_, or_, delete
 from sqlalchemy.orm import selectinload
 from fastapi import HTTPException, status
 import pytz
 
 from app.models.payroll import PayrollRun, PayrollLineItem, PayrollType, PayrollStatus
 from app.models.time_entry import TimeEntry, TimeEntryStatus
-from app.models.user import User, UserRole, UserStatus, PayRateType
+from app.models.user import User, UserRole, UserStatus, PayRateType, PayMethod
 from app.models.company import Company
 from app.models.audit_log import AuditLog
+from app.models.room import HousekeepingSheet, HousekeepingSheetItem, HousekeepingSheetKind
 from app.core.query_builder import get_paginated_results, build_company_filtered_query, filter_by_status
 import uuid
 
@@ -351,6 +352,108 @@ def compute_pay_cents_decimal_safe(
     return regular_pay_cents, overtime_pay_cents, total_pay_cents
 
 
+def period_bounds_utc(period_start: date, period_end: date, timezone_str: str) -> Tuple[datetime, datetime]:
+    """Company-local pay period → UTC datetime range."""
+    tz = pytz.timezone(timezone_str)
+    start_utc = tz.localize(datetime.combine(period_start, datetime.min.time())).astimezone(pytz.UTC)
+    end_utc = tz.localize(datetime.combine(period_end, datetime.max.time())).astimezone(pytz.UTC)
+    return start_utc, end_utc
+
+
+def compute_per_room_pay_cents(rooms_cleaned: int, rate_cents_per_room: int) -> int:
+    """rooms × per-room rate → cents."""
+    total = Decimal(max(0, int(rooms_cleaned))) * Decimal(max(0, int(rate_cents_per_room)))
+    return int(total.quantize(Decimal("1"), rounding=ROUND_HALF_UP))
+
+
+async def rooms_cleaned_in_period(
+    db: AsyncSession,
+    company_id: UUID,
+    housekeeper_id: UUID,
+    period_start: date,
+    period_end: date,
+    timezone_str: str,
+) -> Tuple[int, List[str], Dict[str, int]]:
+    """
+    Rooms marked cleaned (finalize sheets) for this housekeeper in the pay period.
+
+    Each room on a "Cleaning done" sheet counts once per sheet, so the same room
+    cleaned on two different days in the period counts twice.
+    """
+    period_start_utc, period_end_utc = period_bounds_utc(period_start, period_end, timezone_str)
+    try:
+        tz = pytz.timezone(timezone_str)
+    except Exception:
+        tz = pytz.timezone(DEFAULT_TIMEZONE)
+
+    result = await db.execute(
+        select(HousekeepingSheetItem.room_number, HousekeepingSheet.created_at)
+        .select_from(HousekeepingSheetItem)
+        .join(HousekeepingSheet, HousekeepingSheetItem.sheet_id == HousekeepingSheet.id)
+        .where(
+            and_(
+                HousekeepingSheet.company_id == company_id,
+                HousekeepingSheet.housekeeper_id == housekeeper_id,
+                HousekeepingSheet.kind == HousekeepingSheetKind.FINALIZE.value,
+                HousekeepingSheet.created_at >= period_start_utc,
+                HousekeepingSheet.created_at <= period_end_utc,
+            )
+        )
+        .order_by(HousekeepingSheet.created_at.asc(), HousekeepingSheetItem.room_number.asc())
+    )
+    rows = list(result.all())
+    room_numbers = [str(number) for number, _created in rows if number]
+    by_date: Dict[str, int] = {}
+    for _number, created_at in rows:
+        if created_at is None:
+            continue
+        local_dt = created_at.astimezone(tz) if created_at.tzinfo else tz.localize(created_at)
+        key = local_dt.date().isoformat()
+        by_date[key] = by_date.get(key, 0) + 1
+    return len(room_numbers), room_numbers, by_date
+
+
+async def count_rooms_cleaned_in_period(
+    db: AsyncSession,
+    company_id: UUID,
+    housekeeper_id: UUID,
+    period_start: date,
+    period_end: date,
+    timezone_str: str,
+) -> int:
+    """Count rooms cleaned on finalized housekeeping sheets in the pay period."""
+    count, _numbers, _by_date = await rooms_cleaned_in_period(
+        db,
+        company_id,
+        housekeeper_id,
+        period_start,
+        period_end,
+        timezone_str,
+    )
+    return count
+
+
+def resolve_pay_rate_cents(employee: User) -> int:
+    """Prefer pay_rate_cents; fall back to dollar pay_rate."""
+    pay_rate_cents = employee.pay_rate_cents or 0
+    if pay_rate_cents == 0 and employee.pay_rate:
+        pay_rate_cents = int(Decimal(str(employee.pay_rate)) * 100)
+    return int(pay_rate_cents)
+
+
+def sum_rooms_cleaned_from_line_items(line_items) -> int:
+    """Total rooms cleaned across per-room line items in a payroll run."""
+    total = 0
+    for item in line_items or []:
+        details = item.details_json or {}
+        if details.get("pay_method") == PayMethod.PER_ROOM.value:
+            try:
+                total += int(details.get("rooms_cleaned") or 0)
+            except (TypeError, ValueError):
+                continue
+    return total
+
+
 async def fetch_time_entries_scoped(
     db: AsyncSession,
     company_id: UUID,
@@ -394,6 +497,8 @@ async def generate_payroll_run(
     employee_ids: Optional[List[UUID]] = None,
     allow_duplicate: bool = False,
     entry_hour_overrides: Optional[Dict[str, float]] = None,
+    bypass_schedule: bool = False,
+    room_count_overrides: Optional[Dict[str, int]] = None,
 ) -> PayrollRun:
     """Generate a payroll run for a company."""
     # Get company
@@ -437,41 +542,46 @@ async def generate_payroll_run(
         week_start_day=int(company_settings.get("payroll_week_start_day") or 0),
     )
 
-    if schedule.configured and last_pay_date and configured_type:
-        if configured_type != payroll_type.value:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Payroll type must be {configured_type} (configured in Settings).",
-            )
-        if not schedule.can_generate:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=schedule.message,
-            )
-        if schedule.period_start and start_date != schedule.period_start:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=(
-                    f"Period start must be {schedule.period_start.isoformat()} "
-                    f"for the upcoming pay date {schedule.next_pay_date.isoformat()}."
-                ),
-            )
-    else:
-        # Fallback when pay schedule is not configured: last 14 days only
-        earliest_start = today_local - timedelta(days=14)
-        if start_date > today_local:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Period start date cannot be in the future",
-            )
-        if start_date < earliest_start:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=(
-                    "Set last pay date and payroll type in Settings, or choose a period "
-                    f"start within the last two weeks (on or after {earliest_start.isoformat()})."
-                ),
-            )
+    from app.core.environment import allows_dev_overrides
+
+    skip_schedule = bool(bypass_schedule) and allows_dev_overrides()
+
+    if not skip_schedule:
+        if schedule.configured and last_pay_date and configured_type:
+            if configured_type != payroll_type.value:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Payroll type must be {configured_type} (configured in Settings).",
+                )
+            if not schedule.can_generate:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=schedule.message,
+                )
+            if schedule.period_start and start_date != schedule.period_start:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=(
+                        f"Period start must be {schedule.period_start.isoformat()} "
+                        f"for the upcoming pay date {schedule.next_pay_date.isoformat()}."
+                    ),
+                )
+        else:
+            # Fallback when pay schedule is not configured: last 14 days only
+            earliest_start = today_local - timedelta(days=14)
+            if start_date > today_local:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Period start date cannot be in the future",
+                )
+            if start_date < earliest_start:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=(
+                        "Set last pay date and payroll type in Settings, or choose a period "
+                        f"start within the last two weeks (on or after {earliest_start.isoformat()})."
+                    ),
+                )
     
     # Compute pay period
     period_start, period_end, warning = compute_pay_period(
@@ -553,23 +663,70 @@ async def generate_payroll_run(
     
     # Process each employee
     for employee in employees:
-        # Get employee's pay rate and overtime multiplier
-        pay_rate_cents = employee.pay_rate_cents or 0
-        if pay_rate_cents == 0:
-            # Try to convert legacy pay_rate to cents
-            if employee.pay_rate:
-                pay_rate_cents = int(Decimal(str(employee.pay_rate)) * 100)
-        
+        pay_rate_cents = resolve_pay_rate_cents(employee)
         if pay_rate_cents == 0:
             continue  # Skip employees without pay rate
-        
+
         overtime_multiplier = employee.overtime_multiplier
         if overtime_multiplier is None:
             overtime_multiplier = company_settings["overtime_multiplier_default"]
         else:
             overtime_multiplier = Decimal(str(overtime_multiplier))
-        
-        # Fetch time entries
+
+        pay_method = employee.pay_method or PayMethod.HOURLY
+        if pay_method == PayMethod.PER_ROOM or str(pay_method) == PayMethod.PER_ROOM.value:
+            rooms_cleaned, room_numbers, rooms_by_date = await rooms_cleaned_in_period(
+                db,
+                company_id,
+                employee.id,
+                period_start,
+                period_end,
+                company_settings["timezone"],
+            )
+            rooms_overridden = False
+            if room_count_overrides:
+                normalized_rooms = {
+                    str(k).strip().lower(): v for k, v in room_count_overrides.items()
+                }
+                emp_key = str(employee.id).strip().lower()
+                if emp_key in normalized_rooms:
+                    try:
+                        rooms_cleaned = max(0, int(normalized_rooms[emp_key]))
+                        rooms_overridden = True
+                    except (TypeError, ValueError):
+                        pass
+            total_pay_cents = compute_per_room_pay_cents(rooms_cleaned, pay_rate_cents)
+            details_json = {
+                "pay_method": PayMethod.PER_ROOM.value,
+                "rooms_cleaned": rooms_cleaned,
+                "rate_cents_per_room": pay_rate_cents,
+                "rooms_by_date": {} if rooms_overridden else rooms_by_date,
+            }
+            if rooms_overridden:
+                details_json["rooms_overridden"] = True
+            else:
+                details_json["room_numbers"] = room_numbers
+            line_item = PayrollLineItem(
+                id=uuid.uuid4(),
+                payroll_run_id=payroll_run.id,
+                company_id=company_id,
+                employee_id=employee.id,
+                regular_minutes=0,
+                overtime_minutes=0,
+                total_minutes=0,
+                pay_rate_cents=pay_rate_cents,
+                overtime_multiplier=overtime_multiplier,
+                regular_pay_cents=total_pay_cents,
+                overtime_pay_cents=0,
+                total_pay_cents=total_pay_cents,
+                exceptions_count=0,
+                details_json=details_json,
+            )
+            db.add(line_item)
+            total_gross_pay_cents += total_pay_cents
+            continue
+
+        # Hourly: Fetch time entries
         time_entries = await fetch_time_entries_scoped(
             db,
             company_id,
@@ -607,6 +764,7 @@ async def generate_payroll_run(
                 **(details or {}),
                 "hour_overrides_applied": entry_minutes_overrides,
             }
+        details = {**(details or {}), "pay_method": PayMethod.HOURLY.value}
         
         total_minutes = regular_minutes + overtime_minutes
         

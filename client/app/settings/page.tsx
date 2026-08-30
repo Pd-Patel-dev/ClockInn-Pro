@@ -3,6 +3,7 @@
 import { useEffect, useState, type ReactNode, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Layout from '@/components/Layout'
+import PageAtmosphere from '@/components/PageAtmosphere'
 import api from '@/lib/api'
 import { getCurrentUser } from '@/lib/auth'
 import { useForm, Controller } from 'react-hook-form'
@@ -817,21 +818,7 @@ function AdminSettingsPageInner() {
   return (
     <Layout>
       <div className="relative mx-auto max-w-6xl">
-        <div
-          aria-hidden
-          className="pointer-events-none absolute inset-x-0 -top-4 h-52 overflow-hidden"
-        >
-          <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_rgba(15,23,42,0.06),_transparent_65%)]" />
-          <div
-            className="absolute inset-0 opacity-[0.35]"
-            style={{
-              backgroundImage:
-                'linear-gradient(to right, rgb(226 232 240 / 0.55) 1px, transparent 1px), linear-gradient(to bottom, rgb(226 232 240 / 0.55) 1px, transparent 1px)',
-              backgroundSize: '28px 28px',
-              maskImage: 'linear-gradient(to bottom, black, transparent)',
-            }}
-          />
-        </div>
+        <PageAtmosphere />
 
         <div className="relative space-y-6 pb-8">
           <header className="overflow-hidden rounded-2xl border border-slate-800/10 shadow-[0_20px_50px_-28px_rgba(15,23,42,0.45)]">
@@ -2049,7 +2036,7 @@ function AdminSettingsPageInner() {
                 {marketplaceEnabled && !cashDrawerEnabled && (
                   <p
                     role="alert"
-                    className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-sm text-amber-900"
+                    className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-sm text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-100"
                   >
                     Cash drawer required. Enable Cash Drawer in Settings before marketplace
                     sales can run — Front Desk needs an open drawer to take payments.
@@ -2058,7 +2045,7 @@ function AdminSettingsPageInner() {
                 {marketplaceEnabled && (
                   <div
                     role="alert"
-                    className="mt-3 space-y-3 rounded-xl border border-sky-200 bg-sky-50 px-3 py-3 text-sm text-sky-950"
+                    className="mt-3 space-y-3 rounded-xl border border-sky-200 bg-sky-50 px-3 py-3 text-sm text-sky-950 dark:border-sky-500/30 dark:bg-sky-500/10 dark:text-sky-100"
                   >
                     <p>
                       <span className="font-semibold">Front Desk portal only.</span> While
@@ -2079,7 +2066,7 @@ function AdminSettingsPageInner() {
                           />
                           <span>
                             <span className="font-medium">Disable company kiosk</span>
-                            <span className="mt-0.5 block text-sky-900/80">
+                            <span className="mt-0.5 block text-sky-900/80 dark:text-sky-200/80">
                               Recommended. Turns off the PIN pad for everyone when you save.
                               Leave unchecked only if other roles still need the kiosk (Front
                               Desk will still be blocked).
@@ -2091,7 +2078,7 @@ function AdminSettingsPageInner() {
                     {marketplaceEnabled &&
                       !disableCompanyKiosk &&
                       companyInfo?.kiosk_enabled && (
-                        <p className="text-xs text-sky-900/70">
+                        <p className="text-xs text-sky-900/70 dark:text-sky-200/70">
                           Company kiosk is currently enabled. Front Desk PIN punches will be
                           rejected until they use the portal.
                         </p>
@@ -2125,7 +2112,7 @@ function AdminSettingsPageInner() {
                         },
                       ])
                     }
-                    className="shrink-0 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                    className="shrink-0 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-50 dark:border-white/10 dark:!bg-transparent dark:text-foreground-muted dark:hover:!bg-white/[0.04]"
                   >
                     Add item
                   </button>

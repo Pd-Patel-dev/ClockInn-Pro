@@ -11,6 +11,8 @@ export type PayrollGenerateFormValues = {
   start_date: string
   include_inactive: boolean
   entry_hour_overrides?: Record<string, number>
+  room_count_overrides?: Record<string, number>
+  bypass_schedule?: boolean
 }
 
 type ReviewEntry = {
@@ -30,8 +32,12 @@ type ReviewEntry = {
 type ReviewEmployee = {
   employee_id: string
   employee_name: string
+  pay_method?: 'HOURLY' | 'PER_ROOM'
   pay_rate_cents: number
   overtime_multiplier: number
+  rooms_cleaned?: number | null
+  estimated_pay_cents?: number | null
+  room_numbers?: string[]
   regular_minutes: number
   overtime_minutes: number
   total_minutes: number
@@ -55,6 +61,7 @@ type ReviewPreview = {
 type Props = {
   open: boolean
   scheduleLocked: boolean
+  testMode?: boolean
   nextPayDate?: string | null
   initialValues: PayrollGenerateFormValues
   generating: boolean
@@ -66,6 +73,41 @@ type Props = {
 
 function formatHours(hours: number) {
   return `${Number(hours || 0).toFixed(2)}h`
+}
+
+function formatCurrencyFromCents(cents: number) {
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: 'USD',
+  }).format((cents || 0) / 100)
+}
+
+function isPerRoomEmployee(emp: ReviewEmployee) {
+  return String(emp.pay_method || '').toUpperCase() === 'PER_ROOM'
+}
+
+function parseDraftRooms(raw: string | undefined, fallback: number) {
+  if (raw === undefined || raw === '') return fallback
+  const n = Number(raw)
+  if (!Number.isFinite(n) || n < 0) return fallback
+  return Math.round(n)
+}
+
+function employeeDisplayRooms(emp: ReviewEmployee, roomsDraft: Record<string, string>) {
+  return parseDraftRooms(roomsDraft[emp.employee_id], emp.rooms_cleaned ?? 0)
+}
+
+function employeeSummaryLabel(
+  emp: ReviewEmployee,
+  drafts: Record<string, string>,
+  roomsDraft: Record<string, string> = {}
+) {
+  if (isPerRoomEmployee(emp)) {
+    const rooms = employeeDisplayRooms(emp, roomsDraft)
+    const pay = rooms * (emp.pay_rate_cents || 0)
+    return `${rooms} room${rooms === 1 ? '' : 's'} · ${formatCurrencyFromCents(pay)}`
+  }
+  return formatHours(employeeDisplayHours(emp, drafts))
 }
 
 function formatPeriodLabel(start: string, end: string) {
@@ -119,6 +161,7 @@ function applyDraftHoursToEmployee(
 export default function PayrollGenerateReviewModal({
   open,
   scheduleLocked,
+  testMode = false,
   nextPayDate,
   initialValues,
   generating,
@@ -138,6 +181,7 @@ export default function PayrollGenerateReviewModal({
   const [selectedEmployeeId, setSelectedEmployeeId] = useState<string | null>(null)
   const [verifiedIds, setVerifiedIds] = useState<Set<string>>(new Set())
   const [hoursDraft, setHoursDraft] = useState<Record<string, string>>({})
+  const [roomsDraft, setRoomsDraft] = useState<Record<string, string>>({})
   const [savingEntryId, setSavingEntryId] = useState<string | null>(null)
   const [verifying, setVerifying] = useState(false)
   const hourOverridesRef = useRef<Record<string, number>>({})
@@ -152,6 +196,7 @@ export default function PayrollGenerateReviewModal({
     setSelectedEmployeeId(null)
     setVerifiedIds(new Set())
     setHoursDraft({})
+    setRoomsDraft({})
     hourOverridesRef.current = {}
   }, [open, initialValues])
 
@@ -205,18 +250,26 @@ export default function PayrollGenerateReviewModal({
         start_date: startDate,
         include_inactive: String(includeInactive),
       })
+      if (testMode || initialValues.bypass_schedule) {
+        params.set('bypass_schedule', 'true')
+      }
       const response = await api.get(`/admin/payroll/review-preview?${params}`)
       const data = response.data as ReviewPreview
       setPreview(data)
       setVerifiedIds(new Set())
       setSelectedEmployeeId(data.employees[0]?.employee_id || null)
       const drafts: Record<string, string> = {}
+      const roomDrafts: Record<string, string> = {}
       data.employees.forEach((emp) => {
         emp.entries.forEach((entry) => {
           drafts[entry.id] = entry.is_open ? '' : String(entry.hours)
         })
+        if (isPerRoomEmployee(emp)) {
+          roomDrafts[emp.employee_id] = String(emp.rooms_cleaned ?? 0)
+        }
       })
       setHoursDraft(drafts)
+      setRoomsDraft(roomDrafts)
       syncOverridesFromDrafts(drafts, data.employees)
       setStep('review')
       if (!data.employees.length) {
@@ -230,7 +283,7 @@ export default function PayrollGenerateReviewModal({
     } finally {
       setLoadingPreview(false)
     }
-  }, [payrollType, startDate, includeInactive, onError])
+  }, [payrollType, startDate, includeInactive, onError, testMode, initialValues.bypass_schedule])
 
   const persistEntryHours = async (entry: ReviewEntry, hours: number) => {
     await api.put(`/admin/payroll/review-entries/${entry.id}/hours`, {
@@ -242,6 +295,7 @@ export default function PayrollGenerateReviewModal({
   }
 
   const saveEmployeeHours = async (employee: ReviewEmployee, drafts: Record<string, string>) => {
+    if (isPerRoomEmployee(employee)) return
     for (const entry of employee.entries) {
       const hours = entryDisplayHours(entry, drafts)
       if (hours < 0 || !Number.isFinite(hours)) {
@@ -275,17 +329,46 @@ export default function PayrollGenerateReviewModal({
     })
   }
 
+  const saveEmployeeRooms = (employee: ReviewEmployee, drafts: Record<string, string>) => {
+    const raw = drafts[employee.employee_id]
+    if (raw !== undefined && raw !== '') {
+      const parsed = Number(raw)
+      if (!Number.isFinite(parsed) || parsed < 0 || !Number.isInteger(parsed)) {
+        throw new Error(`Enter a whole number of rooms for ${employee.employee_name}`)
+      }
+    }
+    const rooms = employeeDisplayRooms(employee, drafts)
+    const pay = rooms * (employee.pay_rate_cents || 0)
+    setPreview((prev) => {
+      if (!prev) return prev
+      return {
+        ...prev,
+        employees: prev.employees.map((emp) =>
+          emp.employee_id === employee.employee_id
+            ? { ...emp, rooms_cleaned: rooms, estimated_pay_cents: pay }
+            : emp
+        ),
+      }
+    })
+    setRoomsDraft((prev) => ({ ...prev, [employee.employee_id]: String(rooms) }))
+    return rooms
+  }
+
   const verifySelectedEmployee = async () => {
     if (!selectedEmployee || !preview) return
     setVerifying(true)
     try {
       try {
-        await saveEmployeeHours(selectedEmployee, hoursDraft)
+        if (isPerRoomEmployee(selectedEmployee)) {
+          saveEmployeeRooms(selectedEmployee, roomsDraft)
+        } else {
+          await saveEmployeeHours(selectedEmployee, hoursDraft)
+        }
       } catch (error: any) {
         onError(
           error?.response?.data?.detail ||
             error?.message ||
-            'Failed to save hours before verify'
+            'Failed to save before verify'
         )
         return
       }
@@ -321,15 +404,22 @@ export default function PayrollGenerateReviewModal({
     }
     // Capture overrides synchronously before any awaits (avoid stale React state)
     const overrides = syncOverridesFromDrafts(hoursDraft, preview.employees)
+    const roomOverrides: Record<string, number> = {}
     try {
       for (const emp of preview.employees) {
-        await saveEmployeeHours(emp, hoursDraft)
+        if (isPerRoomEmployee(emp)) {
+          roomOverrides[emp.employee_id] = saveEmployeeRooms(emp, roomsDraft)
+        } else {
+          await saveEmployeeHours(emp, hoursDraft)
+        }
       }
       await onGenerate({
         payroll_type: payrollType,
         start_date: startDate,
         include_inactive: includeInactive,
         entry_hour_overrides: overrides,
+        room_count_overrides: Object.keys(roomOverrides).length ? roomOverrides : undefined,
+        bypass_schedule: testMode || initialValues.bypass_schedule,
       })
     } catch (error: any) {
       logger.error('Failed during payroll generate from review', error as Error)
@@ -352,9 +442,15 @@ export default function PayrollGenerateReviewModal({
           <div className="flex items-start justify-between gap-3">
             <div>
               <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">
-                {step === 'setup' ? 'New payroll run' : 'Review hours'}
+                {testMode
+                  ? 'Development only'
+                  : step === 'setup'
+                    ? 'New payroll run'
+                    : 'Review hours'}
               </p>
-              <h3 className="mt-1 text-xl font-semibold tracking-tight">Generate payroll</h3>
+              <h3 className="mt-1 text-xl font-semibold tracking-tight">
+                {testMode ? 'Test payroll' : 'Generate payroll'}
+              </h3>
               {preview && (
                 <p className="mt-1 text-sm text-slate-300">
                   {formatPeriodLabel(preview.period_start, preview.period_end)} · {verifiedCount}/
@@ -377,7 +473,12 @@ export default function PayrollGenerateReviewModal({
 
         {step === 'setup' ? (
           <div className="space-y-4 overflow-y-auto p-5">
-            {scheduleLocked && (
+            {testMode && (
+              <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                Development mode — pay-schedule window is bypassed so you can test any period.
+              </p>
+            )}
+            {scheduleLocked && !testMode && (
               <p className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
                 Period is locked from your pay schedule
                 {nextPayDate ? ` (payday ${nextPayDate})` : ''}.
@@ -389,7 +490,7 @@ export default function PayrollGenerateReviewModal({
               </label>
               <select
                 value={payrollType}
-                disabled={scheduleLocked}
+                disabled={scheduleLocked && !testMode}
                 onChange={(e) => setPayrollType(e.target.value as 'WEEKLY' | 'BIWEEKLY')}
                 className="block w-full rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm shadow-sm focus:border-slate-300 focus:outline-none focus:ring-2 focus:ring-slate-900/10 disabled:bg-slate-50 disabled:text-slate-500"
               >
@@ -404,7 +505,7 @@ export default function PayrollGenerateReviewModal({
               <input
                 type="date"
                 value={startDate}
-                readOnly={scheduleLocked}
+                readOnly={scheduleLocked && !testMode}
                 onChange={(e) => setStartDate(e.target.value)}
                 className="block w-full rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm shadow-sm focus:border-slate-300 focus:outline-none focus:ring-2 focus:ring-slate-900/10 read-only:bg-slate-50 read-only:text-slate-500"
               />
@@ -460,8 +561,8 @@ export default function PayrollGenerateReviewModal({
           <>
             <div className="min-h-0 flex-1 overflow-y-auto p-4">
               <p className="mb-3 text-xs text-slate-500">
-                Expand one employee at a time, edit hours if needed, then verify — changes save
-                automatically. Generate stays locked until everyone is verified.
+                Expand one employee at a time, review hours or rooms cleaned, then verify —
+                Generate stays locked until everyone is verified.
               </p>
               <div className="overflow-hidden rounded-xl border border-slate-200">
                 {preview?.employees.map((emp, index) => {
@@ -481,7 +582,7 @@ export default function PayrollGenerateReviewModal({
                         }
                         className={`flex w-full items-center gap-3 px-4 py-3.5 text-left transition ${
                           expanded ? 'bg-slate-50' : 'bg-white hover:bg-slate-50/80'
-                        }`}
+                        } ${verified ? 'border-l-4 border-l-emerald-600' : 'border-l-4 border-l-transparent'}`}
                         aria-expanded={expanded}
                       >
                         <svg
@@ -505,22 +606,33 @@ export default function PayrollGenerateReviewModal({
                             {emp.employee_name}
                           </span>
                           <span className="mt-0.5 block text-xs text-slate-500">
-                            {formatHours(employeeDisplayHours(emp, hoursDraft))}
-                            {emp.entries.some(
+                            {employeeSummaryLabel(emp, hoursDraft, roomsDraft)}
+                            {!isPerRoomEmployee(emp) &&
+                            emp.entries.some(
                               (e) => e.is_open && !(hoursDraft[e.id] || '').trim()
                             )
                               ? ' · open punch'
                               : ''}
+                            {isPerRoomEmployee(emp) ? ' · per room' : ''}
                           </span>
                         </span>
                         <span
-                          className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
+                          className={`inline-flex shrink-0 items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide ${
                             verified
-                              ? 'bg-emerald-100 text-emerald-800'
-                              : 'bg-slate-200 text-slate-600'
+                              ? 'bg-emerald-600 text-white shadow-sm'
+                              : 'bg-slate-200 text-slate-700'
                           }`}
                         >
-                          {verified ? 'Verified' : 'Review'}
+                          {verified ? (
+                            <>
+                              <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
+                              </svg>
+                              Verified
+                            </>
+                          ) : (
+                            'Review'
+                          )}
                         </span>
                       </button>
 
@@ -528,7 +640,10 @@ export default function PayrollGenerateReviewModal({
                         <div className="space-y-3 border-t border-slate-100 bg-white px-4 py-4">
                           <div className="flex flex-wrap items-center justify-between gap-2">
                             <p className="text-sm text-slate-600">
-                              {formatHours(employeeDisplayHours(emp, hoursDraft))} total
+                              {employeeSummaryLabel(emp, hoursDraft, roomsDraft)}
+                              {isPerRoomEmployee(emp)
+                                ? ` @ ${formatCurrencyFromCents(emp.pay_rate_cents)}/room`
+                                : ' total'}
                             </p>
                             <button
                               type="button"
@@ -540,11 +655,51 @@ export default function PayrollGenerateReviewModal({
                                 ? 'Verified'
                                 : verifying || savingEntryId
                                   ? 'Saving…'
-                                  : 'Verify hours'}
+                                  : isPerRoomEmployee(emp)
+                                    ? 'Verify rooms'
+                                    : 'Verify hours'}
                             </button>
                           </div>
 
-                          {emp.entries.length === 0 ? (
+                          {isPerRoomEmployee(emp) ? (
+                            <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-4">
+                              <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-400">
+                                Rooms cleaned
+                              </label>
+                              <div className="flex flex-wrap items-center gap-3">
+                                <input
+                                  type="number"
+                                  min={0}
+                                  max={9999}
+                                  step={1}
+                                  value={roomsDraft[emp.employee_id] ?? String(emp.rooms_cleaned ?? 0)}
+                                  onChange={(e) => {
+                                    const value = e.target.value
+                                    setRoomsDraft((prev) => ({ ...prev, [emp.employee_id]: value }))
+                                    setVerifiedIds((prev) => {
+                                      if (!prev.has(emp.employee_id)) return prev
+                                      const next = new Set(prev)
+                                      next.delete(emp.employee_id)
+                                      return next
+                                    })
+                                  }}
+                                  className="w-28 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-sm tabular-nums focus:border-slate-300 focus:outline-none focus:ring-2 focus:ring-slate-900/10"
+                                />
+                                <p className="text-sm text-slate-600">
+                                  × {formatCurrencyFromCents(emp.pay_rate_cents)}/room ={' '}
+                                  <span className="font-semibold text-slate-900">
+                                    {formatCurrencyFromCents(
+                                      employeeDisplayRooms(emp, roomsDraft) * (emp.pay_rate_cents || 0)
+                                    )}
+                                  </span>
+                                </p>
+                              </div>
+                              <p className="mt-2 text-xs text-slate-500">
+                                From Cleaning Done sheets in this period. Adjust if needed, then
+                                verify.
+                              </p>
+                            </div>
+                          ) : emp.entries.length === 0 ? (
                             <p className="rounded-xl border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-center text-sm text-slate-500">
                               No time entries in this period. Verify if zero hours is correct.
                             </p>

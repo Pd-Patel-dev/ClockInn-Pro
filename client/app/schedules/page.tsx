@@ -3,6 +3,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import Layout from '@/components/Layout'
+import PageAtmosphere from '@/components/PageAtmosphere'
 import api from '@/lib/api'
 import { useToast } from '@/components/Toast'
 import logger from '@/lib/logger'
@@ -579,21 +580,7 @@ export default function SchedulesPage() {
   return (
     <Layout>
       <div className="relative mx-auto max-w-[1600px]">
-        <div
-          aria-hidden
-          className="pointer-events-none absolute inset-x-0 -top-4 h-52 overflow-hidden"
-        >
-          <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_rgba(15,23,42,0.06),_transparent_65%)]" />
-          <div
-            className="absolute inset-0 opacity-[0.35]"
-            style={{
-              backgroundImage:
-                'linear-gradient(to right, rgb(226 232 240 / 0.55) 1px, transparent 1px), linear-gradient(to bottom, rgb(226 232 240 / 0.55) 1px, transparent 1px)',
-              backgroundSize: '28px 28px',
-              maskImage: 'linear-gradient(to bottom, black, transparent)',
-            }}
-          />
-        </div>
+        <PageAtmosphere />
 
         <div className="relative space-y-6 pb-8">
           <header className="overflow-hidden rounded-2xl border border-slate-800/10 shadow-[0_20px_50px_-28px_rgba(15,23,42,0.45)]">
@@ -748,14 +735,14 @@ export default function SchedulesPage() {
                 <label className="block text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-400 mb-1.5">
                   Week
                 </label>
-                <div className="flex items-center rounded-xl border border-slate-200 overflow-hidden shadow-sm">
+                <div className="flex items-center overflow-hidden rounded-xl border border-border bg-surface shadow-sm">
                   <button
                     type="button"
                     onClick={() => {
                       clearSelection()
                       setCurrentWeek(subWeeks(currentWeek, 1))
                     }}
-                    className="p-2.5 text-slate-600 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-slate-900/10 transition-colors"
+                    className="p-2.5 text-foreground-muted transition-colors hover:bg-border-subtle focus:outline-none focus:ring-2 focus:ring-inset focus:ring-accent/30"
                     aria-label="Previous week"
                   >
                     <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -767,8 +754,8 @@ export default function SchedulesPage() {
                       />
                     </svg>
                   </button>
-                  <div className="flex-1 px-3 py-2.5 border-x border-slate-200 bg-slate-50/50 text-center">
-                    <span className="text-sm font-semibold text-slate-900 tabular-nums">
+                  <div className="flex-1 border-x border-border bg-border-subtle/60 px-3 py-2.5 text-center">
+                    <span className="text-sm font-semibold tabular-nums text-foreground">
                       {format(weekStart, 'MMM d')} – {format(weekEnd, 'MMM d, yyyy')}
                     </span>
                   </div>
@@ -778,7 +765,7 @@ export default function SchedulesPage() {
                       clearSelection()
                       setCurrentWeek(addWeeks(currentWeek, 1))
                     }}
-                    className="p-2.5 text-slate-600 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-slate-900/10 transition-colors"
+                    className="p-2.5 text-foreground-muted transition-colors hover:bg-border-subtle focus:outline-none focus:ring-2 focus:ring-inset focus:ring-accent/30"
                     aria-label="Next week"
                   >
                     <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">

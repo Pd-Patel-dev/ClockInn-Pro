@@ -17,6 +17,9 @@ const nextConfig = {
       { source: '/employees/new', destination: '/employees/create', permanent: false },
     ]
   },
+  async rewrites() {
+    return [{ source: '/favicon.ico', destination: '/favicon.svg' }]
+  },
   // Enable fast refresh and hot reload
   webpack: (config, { dev, isServer }) => {
     if (dev && !isServer) {

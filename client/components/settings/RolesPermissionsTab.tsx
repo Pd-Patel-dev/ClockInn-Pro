@@ -43,6 +43,7 @@ const CATEGORY_LABELS: Record<string, string> = {
   SETTINGS: 'Settings',
   LEAVE_REQUESTS: 'Leave Requests',
   CASH_DRAWER: 'Cash Drawer',
+  HOUSEKEEPING: 'Housekeeping',
   ADMIN: 'Administration',
 }
 

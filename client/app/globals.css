@@ -36,11 +36,12 @@
 }
 
 .dark {
-  --color-page: 15 23 42;
-  --color-surface: 30 41 59;
-  --color-surface-elevated: 51 65 85;
+  /* Near-black page; surfaces stay close so white remaps don’t look “paper” */
+  --color-page: 2 6 23;
+  --color-surface: 15 23 42;
+  --color-surface-elevated: 22 32 51;
   --color-border: 51 65 85;
-  --color-border-subtle: 41 53 72;
+  --color-border-subtle: 30 41 59;
   --color-text: 248 250 252;
   --color-text-muted: 148 163 184;
   --color-text-subtle: 100 116 139;
@@ -157,5 +158,309 @@
     .dashboard-reveal {
       animation: none;
     }
+  }
+}
+
+/*
+ * Dark-mode compatibility for pages still using light-only slate/white utilities.
+ * Remaps the most common hardcoded classes to semantic tokens under .dark.
+ * Prefer bg-surface / text-foreground going forward; keep intentional dark heroes
+ * (bg-slate-900 + text-white) unchanged.
+ */
+.dark {
+  /* Surfaces */
+  .bg-white {
+    background-color: rgb(var(--color-surface));
+  }
+  .bg-white\/95 {
+    background-color: rgb(var(--color-surface) / 0.95);
+  }
+  .bg-white\/90 {
+    background-color: rgb(var(--color-surface) / 0.9);
+  }
+  .bg-slate-50,
+  .bg-slate-50\/50,
+  .bg-slate-50\/40,
+  .bg-slate-50\/60,
+  .bg-slate-50\/80,
+  .bg-slate-50\/90,
+  .bg-slate-50\/70 {
+    background-color: rgb(255 255 255 / 0.03);
+  }
+  .bg-slate-100,
+  .bg-slate-100\/80 {
+    background-color: rgb(255 255 255 / 0.05);
+  }
+  .bg-slate-200,
+  .bg-slate-200\/80,
+  .bg-gray-200 {
+    background-color: rgb(255 255 255 / 0.08);
+  }
+  .hover\:bg-white:hover,
+  .hover\:bg-white\/70:hover,
+  .hover\:bg-slate-50:hover,
+  .hover\:bg-slate-50\/80:hover,
+  .hover\:bg-slate-50\/90:hover,
+  .hover\:bg-slate-100:hover {
+    background-color: rgb(255 255 255 / 0.06);
+  }
+
+  /* Borders & dividers */
+  .border-slate-100,
+  .border-slate-200,
+  .border-slate-200\/80,
+  .border-slate-200\/90,
+  .border-slate-300 {
+    border-color: rgb(var(--color-border));
+  }
+  .border-slate-800\/5,
+  .border-slate-800\/10 {
+    border-color: rgb(255 255 255 / 0.08);
+  }
+  .divide-slate-100 > :not([hidden]) ~ :not([hidden]),
+  .divide-slate-200 > :not([hidden]) ~ :not([hidden]) {
+    border-color: rgb(var(--color-border-subtle));
+  }
+  .ring-slate-200,
+  .ring-slate-200\/80 {
+    --tw-ring-color: rgb(var(--color-border));
+  }
+  .ring-white {
+    --tw-ring-color: rgb(var(--color-surface));
+  }
+
+  /* Text */
+  .text-slate-900,
+  .text-slate-800,
+  .text-slate-950 {
+    color: rgb(var(--color-text));
+  }
+  .text-slate-700,
+  .text-slate-600 {
+    color: rgb(var(--color-text-muted));
+  }
+  .text-slate-500,
+  .text-slate-400 {
+    color: rgb(var(--color-text-subtle));
+  }
+  .text-slate-300 {
+    color: rgb(var(--color-text-muted));
+  }
+  .hover\:text-slate-900:hover,
+  .hover\:text-slate-800:hover {
+    color: rgb(var(--color-text));
+  }
+  .hover\:text-slate-700:hover,
+  .hover\:text-slate-600:hover {
+    color: rgb(var(--color-text-muted));
+  }
+
+  /* Soft status washes that read as “paper” in light mode */
+  .bg-emerald-50,
+  .bg-emerald-50\/40,
+  .bg-emerald-50\/50 {
+    background-color: rgb(16 185 129 / 0.12);
+  }
+  .bg-amber-50,
+  .bg-amber-50\/40,
+  .bg-amber-50\/50,
+  .bg-amber-50\/90 {
+    background-color: rgb(245 158 11 / 0.12);
+  }
+  .bg-red-50,
+  .bg-red-50\/40,
+  .bg-red-50\/50 {
+    background-color: rgb(239 68 68 / 0.12);
+  }
+  .bg-orange-50,
+  .bg-orange-50\/40 {
+    background-color: rgb(249 115 22 / 0.12);
+  }
+  .bg-blue-50,
+  .bg-blue-50\/40,
+  .bg-blue-50\/50,
+  .bg-sky-50,
+  .bg-indigo-50,
+  .bg-violet-50,
+  .bg-purple-50 {
+    background-color: rgb(59 130 246 / 0.12);
+  }
+  .bg-rose-50,
+  .bg-pink-50 {
+    background-color: rgb(244 63 94 / 0.12);
+  }
+  .from-amber-50 {
+    --tw-gradient-from: rgb(245 158 11 / 0.14) var(--tw-gradient-from-position);
+    --tw-gradient-to: rgb(245 158 11 / 0) var(--tw-gradient-to-position);
+    --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-to);
+  }
+  .from-white,
+  .from-slate-50,
+  .from-slate-100 {
+    --tw-gradient-from: rgb(var(--color-surface)) var(--tw-gradient-from-position);
+    --tw-gradient-to: rgb(var(--color-surface) / 0) var(--tw-gradient-to-position);
+    --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-to);
+  }
+  .to-white,
+  .to-slate-50,
+  .to-slate-100 {
+    --tw-gradient-to: rgb(var(--color-surface)) var(--tw-gradient-to-position);
+  }
+  .to-orange-50 {
+    --tw-gradient-to: rgb(249 115 22 / 0.14) var(--tw-gradient-to-position);
+  }
+  .via-white {
+    --tw-gradient-to: rgb(var(--color-surface) / 0) var(--tw-gradient-to-position);
+    --tw-gradient-stops: var(--tw-gradient-from), rgb(var(--color-surface)) var(--tw-gradient-via-position), var(--tw-gradient-to);
+  }
+
+  /* Status label text that is too dark on soft washes */
+  .text-emerald-700,
+  .text-emerald-800,
+  .text-emerald-900,
+  .text-green-700,
+  .text-green-800,
+  .text-green-900 {
+    color: rgb(110 231 183);
+  }
+  .text-amber-700,
+  .text-amber-800,
+  .text-amber-900,
+  .text-amber-950,
+  .text-orange-700,
+  .text-orange-800,
+  .text-orange-900 {
+    color: rgb(252 211 77);
+  }
+  .text-red-700,
+  .text-red-800,
+  .text-red-900,
+  .text-rose-700,
+  .text-rose-800,
+  .text-rose-900 {
+    color: rgb(252 165 165);
+  }
+  .text-blue-700,
+  .text-blue-800,
+  .text-blue-900,
+  .text-blue-950,
+  .text-indigo-700,
+  .text-indigo-800,
+  .text-indigo-900,
+  .text-sky-700,
+  .text-sky-800,
+  .text-sky-900,
+  .text-sky-950 {
+    color: rgb(186 230 253);
+  }
+  .text-sky-900\/80,
+  .text-sky-900\/70,
+  .text-sky-800\/80 {
+    color: rgb(186 230 253 / 0.85);
+  }
+  .text-amber-900\/80,
+  .text-amber-800\/80 {
+    color: rgb(252 211 77 / 0.85);
+  }
+
+  .border-emerald-100,
+  .border-emerald-200,
+  .border-green-200 {
+    border-color: rgb(16 185 129 / 0.35);
+  }
+  .border-sky-100,
+  .border-sky-200,
+  .border-blue-100,
+  .border-blue-200,
+  .border-indigo-200 {
+    border-color: rgb(56 189 248 / 0.35);
+  }
+  .border-amber-100,
+  .border-amber-200,
+  .border-orange-200 {
+    border-color: rgb(245 158 11 / 0.35);
+  }
+  .border-red-100,
+  .border-red-200,
+  .border-rose-200 {
+    border-color: rgb(239 68 68 / 0.35);
+  }
+
+  /* Gray aliases (some pages use gray instead of slate) */
+  .bg-gray-50,
+  .bg-gray-100 {
+    background-color: rgb(var(--color-border-subtle));
+  }
+  .border-gray-100,
+  .border-gray-200,
+  .border-gray-300 {
+    border-color: rgb(var(--color-border));
+  }
+  .text-gray-900,
+  .text-gray-800 {
+    color: rgb(var(--color-text));
+  }
+  .text-gray-700,
+  .text-gray-600 {
+    color: rgb(var(--color-text-muted));
+  }
+  .text-gray-500,
+  .text-gray-400 {
+    color: rgb(var(--color-text-subtle));
+  }
+
+  /* Form controls that still hardcode white */
+  .bg-white input:not([type='checkbox']):not([type='radio']):not([type='range']):not([type='file']):not([type='color']):not([type='submit']):not([type='button']):not([type='hidden']),
+  .bg-white select,
+  .bg-white textarea,
+  input.bg-white,
+  select.bg-white,
+  textarea.bg-white {
+    background-color: rgb(var(--color-surface));
+    color: rgb(var(--color-text));
+    border-color: rgb(var(--color-border));
+  }
+  input::placeholder,
+  textarea::placeholder {
+    color: rgb(var(--color-text-subtle));
+  }
+  .placeholder\:text-slate-400::placeholder,
+  .placeholder\:text-slate-500::placeholder,
+  .placeholder\:text-gray-400::placeholder,
+  .placeholder\:text-gray-500::placeholder {
+    color: rgb(var(--color-text-subtle));
+  }
+
+  /* Striped / zebra rows */
+  .even\:bg-slate-50:nth-child(even),
+  .odd\:bg-slate-50:nth-child(odd) {
+    background-color: rgb(var(--color-border-subtle) / 0.6);
+  }
+
+  /* Focus rings that assume a white page */
+  .ring-offset-white {
+    --tw-ring-offset-color: rgb(var(--color-page));
+  }
+
+  /* Soft shadows on dark surfaces */
+  .shadow-sm,
+  .shadow,
+  .shadow-md {
+    --tw-shadow-color: rgb(0 0 0 / 0.45);
+  }
+
+  /* Keep pure white text on intentionally dark controls */
+  .text-white {
+    color: #fff;
+  }
+
+  /* Page heroes / panels / selected tabs — stay dark above the page */
+  .bg-slate-900,
+  .bg-gray-900 {
+    background-color: rgb(15 23 42);
+  }
+  .hover\:bg-slate-800:hover,
+  .hover\:bg-gray-800:hover {
+    background-color: rgb(30 41 59);
   }
 }

@@ -586,7 +586,9 @@ async def delete_company_as_developer(
     from app.models.time_entry import TimeEntry
     from app.models.leave_request import LeaveRequest
     from app.models.permission import RolePermission
+    from app.models.user_permission_override import UserPermissionOverride
     from app.models.cash_drawer import CashDrawerAudit, CashDrawerSession
+    from app.models.room import HousekeepingSheet, HousekeepingSheetItem, Room
 
     if company_id == _SYSTEM_DEFAULT_COMPANY_ID:
         raise HTTPException(
@@ -651,6 +653,16 @@ async def delete_company_as_developer(
     await db.execute(sql_delete(LeaveRequest).where(LeaveRequest.company_id == company_id))
     await db.execute(sql_delete(AuditLog).where(AuditLog.company_id == company_id))
     await db.execute(sql_delete(RolePermission).where(RolePermission.company_id == company_id))
+    await db.execute(
+        sql_delete(UserPermissionOverride).where(UserPermissionOverride.company_id == company_id)
+    )
+
+    sheet_ids = select(HousekeepingSheet.id).where(HousekeepingSheet.company_id == company_id)
+    await db.execute(
+        sql_delete(HousekeepingSheetItem).where(HousekeepingSheetItem.sheet_id.in_(sheet_ids))
+    )
+    await db.execute(sql_delete(HousekeepingSheet).where(HousekeepingSheet.company_id == company_id))
+    await db.execute(sql_delete(Room).where(Room.company_id == company_id))
 
     await db.execute(sql_delete(User).where(User.company_id == company_id))
     await db.execute(sql_delete(Company).where(Company.id == company_id))

@@ -8,6 +8,9 @@ from app.models.payroll import PayrollRun, PayrollLineItem, PayrollAdjustment
 from app.models.shift import Shift, ShiftTemplate
 from app.models.cash_drawer import CashDrawerSession, CashDrawerAudit
 from app.models.email_delivery_log import EmailDeliveryLog, EmailDeliveryStatus
+from app.models.user_permission_override import UserPermissionOverride
+from app.models.room import Room, HousekeepingSheet, HousekeepingSheetItem
+from app.models.support_ticket import SupportTicket, SupportTicketType, SupportTicketStatus
 
 __all__ = [
     "Company",
@@ -26,4 +29,11 @@ __all__ = [
     "CashDrawerAudit",
     "EmailDeliveryLog",
     "EmailDeliveryStatus",
+    "UserPermissionOverride",
+    "Room",
+    "HousekeepingSheet",
+    "HousekeepingSheetItem",
+    "SupportTicket",
+    "SupportTicketType",
+    "SupportTicketStatus",
 ]

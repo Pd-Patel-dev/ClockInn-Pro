@@ -3,6 +3,7 @@
 import { useEffect, useState, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import Layout from '@/components/Layout'
+import PageAtmosphere from '@/components/PageAtmosphere'
 import api from '@/lib/api'
 import { getCurrentUser } from '@/lib/auth'
 import logger from '@/lib/logger'
@@ -157,54 +158,72 @@ export default function AdminEmployeesPage() {
 
   return (
     <Layout>
-      <div className="relative">
-        <div
-          aria-hidden
-          className="pointer-events-none absolute inset-x-0 -top-4 h-52 overflow-hidden"
-        >
-          <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_rgba(15,23,42,0.06),_transparent_65%)]" />
-          <div
-            className="absolute inset-0 opacity-[0.35]"
-            style={{
-              backgroundImage:
-                'linear-gradient(to right, rgb(226 232 240 / 0.55) 1px, transparent 1px), linear-gradient(to bottom, rgb(226 232 240 / 0.55) 1px, transparent 1px)',
-              backgroundSize: '28px 28px',
-              maskImage: 'linear-gradient(to bottom, black, transparent)',
-            }}
-          />
-        </div>
+      <div className="relative mx-auto max-w-6xl">
+        <PageAtmosphere />
 
-        <div className="relative space-y-6">
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-            <div>
-              <p className="text-[11px] font-semibold uppercase tracking-[0.1em] text-slate-400">
-                Team
-              </p>
-              <h1 className="mt-1 text-3xl font-semibold tracking-tight text-slate-900">
-                Employees
-              </h1>
-              <p className="mt-1.5 text-sm text-slate-500 max-w-lg">
-                Manage team members, roles, and access across your property.
-              </p>
+        <div className="relative space-y-6 pb-8">
+          <header className="overflow-hidden rounded-2xl border border-slate-800/10 shadow-[0_20px_50px_-28px_rgba(15,23,42,0.45)]">
+            <div className="relative bg-slate-900 px-5 py-6 text-white sm:px-7 sm:py-8">
+              <div
+                aria-hidden
+                className="absolute inset-0 opacity-40"
+                style={{
+                  backgroundImage:
+                    'radial-gradient(circle at 12% 20%, rgba(45,212,191,0.28), transparent 42%), radial-gradient(circle at 88% 10%, rgba(59,130,246,0.22), transparent 36%)',
+                }}
+              />
+              <div
+                aria-hidden
+                className="absolute inset-y-0 right-0 w-1/2 opacity-[0.07]"
+                style={{
+                  backgroundImage:
+                    'repeating-linear-gradient(-32deg, transparent, transparent 10px, white 10px, white 11px)',
+                }}
+              />
+              <div className="relative flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+                    Team · Directory
+                  </p>
+                  <h1 className="mt-2 text-3xl font-semibold tracking-tight sm:text-4xl">
+                    Employees
+                  </h1>
+                  <p className="mt-2 max-w-lg text-sm leading-relaxed text-slate-300">
+                    Manage team members, roles, and access across your property.
+                  </p>
+                </div>
+                <div className="flex shrink-0 flex-col items-stretch gap-3 sm:items-end">
+                  {stats.onShift > 0 && (
+                    <div className="sm:text-right">
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+                        On shift
+                      </p>
+                      <p className="mt-1 text-3xl font-semibold leading-none tracking-tight tabular-nums text-teal-200 sm:text-4xl">
+                        {stats.onShift}
+                      </p>
+                    </div>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => router.push('/employees/create')}
+                    className="inline-flex items-center justify-center gap-2 rounded-xl bg-white px-4 py-2.5 text-sm font-semibold text-slate-900 shadow-sm hover:bg-slate-100"
+                  >
+                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M12 4v16m8-8H4"
+                      />
+                    </svg>
+                    Add employee
+                  </button>
+                </div>
+              </div>
             </div>
-            <button
-              type="button"
-              onClick={() => router.push('/employees/create')}
-              className="shrink-0 inline-flex items-center justify-center gap-2 bg-slate-900 hover:bg-slate-800 text-white text-sm font-semibold px-4 py-2.5 rounded-xl transition-colors shadow-sm"
-            >
-              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M12 4v16m8-8H4"
-                />
-              </svg>
-              Add employee
-            </button>
-          </div>
+          </header>
 
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
             <StatCard label="Total" value={stats.total} hint="All team members" />
             <StatCard label="Active" value={stats.active} hint="Can clock in" />
             <StatCard label="On shift" value={stats.onShift} hint="Clocked in now" />

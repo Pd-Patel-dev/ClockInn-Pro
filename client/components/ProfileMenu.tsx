@@ -125,6 +125,7 @@ export function ProfileMenu({ user, onLogout }: ProfileMenuProps) {
                 <MenuLink href="/developer/companies">Companies</MenuLink>
                 <MenuItem onClick={() => chrome.openCommandPalette()}>All Users</MenuItem>
                 <MenuLink href="/developer/logs">Activity Logs</MenuLink>
+                <MenuLink href="/developer/support">Support inbox</MenuLink>
                 <MenuLink href="/settings/email">Email Service</MenuLink>
                 <MenuLink href="/settings/api-keys">API Keys</MenuLink>
               </MenuSection>
@@ -136,9 +137,7 @@ export function ProfileMenu({ user, onLogout }: ProfileMenuProps) {
             <MenuItem shortcut="?" onClick={() => chrome.openShortcuts()}>
               Keyboard Shortcuts
             </MenuItem>
-            <MenuLink href="https://docs.clockinn.pro" external>
-              Documentation
-            </MenuLink>
+            <MenuItem onClick={() => chrome.openFeedback({ kind: 'support' })}>Contact support</MenuItem>
             <MenuItem onClick={() => chrome.openFeedback({ kind: 'feedback' })}>Send Feedback</MenuItem>
             <MenuItem onClick={() => chrome.openFeedback({ kind: 'bug' })}>Report Bug</MenuItem>
             <MenuItem onClick={() => chrome.openChangelog()}>What&apos;s New</MenuItem>

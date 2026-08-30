@@ -3,16 +3,18 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_
 from typing import List
 from uuid import UUID as UUIDType
+from pydantic import BaseModel, Field
+import uuid
 
 from app.core.database import get_db
 from app.core.dependencies import (
     get_current_user,
-    get_current_verified_user,
     get_current_tenant_company_id,
     require_permission,
 )
 from app.core.error_handling import handle_endpoint_errors, parse_uuid
 from app.models.user import User, UserRole
+from app.models.audit_log import AuditLog
 from app.schemas.user import (
     UserCreate,
     UserUpdate,
@@ -29,11 +31,18 @@ from app.services.user_service import (
     reset_password,
     delete_employee,
 )
-from app.models.audit_log import AuditLog
-from app.core.permissions import ROLE_PERMISSIONS
-import uuid
+from app.services.effective_permission_service import (
+    get_effective_feature_permissions,
+    get_employee_permission_view,
+    replace_employee_permission_overrides,
+)
 
 router = APIRouter()
+
+
+class EmployeePermissionOverridesUpdate(BaseModel):
+    grants: List[str] = Field(default_factory=list)
+    denies: List[str] = Field(default_factory=list)
 
 
 @router.get("/me", response_model=UserMeResponse)
@@ -65,6 +74,8 @@ async def get_me(
             email_verified = True
             verification_required = False
     
+    effective = await get_effective_feature_permissions(db, user)
+
     return UserMeResponse(
         id=user.id,
         company_id=user.company_id,
@@ -75,7 +86,7 @@ async def get_me(
         company_name=company_name,
         email_verified=email_verified,
         verification_required=verification_required,
-        permissions=sorted(list(ROLE_PERMISSIONS.get(user.role, set()))),
+        permissions=sorted(effective),
         preferred_name=user.preferred_name,
         phone=user.phone,
         avatar_url=user.avatar_url,
@@ -128,6 +139,7 @@ async def create_employee_endpoint(
         status=employee.status,
         has_pin=employee.pin_hash is not None,
         pay_rate=float(employee.pay_rate) if employee.pay_rate is not None else None,
+        pay_method=employee.pay_method,
         preferred_name=employee.preferred_name,
         phone=employee.phone,
         job_role=employee.job_role,
@@ -223,6 +235,7 @@ async def get_employee_endpoint(
         status=employee.status,
         has_pin=employee.pin_hash is not None,
         pay_rate=float(employee.pay_rate) if employee.pay_rate is not None else None,
+        pay_method=employee.pay_method,
         preferred_name=employee.preferred_name,
         phone=employee.phone,
         job_role=employee.job_role,
@@ -230,7 +243,61 @@ async def get_employee_endpoint(
         last_login_at=employee.last_login_at,
         last_punch_at=last_punch,
         is_clocked_in=is_clocked_in,
+        password_setup_pending=bool(employee.password_setup_token_hash),
     )
+
+
+@router.get("/admin/employees/{employee_id}/permissions")
+@handle_endpoint_errors(operation_name="get_employee_permissions")
+async def get_employee_permissions_endpoint(
+    employee_id: str,
+    current_user: User = Depends(require_permission("user_management")),
+    company_id: UUIDType = Depends(get_current_tenant_company_id),
+    db: AsyncSession = Depends(get_db),
+):
+    """Get role defaults + overrides for an employee (Admin/Manager only)."""
+    emp_id = parse_uuid(employee_id, "Employee ID")
+    employee = await get_user_by_id(db, emp_id, company_id)
+    if not employee or employee.role == UserRole.DEVELOPER:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Employee not found")
+    return await get_employee_permission_view(db, actor=current_user, employee=employee)
+
+
+@router.put("/admin/employees/{employee_id}/permissions")
+@handle_endpoint_errors(operation_name="update_employee_permissions")
+async def update_employee_permissions_endpoint(
+    employee_id: str,
+    body: EmployeePermissionOverridesUpdate,
+    current_user: User = Depends(require_permission("user_management")),
+    company_id: UUIDType = Depends(get_current_tenant_company_id),
+    db: AsyncSession = Depends(get_db),
+):
+    """Replace grant/deny overrides for an employee (Admin/Manager only)."""
+    emp_id = parse_uuid(employee_id, "Employee ID")
+    employee = await get_user_by_id(db, emp_id, company_id)
+    if not employee or employee.role == UserRole.DEVELOPER:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Employee not found")
+
+    result = await replace_employee_permission_overrides(
+        db,
+        actor=current_user,
+        employee=employee,
+        grants=body.grants,
+        denies=body.denies,
+    )
+
+    audit_log = AuditLog(
+        id=uuid.uuid4(),
+        company_id=company_id,
+        actor_user_id=current_user.id,
+        action="employee_permissions_updated",
+        entity_type="user",
+        entity_id=employee.id,
+        metadata_json={"grants": body.grants, "denies": body.denies},
+    )
+    db.add(audit_log)
+    await db.commit()
+    return result
 
 
 @router.put("/admin/employees/{employee_id}", response_model=UserResponse)
@@ -278,6 +345,7 @@ async def update_employee_endpoint(
         status=employee.status,
         has_pin=employee.pin_hash is not None,
         pay_rate=float(employee.pay_rate) if employee.pay_rate is not None else None,
+        pay_method=employee.pay_method,
         preferred_name=employee.preferred_name,
         phone=employee.phone,
         job_role=employee.job_role,

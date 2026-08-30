@@ -342,170 +342,72 @@ async def generate_excel_report(
     return buffer
 
 
+def _safe_int(value, default: int = 0) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def payroll_run_to_report_rows(payroll_run) -> List[dict]:
+    """Line items → PDF/Excel rows. Per-room employees use rooms cleaned × rate."""
+    rows: List[dict] = []
+    for item in payroll_run.line_items or []:
+        details = item.details_json or {}
+        pay_method = str(details.get("pay_method") or "HOURLY").upper()
+        rooms_cleaned = _safe_int(details.get("rooms_cleaned"), 0) if pay_method == "PER_ROOM" else 0
+        exceptions_count = int(item.exceptions_count or 0)
+        rows.append(
+            {
+                "employee_name": item.employee.name if item.employee else "Unknown",
+                "pay_method": pay_method,
+                "regular_hours": float(item.regular_minutes or 0) / 60.0,
+                "ot_hours": float(item.overtime_minutes or 0) / 60.0,
+                "rooms_cleaned": rooms_cleaned,
+                "rate": float(item.pay_rate_cents or 0) / 100.0,
+                "regular_pay": float(item.regular_pay_cents or 0) / 100.0,
+                "ot_pay": float(item.overtime_pay_cents or 0) / 100.0,
+                "total_pay": float(item.total_pay_cents or 0) / 100.0,
+                "exceptions": exceptions_count,
+                "days": details.get("days") or {},
+                "rooms_by_date": details.get("rooms_by_date") or {},
+                "room_numbers": details.get("room_numbers") or [],
+                "total_minutes": int(item.total_minutes or 0),
+            }
+        )
+    return rows
+
+
+def render_payroll_report_pdf(payroll_run) -> bytes:
+    """Professional payroll PDF bytes for a loaded run (company + generator + line items)."""
+    from app.pdf_templates.payroll_report import generate_payroll_report_pdf
+    from app.services.payroll_service import get_company_settings
+    from app.services.payroll_schedule_service import pay_date_for_run
+
+    company_name = payroll_run.company.name if payroll_run.company else "Company"
+    payroll_type = payroll_run.payroll_type.value if payroll_run.payroll_type else ""
+    status_str = payroll_run.status.value.title() if payroll_run.status else "Draft"
+    generated_by_name = payroll_run.generator.name if payroll_run.generator else "System"
+    settings = get_company_settings(payroll_run.company) if payroll_run.company else {}
+    return generate_payroll_report_pdf(
+        company_name=company_name,
+        payroll_type=payroll_type,
+        period_start=payroll_run.period_start_date,
+        period_end=payroll_run.period_end_date,
+        generated_at=payroll_run.generated_at,
+        generated_by=generated_by_name,
+        status=status_str,
+        rows=payroll_run_to_report_rows(payroll_run),
+        pay_date=pay_date_for_run(payroll_run.period_end_date, settings),
+    )
+
+
 async def generate_payroll_pdf(
     db: AsyncSession,
     payroll_run,
 ) -> BytesIO:
     """Generate professional PDF payroll report."""
-    from app.models.payroll import PayrollRun, PayrollLineItem
-    
-    buffer = BytesIO()
-    doc = SimpleDocTemplate(buffer, pagesize=letter,
-                           leftMargin=0.5*inch, rightMargin=0.5*inch,
-                           topMargin=0.5*inch, bottomMargin=0.5*inch)
-    story = []
-    styles = getSampleStyleSheet()
-    
-    # Professional color scheme
-    primary_color = colors.HexColor('#2563eb')
-    secondary_color = colors.HexColor('#1e40af')
-    header_bg = colors.HexColor('#1e293b')
-    light_bg = colors.HexColor('#f8fafc')
-    border_color = colors.HexColor('#e2e8f0')
-    
-    # Simplified header - smaller and cleaner
-    company_name = payroll_run.company.name if payroll_run.company else "Company"
-    story.append(Spacer(1, 0.1 * inch))
-    
-    # Company name and title on same line, smaller
-    header_style = ParagraphStyle(
-        'Header',
-        parent=styles['Normal'],
-        fontSize=14,
-        textColor=header_bg,
-        spaceAfter=8,
-        alignment=TA_CENTER,
-        fontName='Helvetica-Bold',
-    )
-    
-    story.append(Paragraph(f"<b>{company_name}</b> - Payroll Report", header_style))
-    
-    # Period info only - one line, smaller
-    period_text = f"{payroll_run.period_start_date.strftime('%b %d, %Y')} to {payroll_run.period_end_date.strftime('%b %d, %Y')}"
-    story.append(Paragraph(period_text, ParagraphStyle(
-        'Period',
-        parent=styles['Normal'],
-        fontSize=10,
-        textColor=colors.HexColor('#64748b'),
-        spaceAfter=15,
-        alignment=TA_CENTER,
-    )))
-    
-    # Table data
-    data = [["Employee", "Regular Hours", "OT Hours", "Rate", "Regular Pay", "OT Pay", "Total Pay", "Exceptions"]]
-    
-    for item in payroll_run.line_items:
-        regular_hours = item.regular_minutes / 60.0
-        ot_hours = item.overtime_minutes / 60.0
-        rate_dollars = item.pay_rate_cents / 100.0
-        regular_pay_dollars = item.regular_pay_cents / 100.0
-        ot_pay_dollars = item.overtime_pay_cents / 100.0
-        total_pay_dollars = item.total_pay_cents / 100.0
-        
-        data.append([
-            item.employee.name if item.employee else "Unknown",
-            f"{regular_hours:.2f}",
-            f"{ot_hours:.2f}",
-            f"${rate_dollars:.2f}",
-            f"${regular_pay_dollars:.2f}",
-            f"${ot_pay_dollars:.2f}",
-            f"${total_pay_dollars:.2f}",
-            str(item.exceptions_count) if item.exceptions_count > 0 else "-",
-        ])
-    
-    # Totals row - use Paragraph objects with white text for proper bold formatting
-    total_regular_hours = float(payroll_run.total_regular_hours)
-    total_ot_hours = float(payroll_run.total_overtime_hours)
-    total_gross_dollars = payroll_run.total_gross_pay_cents / 100.0
-    
-    totals_style = ParagraphStyle(
-        'Totals',
-        parent=styles['Normal'],
-        fontSize=9,
-        fontName='Helvetica-Bold',
-        textColor=colors.white,
-        alignment=TA_CENTER,
-    )
-    
-    # Convert totals row to use Paragraph for proper rendering with white text
-    totals_row = [
-        Paragraph("TOTALS", totals_style),
-        Paragraph(f"{total_regular_hours:.2f}", totals_style),
-        Paragraph(f"{total_ot_hours:.2f}", totals_style),
-        "",
-        "",
-        "",
-        Paragraph(f"${total_gross_dollars:,.2f}", totals_style),
-        "",
-    ]
-    
-    # Convert all previous rows to Paragraphs for consistency
-    table_data = []
-    for i, row in enumerate(data):
-        if i == 0:  # Header row - white text
-            header_style = ParagraphStyle(
-                'Header',
-                parent=styles['Normal'],
-                fontSize=9,
-                fontName='Helvetica-Bold',
-                textColor=colors.white,
-                alignment=TA_CENTER,
-            )
-            table_data.append([Paragraph(str(cell), header_style) for cell in row])
-        else:
-            cell_style = ParagraphStyle(
-                'Cell',
-                parent=styles['Normal'],
-                fontSize=8,
-                alignment=TA_CENTER,
-            )
-            table_data.append([Paragraph(str(cell), cell_style) if cell else "" for cell in row])
-    
-    # Add totals row
-    table_data.append(totals_row)
-    data = table_data
-    
-    # Create table with compact styling - smaller fonts and padding
-    table = Table(data, colWidths=[2*inch, 0.9*inch, 0.9*inch, 0.9*inch, 1.1*inch, 1.1*inch, 1.1*inch, 0.8*inch])
-    table.setStyle(TableStyle([
-        # Header - smaller
-        ('BACKGROUND', (0, 0), (-1, 0), header_bg),
-        ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
-        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-        ('FONTSIZE', (0, 0), (-1, 0), 9),
-        ('BOTTOMPADDING', (0, 0), (-1, 0), 8),
-        ('TOPPADDING', (0, 0), (-1, 0), 8),
-        
-        # Data rows - smaller
-        ('BACKGROUND', (0, 1), (-1, -2), colors.white),
-        ('TEXTCOLOR', (0, 1), (-1, -2), colors.HexColor('#1e293b')),
-        ('FONTSIZE', (0, 1), (-1, -2), 8),
-        ('ROWBACKGROUNDS', (0, 1), (-1, -2), [colors.white, light_bg]),
-        
-        # Totals row - smaller
-        ('BACKGROUND', (0, -1), (-1, -1), secondary_color),
-        ('TEXTCOLOR', (0, -1), (-1, -1), colors.white),
-        ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'),
-        ('FONTSIZE', (0, -1), (-1, -1), 9),
-        ('TOPPADDING', (0, -1), (-1, -1), 8),
-        ('BOTTOMPADDING', (0, -1), (-1, -1), 8),
-        
-        # Grid - lighter
-        ('GRID', (0, 0), (-1, -1), 0.5, border_color),
-        ('LINEBELOW', (0, 0), (-1, 0), 1, header_bg),
-        ('LINEABOVE', (0, -1), (-1, -1), 1, secondary_color),
-        
-        # Padding - reduced
-        ('LEFTPADDING', (0, 0), (-1, -1), 6),
-        ('RIGHTPADDING', (0, 0), (-1, -1), 6),
-        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-    ]))
-    
-    story.append(table)
-    
-    # No page numbering to keep it simple
-    doc.build(story)
+    buffer = BytesIO(render_payroll_report_pdf(payroll_run))
     buffer.seek(0)
     return buffer
 
@@ -525,22 +427,7 @@ async def generate_payroll_excel(
     generated_by = payroll_run.generator.name if payroll_run.generator else "System"
     settings = get_company_settings(payroll_run.company) if payroll_run.company else {}
     pay_date = pay_date_for_run(payroll_run.period_end_date, settings)
-
-    rows = []
-    for item in payroll_run.line_items or []:
-        details = item.details_json or {}
-        rows.append({
-            "employee_name": item.employee.name if item.employee else "Unknown",
-            "regular_hours": float(item.regular_minutes) / 60.0,
-            "ot_hours": float(item.overtime_minutes) / 60.0,
-            "rate": float(item.pay_rate_cents) / 100.0,
-            "regular_pay": float(item.regular_pay_cents) / 100.0,
-            "ot_pay": float(item.overtime_pay_cents) / 100.0,
-            "total_pay": float(item.total_pay_cents) / 100.0,
-            "exceptions": int(item.exceptions_count or 0),
-            "days": details.get("days") or {},
-            "total_minutes": int(item.total_minutes or 0),
-        })
+    rows = payroll_run_to_report_rows(payroll_run)
 
     return generate_payroll_excel_report(
         company_name=company_name,

@@ -58,7 +58,7 @@ interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> {
 }
 
 const inputBase =
-  'block w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 bg-white transition focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:opacity-60 disabled:cursor-not-allowed'
+  'block w-full border border-border rounded-lg px-3 py-2 text-sm text-foreground placeholder:text-foreground-subtle bg-surface transition focus:outline-none focus:ring-2 focus:ring-accent focus:border-transparent disabled:opacity-60 disabled:cursor-not-allowed'
 
 export const Input: React.FC<InputProps> = ({ error, className = '', ...props }) => {
   return (

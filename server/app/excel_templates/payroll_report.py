@@ -4,7 +4,7 @@ Professional Payroll Excel Report Generator
 Matches the ClockInn payroll PDF visual language:
 - Slate hero banner
 - Meta strip + KPI cards
-- Styled earnings table with exception highlighting
+- Styled earnings table
 - Daily hours breakdown sheet
 """
 from __future__ import annotations
@@ -16,6 +16,17 @@ from typing import Any, Dict, List, Optional
 from openpyxl import Workbook
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.worksheet.page import PageMargins
+
+
+def _is_per_room_row(row: Dict[str, Any]) -> bool:
+    return str(row.get("pay_method") or "").upper() == "PER_ROOM"
+
+
+def _row_rooms(row: Dict[str, Any]) -> int:
+    try:
+        return int(row.get("rooms_cleaned") or 0)
+    except (TypeError, ValueError):
+        return 0
 
 
 def generate_payroll_excel_report(
@@ -39,7 +50,8 @@ def generate_payroll_excel_report(
     Each row dict supports:
       employee_name, regular_hours, ot_hours, rate, regular_pay, ot_pay,
       total_pay, exceptions (int), days (optional dict date->minutes),
-      total_minutes (optional fallback when days missing)
+      total_minutes (optional fallback when days missing),
+      pay_method (HOURLY | PER_ROOM), rooms_cleaned, rooms_by_date
     """
     # Palette (slate / ClockInn admin UI)
     SLATE_900 = "0F172A"
@@ -52,7 +64,6 @@ def generate_payroll_excel_report(
     EMERALD = "059669"
     AMBER = "D97706"
     SKY = "0EA5E9"
-    EXCEPTION_BG = "FFF7ED"
     ZEBRA = "F1F5F9"
 
     thin = Border(
@@ -73,9 +84,13 @@ def generate_payroll_excel_report(
 
     sorted_rows = sorted(rows, key=lambda r: str(r.get("employee_name", "")).lower())
     employee_count = len(sorted_rows)
+    hourly_rows = [r for r in sorted_rows if not _is_per_room_row(r)]
+    per_room_rows = [r for r in sorted_rows if _is_per_room_row(r)]
+    has_per_room = bool(per_room_rows)
 
-    sum_reg_h = sum(float(r.get("regular_hours", 0) or 0) for r in sorted_rows)
-    sum_ot_h = sum(float(r.get("ot_hours", 0) or 0) for r in sorted_rows)
+    sum_reg_h = sum(float(r.get("regular_hours", 0) or 0) for r in hourly_rows)
+    sum_ot_h = sum(float(r.get("ot_hours", 0) or 0) for r in hourly_rows)
+    sum_rooms = sum(_row_rooms(r) for r in per_room_rows)
     sum_reg_pay = sum(float(r.get("regular_pay", 0) or 0) for r in sorted_rows)
     sum_ot_pay = sum(float(r.get("ot_pay", 0) or 0) for r in sorted_rows)
     sum_gross = sum(float(r.get("total_pay", 0) or 0) for r in sorted_rows)
@@ -97,7 +112,7 @@ def generate_payroll_excel_report(
     # ── Sheet 1: Payroll Report ──────────────────────────────────────────
     ws = wb.create_sheet("Payroll Report", 0)
     for col, width in {
-        "A": 26, "B": 12, "C": 12, "D": 12,
+        "A": 26, "B": 14, "C": 11, "D": 12,
         "E": 13, "F": 12, "G": 14, "H": 11,
     }.items():
         ws.column_dimensions[col].width = width
@@ -168,7 +183,7 @@ def generate_payroll_excel_report(
     kpi_defs = [
         ("Employees", employee_count, SKY, "0"),
         ("Regular Hours", reg_hours, SLATE_700, "0.00"),
-        ("Overtime Hours", ot_hours, AMBER, "0.00"),
+        ("Rooms Cleaned" if has_per_room else "Overtime Hours", sum_rooms if has_per_room else ot_hours, AMBER, "0" if has_per_room else "0.00"),
         ("Gross Pay", gross, EMERALD, '"$"#,##0.00'),
     ]
     for (c1, c2), (label, value, accent, num_fmt) in zip([(1, 2), (3, 4), (5, 6), (7, 8)], kpi_defs):
@@ -216,12 +231,16 @@ def generate_payroll_excel_report(
 
     ws.merge_cells("A12:H12")
     section_sub = ws["A12"]
-    section_sub.value = "Hours and pay by employee for this payroll period. Amounts in USD."
+    section_sub.value = (
+        "Hours and pay by employee. Per-room employees are paid rooms cleaned × rate. Amounts in USD."
+        if has_per_room
+        else "Hours and pay by employee for this payroll period. Amounts in USD."
+    )
     section_sub.font = Font(name="Calibri", size=9, color=SLATE_500)
     section_sub.alignment = Alignment(horizontal="left", vertical="center", indent=1)
     ws.row_dimensions[12].height = 16
 
-    headers = ["Employee", "Reg Hrs", "OT Hrs", "Rate", "Reg Pay", "OT Pay", "Total Pay", "Exceptions"]
+    headers = ["Employee", "Hrs / Rms", "OT Hrs", "Rate", "Reg Pay", "OT Pay", "Total Pay"]
     header_row = 13
     for col_idx, header in enumerate(headers, start=1):
         cell = ws.cell(row=header_row, column=col_idx, value=header)
@@ -243,19 +262,27 @@ def generate_payroll_excel_report(
     data_start = header_row + 1
     for i, row in enumerate(sorted_rows):
         row_idx = data_start + i
-        exceptions = int(row.get("exceptions", 0) or 0)
+        per_room = _is_per_room_row(row)
+        rooms = _row_rooms(row)
+        if per_room:
+            hours_val = f"{rooms} rm" if rooms == 1 else f"{rooms} rms"
+            ot_val = "—"
+            rate_val = f"${float(row.get('rate', 0) or 0):,.2f}/rm"
+        else:
+            hours_val = float(row.get("regular_hours", 0) or 0)
+            ot_val = float(row.get("ot_hours", 0) or 0)
+            rate_val = float(row.get("rate", 0) or 0)
         values = [
             str(row.get("employee_name", "")),
-            float(row.get("regular_hours", 0) or 0),
-            float(row.get("ot_hours", 0) or 0),
-            float(row.get("rate", 0) or 0),
+            hours_val,
+            ot_val,
+            rate_val,
             float(row.get("regular_pay", 0) or 0),
             float(row.get("ot_pay", 0) or 0),
             float(row.get("total_pay", 0) or 0),
-            exceptions if exceptions > 0 else "—",
         ]
         zebra = i % 2 == 1
-        fill_color = EXCEPTION_BG if exceptions > 0 else (ZEBRA if zebra else WHITE)
+        fill_color = ZEBRA if zebra else WHITE
         row_fill = PatternFill(start_color=fill_color, end_color=fill_color, fill_type="solid")
 
         for col_idx, value in enumerate(values, start=1):
@@ -270,20 +297,26 @@ def generate_payroll_excel_report(
             cell.border = thin
             if col_idx == 1:
                 cell.alignment = Alignment(horizontal="left", vertical="center", indent=1)
-            elif col_idx == 8:
-                cell.alignment = Alignment(horizontal="center", vertical="center")
             else:
-                cell.alignment = Alignment(horizontal="right", vertical="center")
-            if col_idx in (2, 3):
+                cell.alignment = Alignment(horizontal="center", vertical="center")
+            if not per_room and col_idx in (2, 3):
                 cell.number_format = "0.00"
-            elif col_idx in (4, 5, 6, 7):
+            elif not per_room and col_idx == 4:
+                cell.number_format = '"$"#,##0.00'
+            elif col_idx in (5, 6, 7):
                 cell.number_format = '"$"#,##0.00'
         ws.row_dimensions[row_idx].height = 20
 
     data_end = data_start + len(sorted_rows) - 1 if sorted_rows else header_row
     totals_row = data_end + 1 if sorted_rows else data_start
 
-    totals_values = ["TOTALS", reg_hours, ot_hours, None, sum_reg_pay, sum_ot_pay, gross, None]
+    if has_per_room and sum_rooms:
+        totals_hours = (
+            f"{reg_hours:.1f}h · {sum_rooms}rm" if reg_hours else f"{sum_rooms}rm"
+        )
+    else:
+        totals_hours = reg_hours
+    totals_values = ["TOTALS", totals_hours, ot_hours, None, sum_reg_pay, sum_ot_pay, gross]
     totals_fill = PatternFill(start_color=SLATE_800, end_color=SLATE_800, fill_type="solid")
     for col_idx, value in enumerate(totals_values, start=1):
         cell = ws.cell(row=totals_row, column=col_idx, value=value)
@@ -296,50 +329,33 @@ def generate_payroll_excel_report(
             bottom=Side(style="thin", color=SLATE_700),
         )
         cell.alignment = Alignment(
-            horizontal="left" if col_idx == 1 else "right",
+            horizontal="left" if col_idx == 1 else "center",
             vertical="center",
             indent=1 if col_idx == 1 else 0,
         )
-        if col_idx in (2, 3):
+        if col_idx in (2, 3) and not (has_per_room and col_idx == 2):
             cell.number_format = "0.00"
         elif col_idx in (5, 6, 7):
             cell.number_format = '"$"#,##0.00'
     ws.row_dimensions[totals_row].height = 24
 
-    notes_row = totals_row + 2
-    ws.merge_cells(start_row=notes_row, start_column=1, end_row=notes_row, end_column=8)
-    notes = ws.cell(
-        row=notes_row,
-        column=1,
-        value=(
-            "Notes: Exception counts appear when an employee has missing punches, pending "
-            "approvals, or other flags. This workbook reflects payroll as of the generated timestamp. "
-            "Confidential — for internal payroll use only."
-        ),
-    )
-    notes.font = Font(name="Calibri", size=9, color=SLATE_500, italic=True)
-    notes.fill = PatternFill(start_color=SLATE_50, end_color=SLATE_50, fill_type="solid")
-    notes.alignment = Alignment(horizontal="left", vertical="center", wrap_text=True, indent=1)
-    notes.border = thin
-    ws.row_dimensions[notes_row].height = 36
-
     ws.freeze_panes = "A14"
     if sorted_rows:
-        ws.auto_filter.ref = f"A{header_row}:H{data_end}"
+        ws.auto_filter.ref = f"A{header_row}:G{data_end}"
     ws.print_title_rows = "1:3"
     ws.page_margins = PageMargins(left=0.5, right=0.5, top=0.5, bottom=0.5)
     ws.page_setup.fitToPage = True
     ws.page_setup.fitToWidth = 1
     ws.page_setup.fitToHeight = 0
 
-    # ── Sheet 2: Daily Hours ─────────────────────────────────────────────
+    # ── Sheet 2: Daily Hours / Rooms ─────────────────────────────────────
     detail = wb.create_sheet("Daily Hours", 1)
     for col, width in {"A": 26, "B": 14, "C": 12, "D": 14, "E": 18}.items():
         detail.column_dimensions[col].width = width
 
     detail.merge_cells("A1:E1")
     d_hero = detail["A1"]
-    d_hero.value = "DAILY HOURS BREAKDOWN"
+    d_hero.value = "DAILY HOURS / ROOMS BREAKDOWN"
     d_hero.font = Font(name="Calibri", bold=True, size=11, color="94A3B8")
     d_hero.fill = PatternFill(start_color=SLATE_900, end_color=SLATE_900, fill_type="solid")
     d_hero.alignment = Alignment(horizontal="left", vertical="center", indent=1)
@@ -358,7 +374,7 @@ def generate_payroll_excel_report(
     detail.row_dimensions[2].height = 26
     detail.row_dimensions[3].height = 10
 
-    for col_idx, header in enumerate(["Employee", "Date", "Minutes", "Hours", "Notes"], start=1):
+    for col_idx, header in enumerate(["Employee", "Date", "Qty", "Hours", "Notes"], start=1):
         cell = detail.cell(row=4, column=col_idx, value=header)
         cell.font = Font(name="Calibri", bold=True, size=10, color=WHITE)
         cell.fill = PatternFill(start_color=SLATE_900, end_color=SLATE_900, fill_type="solid")
@@ -371,37 +387,80 @@ def generate_payroll_excel_report(
     detail.row_dimensions[4].height = 22
 
     detail_row = 5
+
+    def _write_detail_row(values, *, header_name: bool = False, hours_format: bool = True, fill_hex: str = SLATE_50):
+        nonlocal detail_row
+        row_fill = PatternFill(start_color=fill_hex, end_color=fill_hex, fill_type="solid")
+        for col_idx, value in enumerate(values, start=1):
+            cell = detail.cell(row=detail_row, column=col_idx, value=value)
+            cell.font = Font(
+                name="Calibri",
+                size=10,
+                bold=(header_name and col_idx == 1),
+                color=SLATE_900 if col_idx == 1 else SLATE_700,
+            )
+            cell.fill = row_fill
+            cell.border = thin
+            cell.alignment = Alignment(
+                horizontal="left" if col_idx in (1, 2, 5) else "right",
+                vertical="center",
+                indent=1 if col_idx in (1, 5) else 0,
+            )
+            if hours_format and col_idx == 4 and isinstance(value, (int, float)):
+                cell.number_format = "0.00"
+        detail.row_dimensions[detail_row].height = 18
+        detail_row += 1
+
     for row in sorted_rows:
         employee_name = str(row.get("employee_name", "Unknown"))
-        days = row.get("days") or {}
         exceptions = int(row.get("exceptions", 0) or 0)
         note = f"{exceptions} exception(s)" if exceptions else ""
 
+        if _is_per_room_row(row):
+            rooms_by_date = row.get("rooms_by_date") or {}
+            rooms_total = _row_rooms(row)
+            per_room_note = (note + " · " if note else "") + "Rooms cleaned (per-room pay)"
+            if rooms_by_date:
+                for di, (date_str, count) in enumerate(sorted(rooms_by_date.items())):
+                    try:
+                        qty = int(count)
+                    except (TypeError, ValueError):
+                        qty = 0
+                    zebra = detail_row % 2 == 0
+                    _write_detail_row(
+                        [
+                            employee_name if di == 0 else None,
+                            date_str,
+                            qty,
+                            "—",
+                            per_room_note if di == 0 else None,
+                        ],
+                        header_name=di == 0,
+                        hours_format=False,
+                        fill_hex=ZEBRA if zebra else WHITE,
+                    )
+            else:
+                _write_detail_row(
+                    [employee_name, "—", rooms_total, "—", per_room_note],
+                    header_name=True,
+                    hours_format=False,
+                )
+            continue
+
+        days = row.get("days") or {}
         if not days:
             mins = float(row.get("total_minutes", 0) or 0)
             if not mins:
                 mins = (float(row.get("regular_hours", 0) or 0) + float(row.get("ot_hours", 0) or 0)) * 60.0
-            values = [
-                employee_name,
-                "—",
-                mins,
-                round(mins / 60.0, 2),
-                note or "Period total (no daily breakdown)",
-            ]
-            for col_idx, value in enumerate(values, start=1):
-                cell = detail.cell(row=detail_row, column=col_idx, value=value)
-                cell.font = Font(name="Calibri", size=10, color=SLATE_700)
-                cell.fill = PatternFill(start_color=SLATE_50, end_color=SLATE_50, fill_type="solid")
-                cell.border = thin
-                cell.alignment = Alignment(
-                    horizontal="left" if col_idx in (1, 2, 5) else "right",
-                    vertical="center",
-                    indent=1 if col_idx in (1, 5) else 0,
-                )
-                if col_idx == 4:
-                    cell.number_format = "0.00"
-            detail.row_dimensions[detail_row].height = 18
-            detail_row += 1
+            _write_detail_row(
+                [
+                    employee_name,
+                    "—",
+                    mins,
+                    round(mins / 60.0, 2),
+                    note or "Period total (no daily breakdown)",
+                ]
+            )
             continue
 
         for di, (date_str, minutes) in enumerate(sorted(days.items())):
@@ -410,34 +469,17 @@ def generate_payroll_excel_report(
             except (TypeError, ValueError):
                 mins = 0.0
             zebra = detail_row % 2 == 0
-            fill_color = ZEBRA if zebra else WHITE
-            row_fill = PatternFill(start_color=fill_color, end_color=fill_color, fill_type="solid")
-            values = [
-                employee_name if di == 0 else None,
-                date_str,
-                mins,
-                mins / 60.0,
-                note if di == 0 else None,
-            ]
-            for col_idx, value in enumerate(values, start=1):
-                cell = detail.cell(row=detail_row, column=col_idx, value=value)
-                cell.font = Font(
-                    name="Calibri",
-                    size=10,
-                    bold=(col_idx == 1),
-                    color=SLATE_900 if col_idx == 1 else SLATE_700,
-                )
-                cell.fill = row_fill
-                cell.border = thin
-                cell.alignment = Alignment(
-                    horizontal="left" if col_idx in (1, 2, 5) else "right",
-                    vertical="center",
-                    indent=1 if col_idx in (1, 5) else 0,
-                )
-                if col_idx == 4:
-                    cell.number_format = "0.00"
-            detail.row_dimensions[detail_row].height = 18
-            detail_row += 1
+            _write_detail_row(
+                [
+                    employee_name if di == 0 else None,
+                    date_str,
+                    mins,
+                    mins / 60.0,
+                    note if di == 0 else None,
+                ],
+                header_name=di == 0,
+                fill_hex=ZEBRA if zebra else WHITE,
+            )
 
     if detail_row > 5:
         detail.auto_filter.ref = f"A4:E{detail_row - 1}"

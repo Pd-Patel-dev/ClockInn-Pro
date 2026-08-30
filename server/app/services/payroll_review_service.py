@@ -16,7 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.company import Company
 from app.models.payroll import PayrollType
 from app.models.time_entry import TimeEntryStatus
-from app.models.user import User, UserRole, UserStatus
+from app.models.user import User, UserRole, UserStatus, PayMethod
 from app.services.company_service import get_company_settings
 from app.services.payroll_schedule_service import (
     build_pay_schedule_status,
@@ -25,8 +25,11 @@ from app.services.payroll_schedule_service import (
 from app.services.payroll_service import (
     compute_minutes_with_rounding_and_breaks,
     compute_pay_period,
+    compute_per_room_pay_cents,
     compute_weekly_overtime_blocks,
+    rooms_cleaned_in_period,
     fetch_time_entries_scoped,
+    resolve_pay_rate_cents,
 )
 
 
@@ -36,6 +39,7 @@ async def build_payroll_review_preview(
     payroll_type: PayrollType,
     start_date: date,
     include_inactive: bool = False,
+    bypass_schedule: bool = False,
 ) -> Dict[str, Any]:
     """
     List employees for a pay period with time entries and computed hours.
@@ -58,7 +62,11 @@ async def build_payroll_review_preview(
         week_start_day=int(company_settings.get("payroll_week_start_day") or 0),
     )
 
-    if schedule.configured and last_pay_date and configured_type:
+    from app.core.environment import allows_dev_overrides
+
+    skip_schedule = bool(bypass_schedule) and allows_dev_overrides()
+
+    if schedule.configured and last_pay_date and configured_type and not skip_schedule:
         if not schedule.can_generate:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -107,9 +115,7 @@ async def build_payroll_review_preview(
 
     employee_rows: List[Dict[str, Any]] = []
     for employee in employees:
-        pay_rate_cents = employee.pay_rate_cents or 0
-        if pay_rate_cents == 0 and employee.pay_rate:
-            pay_rate_cents = int(Decimal(str(employee.pay_rate)) * 100)
+        pay_rate_cents = resolve_pay_rate_cents(employee)
         if pay_rate_cents == 0:
             continue
 
@@ -118,6 +124,39 @@ async def build_payroll_review_preview(
             overtime_multiplier = company_settings["overtime_multiplier_default"]
         else:
             overtime_multiplier = Decimal(str(overtime_multiplier))
+
+        pay_method = employee.pay_method or PayMethod.HOURLY
+        if pay_method == PayMethod.PER_ROOM or str(pay_method) == PayMethod.PER_ROOM.value:
+            rooms_cleaned, room_numbers, _rooms_by_date = await rooms_cleaned_in_period(
+                db,
+                company.id,
+                employee.id,
+                period_start,
+                period_end,
+                tz_name,
+            )
+            estimated_pay_cents = compute_per_room_pay_cents(rooms_cleaned, pay_rate_cents)
+            employee_rows.append(
+                {
+                    "employee_id": str(employee.id),
+                    "employee_name": employee.name,
+                    "pay_method": PayMethod.PER_ROOM.value,
+                    "pay_rate_cents": pay_rate_cents,
+                    "overtime_multiplier": float(overtime_multiplier),
+                    "rooms_cleaned": rooms_cleaned,
+                    "estimated_pay_cents": estimated_pay_cents,
+                    "room_numbers": room_numbers,
+                    "regular_minutes": 0,
+                    "overtime_minutes": 0,
+                    "total_minutes": 0,
+                    "total_hours": 0,
+                    "exceptions_count": 0,
+                    "entry_count": 0,
+                    "open_entry_count": 0,
+                    "entries": [],
+                }
+            )
+            continue
 
         time_entries = await fetch_time_entries_scoped(
             db,
@@ -172,8 +211,12 @@ async def build_payroll_review_preview(
             {
                 "employee_id": str(employee.id),
                 "employee_name": employee.name,
+                "pay_method": PayMethod.HOURLY.value,
                 "pay_rate_cents": pay_rate_cents,
                 "overtime_multiplier": float(overtime_multiplier),
+                "rooms_cleaned": None,
+                "estimated_pay_cents": None,
+                "room_numbers": [],
                 "regular_minutes": regular_minutes,
                 "overtime_minutes": overtime_minutes,
                 "total_minutes": total_minutes,

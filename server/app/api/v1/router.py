@@ -1,5 +1,5 @@
 from fastapi import APIRouter
-from app.api.v1.endpoints import auth, users, time, leave, reports, payroll, company, health, shifts, kiosk, gmail, admin, developer, cash_drawer, permissions, app_stubs, me
+from app.api.v1.endpoints import auth, users, time, leave, reports, payroll, company, health, shifts, kiosk, gmail, admin, developer, cash_drawer, permissions, app_stubs, me, housekeeping
 
 api_router = APIRouter()
 
@@ -24,5 +24,6 @@ api_router.include_router(
     tags=["cash-drawer-employee"],
 )
 api_router.include_router(permissions.router, prefix="/admin", tags=["permissions"])
+api_router.include_router(housekeeping.router, prefix="/housekeeping", tags=["housekeeping"])
 api_router.include_router(app_stubs.notifications_router, prefix="/notifications", tags=["notifications"])
 api_router.include_router(app_stubs.feedback_router, prefix="/feedback", tags=["feedback"])

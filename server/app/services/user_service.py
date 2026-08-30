@@ -8,7 +8,7 @@ from fastapi import HTTPException, status
 from app.core.error_handling import client_error_detail
 import logging
 
-from app.models.user import User, UserRole, UserStatus
+from app.models.user import User, UserRole, UserStatus, PayMethod
 from app.models.audit_log import AuditLog
 from app.core.query_builder import get_paginated_results, build_company_filtered_query
 from app.core.security import (
@@ -141,6 +141,7 @@ async def list_employee_user_responses(
             status=emp.status,
             has_pin=emp.pin_hash is not None,
             pay_rate=float(emp.pay_rate) if emp.pay_rate is not None else None,
+            pay_method=emp.pay_method or PayMethod.HOURLY,
             preferred_name=emp.preferred_name,
             phone=emp.phone,
             job_role=emp.job_role,
@@ -232,6 +233,8 @@ async def create_employee(
         pin_hash=pin_hash,
         status=UserStatus.ACTIVE,
         pay_rate=data.pay_rate,
+        pay_rate_cents=int(round(float(data.pay_rate) * 100)) if data.pay_rate is not None else 0,
+        pay_method=data.pay_method or PayMethod.HOURLY,
         preferred_name=(data.preferred_name.strip() if data.preferred_name else None) or None,
         phone=(data.phone.strip() if data.phone else None) or None,
         job_role=(data.job_role.strip() if data.job_role else None) or None,
@@ -378,6 +381,8 @@ async def create_tenant_user_as_developer(
         pin_hash=pin_hash,
         status=UserStatus.ACTIVE,
         pay_rate=float(data.pay_rate) if data.pay_rate is not None else None,
+        pay_rate_cents=int(round(float(data.pay_rate) * 100)) if data.pay_rate is not None else 0,
+        pay_method=data.pay_method or PayMethod.HOURLY,
         email_verified=email_verified,
         verification_required=not email_verified,
         last_verified_at=now if email_verified else None,
@@ -490,6 +495,14 @@ async def update_employee(
     old_status = user.status
     had_pin = user.pin_hash is not None
     old_role = user.role
+
+    effective_role = data.role if data.role is not None else user.role
+    effective_pay_method = data.pay_method if data.pay_method is not None else user.pay_method
+    if effective_pay_method == PayMethod.PER_ROOM and effective_role != UserRole.HOUSEKEEPING:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Per room pay method is only available for Housekeeping employees",
+        )
     
     if data.name is not None:
         user.name = data.name
@@ -534,6 +547,12 @@ async def update_employee(
             user.pin_hash = new_pin_hash
     if data.pay_rate is not None:
         user.pay_rate = data.pay_rate
+        user.pay_rate_cents = int(round(float(data.pay_rate) * 100))
+    if data.pay_method is not None:
+        user.pay_method = data.pay_method
+    # Leaving Housekeeping cannot keep per-room pay
+    if user.role != UserRole.HOUSEKEEPING and user.pay_method == PayMethod.PER_ROOM:
+        user.pay_method = PayMethod.HOURLY
     if data.preferred_name is not None:
         user.preferred_name = data.preferred_name.strip() or None
     if data.phone is not None:
@@ -702,6 +721,12 @@ async def update_user_developer(
             user.pin_hash = new_pin_hash
     if data.pay_rate is not None:
         user.pay_rate = data.pay_rate
+        user.pay_rate_cents = int(round(float(data.pay_rate) * 100))
+    if data.pay_method is not None:
+        user.pay_method = data.pay_method
+    # Per room is Housekeeping-only
+    if user.role != UserRole.HOUSEKEEPING:
+        user.pay_method = PayMethod.HOURLY
 
     try:
         await db.commit()
@@ -824,6 +849,14 @@ async def resend_password_setup_as_admin(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Cannot send password setup to an inactive user.",
+        )
+
+    # Invite is only for accounts that have not finished set-password yet.
+    # Re-issuing after password is set would block normal login until the link is used.
+    if not user.password_setup_token_hash:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="This employee already set their password. Use Reset password instead.",
         )
 
     setup_token, jti, expires_at = create_password_setup_token(

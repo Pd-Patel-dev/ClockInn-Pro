@@ -3,6 +3,7 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { useRouter, useParams, useSearchParams } from 'next/navigation'
 import Layout from '@/components/Layout'
+import PageAtmosphere from '@/components/PageAtmosphere'
 import api from '@/lib/api'
 import { getCurrentUser } from '@/lib/auth'
 import { format } from 'date-fns'
@@ -18,7 +19,12 @@ import EmployeeForm, {
   EditEmployeeFormValues,
   EMPLOYEE_ROLE_OPTIONS,
   toUpdatePayload,
+  formatPayRateDisplay,
+  payMethodLabel,
+  payRateHintLabel,
 } from '@/components/employees/EmployeeForm'
+import EmployeePermissionsPanel from '@/components/employees/EmployeePermissionsPanel'
+import { Tabs } from '@/components/ui/Tabs'
 
 interface Employee {
   id: string
@@ -27,6 +33,7 @@ interface Employee {
   role: string
   status: string
   pay_rate: number | null
+  pay_method?: 'HOURLY' | 'PER_ROOM' | null
   preferred_name?: string | null
   phone?: string | null
   job_role?: string | null
@@ -34,6 +41,7 @@ interface Employee {
   last_punch_at: string | null
   last_login_at: string | null
   is_clocked_in: boolean | null
+  password_setup_pending?: boolean
   created_at: string
 }
 
@@ -132,6 +140,7 @@ export default function EmployeeDetailPage() {
   const [updating, setUpdating] = useState(false)
   const [resettingPassword, setResettingPassword] = useState(false)
   const [resendingSetup, setResendingSetup] = useState(false)
+  const [activeTab, setActiveTab] = useState<'profile' | 'permissions' | 'time'>('profile')
   const pageSize = 20
 
   const manualForm = useForm<ManualEntryForm>({
@@ -151,6 +160,15 @@ export default function EmployeeDetailPage() {
     resolver: zodResolver(editEmployeeSchema),
   })
 
+  const editRole = editEmployeeForm.watch('role')
+  const editPayMethod = editEmployeeForm.watch('pay_method')
+
+  useEffect(() => {
+    if (editRole && editRole !== 'HOUSEKEEPING' && editPayMethod === 'PER_ROOM') {
+      editEmployeeForm.setValue('pay_method', 'HOURLY')
+    }
+  }, [editRole, editPayMethod, editEmployeeForm])
+
   const populateEditForm = (data: Employee) => {
     editEmployeeForm.reset({
       name: data.name,
@@ -160,6 +178,7 @@ export default function EmployeeDetailPage() {
       role: data.role as EditEmployeeFormValues['role'],
       pin: '',
       job_role: data.job_role || '',
+      pay_method: data.pay_method === 'PER_ROOM' ? 'PER_ROOM' : 'HOURLY',
       pay_rate: data.pay_rate?.toString() || '',
     })
   }
@@ -202,8 +221,27 @@ export default function EmployeeDetailPage() {
   useEffect(() => {
     if (searchParams.get('edit') === '1') {
       setShowEditEmployee(true)
+      setActiveTab('profile')
+    }
+    const tab = searchParams.get('tab')
+    if (tab === 'permissions' || tab === 'time' || tab === 'profile') {
+      setActiveTab(tab)
     }
   }, [searchParams])
+
+  const switchTab = (id: string) => {
+    const next = id as 'profile' | 'permissions' | 'time'
+    setActiveTab(next)
+    if (showEditEmployee && next !== 'profile') {
+      setShowEditEmployee(false)
+    }
+    const params = new URLSearchParams(searchParams.toString())
+    params.delete('edit')
+    if (next === 'profile') params.delete('tab')
+    else params.set('tab', next)
+    const q = params.toString()
+    router.replace(`/employees/${employeeId}${q ? `?${q}` : ''}`, { scroll: false })
+  }
 
   useEffect(() => {
     if (isValidEmployeeId) {
@@ -465,21 +503,7 @@ export default function EmployeeDetailPage() {
   return (
     <Layout>
       <div className="relative px-4 py-8 sm:px-6 lg:px-8 max-w-6xl mx-auto">
-        <div
-          aria-hidden
-          className="pointer-events-none absolute inset-x-0 -top-4 h-56 overflow-hidden"
-        >
-          <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_rgba(15,23,42,0.06),_transparent_65%)]" />
-          <div
-            className="absolute inset-0 opacity-[0.35]"
-            style={{
-              backgroundImage:
-                'linear-gradient(to right, rgb(226 232 240 / 0.55) 1px, transparent 1px), linear-gradient(to bottom, rgb(226 232 240 / 0.55) 1px, transparent 1px)',
-              backgroundSize: '28px 28px',
-              maskImage: 'linear-gradient(to bottom, black, transparent)',
-            }}
-          />
-        </div>
+        <PageAtmosphere tall />
 
         <div className="relative space-y-6">
         <div>
@@ -571,6 +595,7 @@ export default function EmployeeDetailPage() {
                         type="button"
                         onClick={() => {
                           populateEditForm(employee)
+                          setActiveTab('profile')
                           setShowEditEmployee(true)
                         }}
                         className="px-4 py-2 rounded-lg bg-white text-slate-900 text-sm font-semibold hover:bg-slate-100 transition-colors"
@@ -585,14 +610,16 @@ export default function EmployeeDetailPage() {
                       >
                         {resettingPassword ? 'Resetting…' : 'Reset password'}
                       </button>
-                      <button
-                        type="button"
-                        onClick={handleResendPasswordSetup}
-                        disabled={resendingSetup}
-                        className="px-4 py-2 rounded-lg bg-white/10 text-white text-sm font-medium ring-1 ring-inset ring-white/20 hover:bg-white/15 transition-colors disabled:opacity-50"
-                      >
-                        {resendingSetup ? 'Sending…' : 'Resend invite'}
-                      </button>
+                      {employee.password_setup_pending && (
+                        <button
+                          type="button"
+                          onClick={handleResendPasswordSetup}
+                          disabled={resendingSetup}
+                          className="px-4 py-2 rounded-lg bg-white/10 text-white text-sm font-medium ring-1 ring-inset ring-white/20 hover:bg-white/15 transition-colors disabled:opacity-50"
+                        >
+                          {resendingSetup ? 'Sending…' : 'Resend invite'}
+                        </button>
+                      )}
                     </div>
                   )}
                 </div>
@@ -602,10 +629,12 @@ export default function EmployeeDetailPage() {
                 <div className="grid grid-cols-2 lg:grid-cols-4 divide-y sm:divide-y-0 divide-slate-100 bg-white border-t border-slate-800/5">
                   <Metric
                     label="Pay rate"
-                    value={
-                      employee.pay_rate != null ? `$${employee.pay_rate.toFixed(2)}` : '—'
+                    value={formatPayRateDisplay(employee.pay_rate, employee.pay_method)}
+                    hint={
+                      employee.pay_rate != null
+                        ? payRateHintLabel(employee.pay_method)
+                        : undefined
                     }
-                    hint={employee.pay_rate != null ? 'per hour' : undefined}
                   />
                   <Metric
                     label="Job title"
@@ -627,74 +656,103 @@ export default function EmployeeDetailPage() {
               )}
             </div>
 
-            {showEditEmployee ? (
-              <div className="rounded-2xl border border-slate-200/80 bg-white/80 backdrop-blur-sm p-5 sm:p-6 shadow-sm">
-                <div className="mb-5">
-                  <h2 className="text-lg font-semibold tracking-tight text-slate-900">
-                    Edit employee
-                  </h2>
-                  <p className="mt-1 text-sm text-slate-500">
-                    Update profile details, then save changes.
-                  </p>
-                </div>
-                <form onSubmit={editEmployeeForm.handleSubmit(onSubmitEditEmployee)}>
-                  <EmployeeForm
-                    mode="edit"
-                    register={editEmployeeForm.register}
-                    errors={editEmployeeForm.formState.errors}
-                    emailReadOnly={employee.email}
-                    hasPin={employee.has_pin}
-                    submitting={updating}
-                    onCancel={closeEditEmployeeForm}
-                  />
-                </form>
-              </div>
-            ) : (
-              <div className="rounded-2xl border border-slate-200/80 bg-white shadow-sm overflow-hidden">
-                <div className="px-5 sm:px-6 py-4 border-b border-slate-100 flex items-center justify-between gap-3">
-                  <div>
-                    <h2 className="text-sm font-semibold text-slate-900">Profile details</h2>
-                    <p className="text-xs text-slate-500 mt-0.5">
-                      Contact, access, and employment info
-                    </p>
+            <div className="rounded-2xl border border-slate-200/80 bg-white px-4 py-3 shadow-sm sm:px-5">
+              <Tabs
+                variant="pills"
+                value={activeTab}
+                onChange={switchTab}
+                tabs={[
+                  { id: 'profile', label: 'Profile' },
+                  { id: 'permissions', label: 'Permissions' },
+                  { id: 'time', label: 'Time entries' },
+                ]}
+              />
+            </div>
+
+            {activeTab === 'profile' && (
+              <>
+                {showEditEmployee ? (
+                  <div className="rounded-2xl border border-slate-200/80 bg-white/80 backdrop-blur-sm p-5 sm:p-6 shadow-sm">
+                    <div className="mb-5">
+                      <h2 className="text-lg font-semibold tracking-tight text-slate-900">
+                        Edit employee
+                      </h2>
+                      <p className="mt-1 text-sm text-slate-500">
+                        Update profile details, then save changes.
+                      </p>
+                    </div>
+                    <form onSubmit={editEmployeeForm.handleSubmit(onSubmitEditEmployee)}>
+                      <EmployeeForm
+                        mode="edit"
+                        register={editEmployeeForm.register}
+                        errors={editEmployeeForm.formState.errors}
+                        emailReadOnly={employee.email}
+                        hasPin={employee.has_pin}
+                        submitting={updating}
+                        onCancel={closeEditEmployeeForm}
+                        payMethod={
+                          editRole === 'HOUSEKEEPING'
+                            ? editPayMethod || 'HOURLY'
+                            : 'HOURLY'
+                        }
+                        role={editRole}
+                      />
+                    </form>
                   </div>
-                </div>
-                <dl className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-8 gap-y-6 p-5 sm:p-6">
-                  <DetailItem label="Full name" value={employee.name} />
-                  <DetailItem label="Preferred name" value={employee.preferred_name || '—'} />
-                  <DetailItem label="Email" value={employee.email} />
-                  <DetailItem label="Phone" value={employee.phone || '—'} />
-                  <DetailItem label="Role" value={roleLabel(employee.role)} />
-                  <DetailItem
-                    label="Status"
-                    value={employee.status === 'active' ? 'Active' : 'Inactive'}
-                  />
-                  <DetailItem label="Job title" value={employee.job_role || '—'} />
-                  <DetailItem
-                    label="Hourly pay"
-                    value={
-                      employee.pay_rate != null ? `$${employee.pay_rate.toFixed(2)}/hr` : '—'
-                    }
-                  />
-                  <DetailItem label="PIN" value={employee.has_pin ? 'Set' : 'Not set'} />
-                  <DetailItem
-                    label="Last login"
-                    value={
-                      employee.last_login_at
-                        ? format(new Date(employee.last_login_at), 'MMM dd, yyyy · HH:mm')
-                        : 'Never'
-                    }
-                  />
-                  <DetailItem
-                    label="Created"
-                    value={
-                      employee.created_at
-                        ? format(new Date(employee.created_at), 'MMM dd, yyyy')
-                        : '—'
-                    }
-                  />
-                </dl>
-              </div>
+                ) : (
+                  <div className="rounded-2xl border border-slate-200/80 bg-white shadow-sm overflow-hidden">
+                    <div className="px-5 sm:px-6 py-4 border-b border-slate-100 flex items-center justify-between gap-3">
+                      <div>
+                        <h2 className="text-sm font-semibold text-slate-900">Profile details</h2>
+                        <p className="text-xs text-slate-500 mt-0.5">
+                          Contact, access, and employment info
+                        </p>
+                      </div>
+                    </div>
+                    <dl className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-8 gap-y-6 p-5 sm:p-6">
+                      <DetailItem label="Full name" value={employee.name} />
+                      <DetailItem label="Preferred name" value={employee.preferred_name || '—'} />
+                      <DetailItem label="Email" value={employee.email} />
+                      <DetailItem label="Phone" value={employee.phone || '—'} />
+                      <DetailItem label="Role" value={roleLabel(employee.role)} />
+                      <DetailItem
+                        label="Status"
+                        value={employee.status === 'active' ? 'Active' : 'Inactive'}
+                      />
+                      <DetailItem label="Job title" value={employee.job_role || '—'} />
+                      <DetailItem
+                        label="Pay method"
+                        value={payMethodLabel(employee.pay_method)}
+                      />
+                      <DetailItem
+                        label="Pay rate"
+                        value={formatPayRateDisplay(employee.pay_rate, employee.pay_method)}
+                      />
+                      <DetailItem label="PIN" value={employee.has_pin ? 'Set' : 'Not set'} />
+                      <DetailItem
+                        label="Last login"
+                        value={
+                          employee.last_login_at
+                            ? format(new Date(employee.last_login_at), 'MMM dd, yyyy · HH:mm')
+                            : 'Never'
+                        }
+                      />
+                      <DetailItem
+                        label="Created"
+                        value={
+                          employee.created_at
+                            ? format(new Date(employee.created_at), 'MMM dd, yyyy')
+                            : '—'
+                        }
+                      />
+                    </dl>
+                  </div>
+                )}
+              </>
+            )}
+
+            {activeTab === 'permissions' && !showEditEmployee && (
+              <EmployeePermissionsPanel employeeId={employeeId} />
             )}
           </>
         )}
@@ -953,6 +1011,7 @@ export default function EmployeeDetailPage() {
         )}
 
         {/* Time Entries Section */}
+        {employee && activeTab === 'time' && (
         <div className="rounded-2xl border border-slate-200/80 bg-white shadow-sm overflow-hidden">
           <div className="px-5 sm:px-6 py-4 border-b border-slate-100 flex flex-wrap items-center justify-between gap-3">
             <div>
@@ -1104,6 +1163,7 @@ export default function EmployeeDetailPage() {
             </>
           )}
         </div>
+        )}
         </div>
       </div>
 

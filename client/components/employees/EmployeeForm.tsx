@@ -16,6 +16,15 @@ export const EMPLOYEE_ROLE_OPTIONS = [
   { value: 'ADMIN', label: 'Administrator' },
 ] as const
 
+export const PAY_METHOD_OPTIONS = [
+  { value: 'HOURLY', label: 'Hourly' },
+  { value: 'PER_ROOM', label: 'Per room' },
+] as const
+
+export type PayMethodValue = (typeof PAY_METHOD_OPTIONS)[number]['value']
+
+const payMethodEnum = z.enum(['HOURLY', 'PER_ROOM'])
+
 const roleEnum = z.enum([
   'MAINTENANCE',
   'FRONTDESK',
@@ -46,33 +55,55 @@ const optionalPayRate = z
     { message: 'Pay rate must be a valid non-negative number' }
   )
 
-export const createEmployeeSchema = z.object({
-  name: z.string().min(1, 'Name is required'),
-  preferred_name: z.string().max(100).optional().or(z.literal('')),
-  email: z.string().email('Invalid email address'),
-  phone: z.string().max(30).optional().or(z.literal('')),
-  role: roleEnum.default('FRONTDESK'),
-  pin: optionalPin,
-  job_role: z.string().max(255).optional().or(z.literal('')),
-  pay_rate: optionalPayRate,
-})
+export const createEmployeeSchema = z
+  .object({
+    name: z.string().min(1, 'Name is required'),
+    preferred_name: z.string().max(100).optional().or(z.literal('')),
+    email: z.string().email('Invalid email address'),
+    phone: z.string().max(30).optional().or(z.literal('')),
+    role: roleEnum.default('FRONTDESK'),
+    pin: optionalPin,
+    job_role: z.string().max(255).optional().or(z.literal('')),
+    pay_method: payMethodEnum.default('HOURLY'),
+    pay_rate: optionalPayRate,
+  })
+  .superRefine((data, ctx) => {
+    if (data.pay_method === 'PER_ROOM' && data.role !== 'HOUSEKEEPING') {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['pay_method'],
+        message: 'Per room pay is only available for Housekeeping',
+      })
+    }
+  })
 
-export const editEmployeeSchema = z.object({
-  name: z.string().min(1, 'Name is required'),
-  preferred_name: z.string().max(100).optional().or(z.literal('')),
-  phone: z.string().max(30).optional().or(z.literal('')),
-  status: z.enum(['active', 'inactive']),
-  role: roleEnum.optional(),
-  pin: z
-    .string()
-    .optional()
-    .or(z.literal(''))
-    .refine((val) => !val || val === '' || /^\d{4}$/.test(val), {
-      message: 'PIN must be 4 digits',
-    }),
-  job_role: z.string().max(255).optional().or(z.literal('')),
-  pay_rate: z.string().optional(),
-})
+export const editEmployeeSchema = z
+  .object({
+    name: z.string().min(1, 'Name is required'),
+    preferred_name: z.string().max(100).optional().or(z.literal('')),
+    phone: z.string().max(30).optional().or(z.literal('')),
+    status: z.enum(['active', 'inactive']),
+    role: roleEnum.optional(),
+    pin: z
+      .string()
+      .optional()
+      .or(z.literal(''))
+      .refine((val) => !val || val === '' || /^\d{4}$/.test(val), {
+        message: 'PIN must be 4 digits',
+      }),
+    job_role: z.string().max(255).optional().or(z.literal('')),
+    pay_method: payMethodEnum.default('HOURLY'),
+    pay_rate: z.string().optional(),
+  })
+  .superRefine((data, ctx) => {
+    if (data.pay_method === 'PER_ROOM' && data.role && data.role !== 'HOUSEKEEPING') {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['pay_method'],
+        message: 'Per room pay is only available for Housekeeping',
+      })
+    }
+  })
 
 export type CreateEmployeeFormValues = z.infer<typeof createEmployeeSchema>
 export type EditEmployeeFormValues = z.infer<typeof editEmployeeSchema>
@@ -90,6 +121,10 @@ interface EmployeeFormProps {
   submitLabel?: string
   cancelLabel?: string
   showActions?: boolean
+  /** Watched pay_method for dynamic rate labels */
+  payMethod?: PayMethodValue
+  /** Watched role — Per room is only offered for Housekeeping */
+  role?: string
 }
 
 function Section({
@@ -134,10 +169,21 @@ export default function EmployeeForm({
   submitLabel,
   cancelLabel = 'Cancel',
   showActions = true,
+  payMethod = 'HOURLY',
+  role,
 }: EmployeeFormProps) {
   const isCreate = mode === 'create'
   const createErrors = errors as FieldErrors<CreateEmployeeFormValues>
   const editErrors = errors as FieldErrors<EditEmployeeFormValues>
+  const isHousekeeping = role === 'HOUSEKEEPING'
+  const isPerRoom = isHousekeeping && payMethod === 'PER_ROOM'
+  const payRateLabel = isPerRoom ? 'Per-room rate' : 'Hourly pay rate'
+  const payRateHint = isPerRoom
+    ? 'Dollars per room cleaned (optional)'
+    : 'Dollars per hour (optional)'
+  const payMethodOptions = isHousekeeping
+    ? PAY_METHOD_OPTIONS
+    : PAY_METHOD_OPTIONS.filter((opt) => opt.value === 'HOURLY')
 
   return (
     <div className="space-y-5">
@@ -267,8 +313,29 @@ export default function EmployeeForm({
         </FormField>
 
         <FormField
-          label="Hourly pay rate"
-          hint="Dollars per hour (optional)"
+          label="Pay method"
+          hint={
+            isHousekeeping
+              ? 'Housekeeping can be paid hourly or per room'
+              : 'Per room is only available for Housekeeping'
+          }
+          error={isCreate ? createErrors.pay_method?.message : editErrors.pay_method?.message}
+        >
+          <Select
+            {...register('pay_method')}
+            error={!!(isCreate ? createErrors.pay_method : editErrors.pay_method)}
+          >
+            {payMethodOptions.map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                {opt.label}
+              </option>
+            ))}
+          </Select>
+        </FormField>
+
+        <FormField
+          label={payRateLabel}
+          hint={payRateHint}
           error={isCreate ? createErrors.pay_rate?.message : editErrors.pay_rate?.message}
         >
           <Input
@@ -339,14 +406,18 @@ export default function EmployeeForm({
 
 /** Build API payload from create form values. */
 export function toCreatePayload(data: CreateEmployeeFormValues) {
+  const role = data.role
+  const payMethod =
+    role === 'HOUSEKEEPING' ? data.pay_method || 'HOURLY' : 'HOURLY'
   const payload: Record<string, unknown> = {
     name: data.name.trim(),
     email: data.email.trim(),
-    role: data.role,
+    role,
     pin: data.pin || undefined,
     preferred_name: data.preferred_name?.trim() || undefined,
     phone: data.phone?.trim() || undefined,
     job_role: data.job_role?.trim() || undefined,
+    pay_method: payMethod,
   }
   if (data.pay_rate !== undefined && data.pay_rate !== '') {
     const num = parseFloat(data.pay_rate)
@@ -357,13 +428,17 @@ export function toCreatePayload(data: CreateEmployeeFormValues) {
 
 /** Build API payload from edit form values. */
 export function toUpdatePayload(data: EditEmployeeFormValues) {
+  const role = data.role
+  const payMethod =
+    role === 'HOUSEKEEPING' ? data.pay_method || 'HOURLY' : 'HOURLY'
   const payload: Record<string, unknown> = {
     name: data.name.trim(),
     status: data.status,
-    role: data.role,
+    role,
     preferred_name: data.preferred_name?.trim() ?? '',
     phone: data.phone?.trim() ?? '',
     job_role: data.job_role?.trim() ?? '',
+    pay_method: payMethod,
   }
   if (data.pin !== undefined && data.pin !== '') {
     payload.pin = data.pin
@@ -373,4 +448,19 @@ export function toUpdatePayload(data: EditEmployeeFormValues) {
     if (!isNaN(num)) payload.pay_rate = num
   }
   return payload
+}
+
+export function payMethodLabel(method?: string | null) {
+  if (method === 'PER_ROOM') return 'Per room'
+  return 'Hourly'
+}
+
+export function formatPayRateDisplay(rate: number | null | undefined, method?: string | null) {
+  if (rate == null) return '—'
+  const amount = `$${rate.toFixed(2)}`
+  return method === 'PER_ROOM' ? `${amount}/room` : `${amount}/hr`
+}
+
+export function payRateHintLabel(method?: string | null) {
+  return method === 'PER_ROOM' ? 'per room' : 'per hour'
 }

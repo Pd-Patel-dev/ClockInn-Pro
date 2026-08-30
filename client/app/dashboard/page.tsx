@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import Layout from '@/components/Layout'
+import PageAtmosphere from '@/components/PageAtmosphere'
 import PunchInOutPanel from '@/components/PunchInOutPanel'
 import { getCurrentUser, User } from '@/lib/auth'
 import { useRouter } from 'next/navigation'
@@ -70,39 +71,35 @@ function StatCard({
 }) {
   const valueClass =
     tone === 'success'
-      ? 'text-emerald-600'
+      ? 'text-emerald-600 dark:text-emerald-400'
       : tone === 'warning'
-        ? 'text-amber-600'
-        : 'text-slate-900'
+        ? 'text-amber-600 dark:text-amber-400'
+        : 'text-foreground'
 
   const inner = (
     <>
-      <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-400">
+      <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-foreground-subtle">
         {label}
       </p>
       <p className={`mt-1 text-3xl font-semibold tracking-tight tabular-nums ${valueClass}`}>
         {value}
       </p>
-      {hint && <p className="mt-0.5 text-xs text-slate-500">{hint}</p>}
+      {hint && <p className="mt-0.5 text-xs text-foreground-muted">{hint}</p>}
     </>
   )
 
+  const cardClass =
+    'rounded-2xl border border-border/80 bg-surface px-5 py-4 shadow-sm transition-colors hover:border-border hover:bg-surface-elevated/60'
+
   if (href) {
     return (
-      <Link
-        href={href}
-        className="rounded-2xl border border-slate-200/80 bg-white px-5 py-4 shadow-sm transition-colors hover:border-slate-300 hover:bg-slate-50/80"
-      >
+      <Link href={href} className={cardClass}>
         {inner}
       </Link>
     )
   }
 
-  return (
-    <div className="rounded-2xl border border-slate-200/80 bg-white px-5 py-4 shadow-sm">
-      {inner}
-    </div>
-  )
+  return <div className={cardClass}>{inner}</div>
 }
 
 export default function DashboardPage() {
@@ -222,10 +219,10 @@ export default function DashboardPage() {
           aria-label="Loading"
         >
           <div className="w-full max-w-lg space-y-4 animate-pulse px-2">
-            <div className="h-40 rounded-2xl bg-slate-200" />
+            <div className="h-40 rounded-2xl bg-border-subtle" />
             <div className="grid grid-cols-4 gap-3">
               {[0, 1, 2, 3].map((i) => (
-                <div key={i} className="h-24 rounded-2xl bg-slate-100" />
+                <div key={i} className="h-24 rounded-2xl bg-border-subtle/80" />
               ))}
             </div>
           </div>
@@ -242,29 +239,15 @@ export default function DashboardPage() {
   return (
     <Layout>
       <div className="relative mx-auto max-w-6xl">
-        <div
-          aria-hidden
-          className="pointer-events-none absolute inset-x-0 -top-4 h-56 overflow-hidden"
-        >
-          <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_rgba(15,23,42,0.06),_transparent_65%)]" />
-          <div
-            className="absolute inset-0 opacity-[0.35]"
-            style={{
-              backgroundImage:
-                'linear-gradient(to right, rgb(226 232 240 / 0.55) 1px, transparent 1px), linear-gradient(to bottom, rgb(226 232 240 / 0.55) 1px, transparent 1px)',
-              backgroundSize: '28px 28px',
-              maskImage: 'linear-gradient(to bottom, black, transparent)',
-            }}
-          />
-        </div>
+        <PageAtmosphere tall />
 
         <div className="relative space-y-6 pb-8">
           {/* Hero */}
-          <header className="dashboard-reveal overflow-hidden rounded-2xl border border-slate-800/10 shadow-[0_20px_50px_-28px_rgba(15,23,42,0.45)]">
-            <div className="relative bg-slate-900 px-5 py-6 sm:px-7 sm:py-8 text-white">
+          <header className="dashboard-reveal overflow-hidden rounded-2xl border border-border shadow-[0_20px_50px_-28px_rgba(15,23,42,0.45)] dark:shadow-[0_20px_50px_-28px_rgba(0,0,0,0.65)]">
+            <div className="relative bg-slate-900 px-5 py-6 text-white sm:px-7 sm:py-8 dark:bg-surface-elevated dark:ring-1 dark:ring-inset dark:ring-white/10">
               <div
                 aria-hidden
-                className="absolute inset-0 opacity-40"
+                className="absolute inset-0 opacity-40 dark:opacity-30"
                 style={{
                   backgroundImage:
                     'radial-gradient(circle at 12% 20%, rgba(45,212,191,0.28), transparent 42%), radial-gradient(circle at 88% 10%, rgba(59,130,246,0.22), transparent 36%)',
@@ -272,7 +255,7 @@ export default function DashboardPage() {
               />
               <div
                 aria-hidden
-                className="absolute inset-y-0 right-0 w-1/2 opacity-[0.07]"
+                className="absolute inset-y-0 right-0 w-1/2 opacity-[0.07] dark:opacity-[0.05]"
                 style={{
                   backgroundImage:
                     'repeating-linear-gradient(-32deg, transparent, transparent 10px, white 10px, white 11px)',
@@ -281,15 +264,15 @@ export default function DashboardPage() {
 
               <div className="relative flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
                 <div className="min-w-0">
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400 dark:text-foreground-subtle">
                     {user.company_name || 'Workspace'}
-                    <span className="mx-2 text-slate-600">·</span>
+                    <span className="mx-2 text-slate-600 dark:text-foreground-subtle/60">·</span>
                     {format(now, 'EEEE · MMM d')}
                   </p>
-                  <h1 className="mt-2 text-3xl sm:text-4xl font-semibold tracking-tight text-balance">
+                  <h1 className="mt-2 text-balance text-3xl font-semibold tracking-tight sm:text-4xl">
                     {getGreeting()}, {displayName}
                   </h1>
-                  <p className="mt-2 max-w-lg text-sm text-slate-300 leading-relaxed">
+                  <p className="mt-2 max-w-lg text-sm leading-relaxed text-slate-300 dark:text-foreground-muted">
                     {canPunch
                       ? 'Ready when you are — clock in and keep your day on track.'
                       : isAdmin
@@ -298,12 +281,12 @@ export default function DashboardPage() {
                   </p>
                 </div>
                 <div className="shrink-0 sm:pt-0 sm:text-right">
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400 dark:text-foreground-subtle">
                     Local time
                   </p>
-                  <p className="mt-2 text-3xl sm:text-4xl font-semibold tabular-nums tracking-tight leading-none">
+                  <p className="mt-2 text-3xl font-semibold leading-none tracking-tight tabular-nums sm:text-4xl">
                     {format(now, 'h:mm:ss')}
-                    <span className="ml-1.5 text-sm font-medium text-slate-300 align-baseline">
+                    <span className="ml-1.5 align-baseline text-sm font-medium text-slate-300 dark:text-foreground-muted">
                       {format(now, 'a')}
                     </span>
                   </p>
@@ -320,14 +303,14 @@ export default function DashboardPage() {
 
           {isAdmin && cashDrawerEnabled && forgotPunchOut > 0 && (
             <section className="dashboard-reveal dashboard-reveal-delay-1">
-              <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-amber-200/80 bg-gradient-to-r from-amber-50 to-orange-50 px-5 py-4 shadow-sm">
+              <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-amber-200/80 bg-gradient-to-r from-amber-50 to-orange-50 px-5 py-4 shadow-sm dark:border-amber-500/25 dark:from-amber-500/10 dark:to-orange-500/10">
                 <div className="flex min-w-0 items-start gap-3">
-                  <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-amber-500/15 text-amber-800 ring-1 ring-inset ring-amber-500/20">
-                    <span className="h-2 w-2 rounded-full bg-amber-500 animate-pulse" />
+                  <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-amber-500/15 text-amber-800 ring-1 ring-inset ring-amber-500/20 dark:text-amber-200">
+                    <span className="h-2 w-2 animate-pulse rounded-full bg-amber-500" />
                   </span>
                   <div>
                     <div className="flex items-center gap-1.5">
-                      <p className="text-sm font-semibold text-amber-950">
+                      <p className="text-sm font-semibold text-amber-950 dark:text-amber-100">
                         {forgotPunchOut} auto clock-out{forgotPunchOut === 1 ? '' : 's'} need review
                       </p>
                       <InfoTip
@@ -335,14 +318,14 @@ export default function DashboardPage() {
                         content="Employee missed punch-out; shift closed at schedule time. Review in Drawer Log, then Approve & Close."
                       />
                     </div>
-                    <p className="mt-0.5 text-xs text-amber-800/80">
+                    <p className="mt-0.5 text-xs text-amber-800/80 dark:text-amber-200/80">
                       Open Drawer Log to approve and close.
                     </p>
                   </div>
                 </div>
                 <Link
                   href="/admin/drawer-log"
-                  className="shrink-0 rounded-xl bg-slate-900 px-3.5 py-2 text-sm font-semibold text-white hover:bg-slate-800 transition-colors"
+                  className="shrink-0 rounded-xl bg-slate-900 px-3.5 py-2 text-sm font-semibold text-white transition-colors hover:bg-slate-800 dark:bg-white dark:text-slate-900 dark:hover:bg-slate-100"
                 >
                   Review now
                 </Link>
@@ -357,7 +340,7 @@ export default function DashboardPage() {
                   [0, 1, 2, 3].map((i) => (
                     <div
                       key={i}
-                      className="h-[88px] animate-pulse rounded-2xl bg-slate-100 border border-slate-100"
+                      className="h-[88px] animate-pulse rounded-2xl border border-border bg-border-subtle"
                     />
                   ))
                 ) : (
@@ -416,7 +399,7 @@ export default function DashboardPage() {
                     <Link
                       key={action.href}
                       href={action.href}
-                      className="rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-sm font-medium text-slate-700 shadow-sm hover:border-slate-300 hover:bg-slate-50 transition-colors"
+                      className="rounded-xl border border-border bg-surface px-3.5 py-2 text-sm font-medium text-foreground shadow-sm transition-colors hover:border-border hover:bg-surface-elevated"
                     >
                       {action.label}
                     </Link>
@@ -425,12 +408,12 @@ export default function DashboardPage() {
               )}
 
               <section className="dashboard-reveal dashboard-reveal-delay-3">
-                <div className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm">
-                  <div className="px-5 py-4 border-b border-slate-100 flex flex-wrap items-end justify-between gap-3">
+                <div className="overflow-hidden rounded-2xl border border-border/80 bg-surface shadow-sm">
+                  <div className="flex flex-wrap items-end justify-between gap-3 border-b border-border-subtle px-5 py-4">
                     <div>
-                      <h2 className="text-sm font-semibold text-slate-900">Team status</h2>
+                      <h2 className="text-sm font-semibold text-foreground">Team status</h2>
                       {!loadingStats && (
-                        <p className="mt-0.5 text-xs text-slate-500">
+                        <p className="mt-0.5 text-xs text-foreground-muted">
                           {activeToday} on shift
                           {forgotPunchOut > 0 ? ` · ${forgotPunchOut} need review` : ''}
                         </p>
@@ -438,24 +421,24 @@ export default function DashboardPage() {
                     </div>
                     <Link
                       href="/employees"
-                      className="text-sm font-semibold text-slate-600 hover:text-slate-900 transition-colors"
+                      className="text-sm font-semibold text-foreground-muted transition-colors hover:text-foreground"
                     >
                       All employees →
                     </Link>
                   </div>
 
                   {loadingStats ? (
-                    <div className="p-4 space-y-2" role="status" aria-label="Loading employees">
+                    <div className="space-y-2 p-4" role="status" aria-label="Loading employees">
                       {[0, 1, 2].map((i) => (
-                        <div key={i} className="h-14 animate-pulse rounded-xl bg-slate-100" />
+                        <div key={i} className="h-14 animate-pulse rounded-xl bg-border-subtle" />
                       ))}
                     </div>
                   ) : whoIsOn.length === 0 ? (
                     <div className="px-6 py-14 text-center">
-                      <p className="text-sm font-semibold text-slate-800">No employees yet</p>
+                      <p className="text-sm font-semibold text-foreground">No employees yet</p>
                       <Link
                         href="/employees/create"
-                        className="mt-3 inline-block text-sm font-semibold text-slate-900 hover:underline"
+                        className="mt-3 inline-block text-sm font-semibold text-foreground hover:underline"
                       >
                         Add your first employee →
                       </Link>
@@ -468,13 +451,13 @@ export default function DashboardPage() {
                         return (
                           <li
                             key={employee.id}
-                            className={index > 0 ? 'border-t border-slate-100' : undefined}
+                            className={index > 0 ? 'border-t border-border-subtle' : undefined}
                           >
                             <div
                               className={`group flex w-full items-center gap-2 px-5 py-3.5 transition-colors ${
                                 needsReview
-                                  ? 'bg-amber-50/40 hover:bg-amber-50'
-                                  : 'hover:bg-slate-50/90'
+                                  ? 'bg-amber-50/40 hover:bg-amber-50 dark:bg-amber-500/10 dark:hover:bg-amber-500/15'
+                                  : 'hover:bg-border-subtle/60'
                               }`}
                             >
                               <button
@@ -486,29 +469,29 @@ export default function DashboardPage() {
                                       : `/employees/${employee.id}`
                                   )
                                 }
-                                className="flex min-w-0 flex-1 items-center gap-3.5 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-900/10 rounded-lg"
+                                className="flex min-w-0 flex-1 items-center gap-3.5 rounded-lg text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/30"
                               >
                                 <div className="relative shrink-0">
-                                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-900 text-xs font-semibold tracking-wide text-white shadow-sm">
+                                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-900 text-xs font-semibold tracking-wide text-white shadow-sm dark:bg-surface-elevated dark:ring-1 dark:ring-inset dark:ring-white/10">
                                     {initials(employee.name)}
                                   </div>
                                   <span
-                                    className={`absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full ring-2 ring-white ${
+                                    className={`absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full ring-2 ring-surface ${
                                       clockedIn
                                         ? 'bg-emerald-400'
                                         : needsReview
                                           ? 'bg-amber-400'
-                                          : 'bg-slate-300'
+                                          : 'bg-slate-300 dark:bg-slate-500'
                                     }`}
                                     aria-hidden
                                   />
                                 </div>
 
                                 <div className="min-w-0 flex-1">
-                                  <p className="truncate text-sm font-semibold text-slate-900">
+                                  <p className="truncate text-sm font-semibold text-foreground">
                                     {employee.name}
                                   </p>
-                                  <p className="mt-0.5 truncate text-xs text-slate-500">
+                                  <p className="mt-0.5 truncate text-xs text-foreground-muted">
                                     {needsReview
                                       ? 'Auto clock-out'
                                       : clockedIn
@@ -518,16 +501,16 @@ export default function DashboardPage() {
                                 </div>
 
                                 <span
-                                  className={`shrink-0 inline-flex items-center gap-1.5 rounded-md px-2 py-0.5 text-[11px] font-medium ring-1 ring-inset ${
+                                  className={`inline-flex shrink-0 items-center gap-1.5 rounded-md px-2 py-0.5 text-[11px] font-medium ring-1 ring-inset ${
                                     clockedIn
-                                      ? 'bg-emerald-50 text-emerald-700 ring-emerald-200/80'
+                                      ? 'bg-emerald-50 text-emerald-700 ring-emerald-200/80 dark:bg-emerald-500/15 dark:text-emerald-300 dark:ring-emerald-500/25'
                                       : needsReview
-                                        ? 'bg-amber-50 text-amber-800 ring-amber-200/80'
-                                        : 'bg-slate-50 text-slate-500 ring-slate-200'
+                                        ? 'bg-amber-50 text-amber-800 ring-amber-200/80 dark:bg-amber-500/15 dark:text-amber-200 dark:ring-amber-500/25'
+                                        : 'bg-border-subtle text-foreground-muted ring-border'
                                   }`}
                                 >
                                   {clockedIn && (
-                                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                                    <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-500" />
                                   )}
                                   {clockedIn ? 'On shift' : needsReview ? 'Review' : 'Off'}
                                 </span>
@@ -551,12 +534,12 @@ export default function DashboardPage() {
 
           {!canPunch && !isAdmin && (
             <section className="dashboard-reveal dashboard-reveal-delay-1">
-              <div className="rounded-2xl border border-slate-200/80 bg-white px-6 py-12 text-center shadow-sm">
-                <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-900 text-sm font-semibold text-white">
+              <div className="rounded-2xl border border-border/80 bg-surface px-6 py-12 text-center shadow-sm">
+                <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-900 text-sm font-semibold text-white dark:bg-surface-elevated dark:ring-1 dark:ring-inset dark:ring-white/10">
                   {initials(user.name)}
                 </div>
-                <p className="mt-4 text-base font-semibold text-slate-900">You’re all set</p>
-                <p className="mx-auto mt-2 max-w-sm text-sm text-slate-500">
+                <p className="mt-4 text-base font-semibold text-foreground">You’re all set</p>
+                <p className="mx-auto mt-2 max-w-sm text-sm text-foreground-muted">
                   Use the menu to open your schedule, leave, or logs. Punch access is controlled by
                   your admin.
                 </p>
