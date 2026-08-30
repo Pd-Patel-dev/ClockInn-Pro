@@ -490,6 +490,101 @@ async def force_deactivate_cash_drawer_for_auto_clock_out(
     return session
 
 
+ADMIN_FORCE_CLOSE_REVIEW_NOTE = (
+    "Drawer closed by an administrator. Ending cash was not counted."
+)
+
+
+async def admin_force_close_open_cash_drawer(
+    db: AsyncSession,
+    company_id: UUID,
+    actor_user_id: UUID,
+) -> CashDrawerSession:
+    """Admin closes the company-wide OPEN drawer without an ending count.
+
+    Marks REVIEW_NEEDED so Drop & Sales can still be verified. Another Front Desk
+    employee can then activate the drawer.
+    """
+    result = await db.execute(
+        select(CashDrawerSession).where(
+            and_(
+                CashDrawerSession.company_id == company_id,
+                CashDrawerSession.status == CashDrawerStatus.OPEN,
+            )
+        )
+        .order_by(CashDrawerSession.created_at.desc())
+        .limit(1)
+    )
+    session = result.scalar_one_or_none()
+    if not session:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No active cash drawer to close",
+        )
+
+    from app.services.marketplace_service import marketplace_total_cents, normalize_sales
+    from sqlalchemy.orm.attributes import flag_modified
+
+    old_values = {
+        "end_cash_cents": session.end_cash_cents,
+        "delta_cents": session.delta_cents,
+        "status": session.status.value if hasattr(session.status, "value") else str(session.status),
+        "review_note": session.review_note,
+    }
+
+    session.end_cash_cents = None
+    session.end_counted_at = datetime.utcnow()
+    session.end_count_source = CashCountSource.WEB
+    session.delta_cents = None
+    session.status = CashDrawerStatus.REVIEW_NEEDED
+    session.review_note = ADMIN_FORCE_CLOSE_REVIEW_NOTE
+    session.reviewed_by = None
+    session.reviewed_at = None
+
+    sales = normalize_sales(getattr(session, "marketplace_sales_json", None))
+    if sales:
+        session.marketplace_sales_json = sales
+        flag_modified(session, "marketplace_sales_json")
+        session.beverages_cash_cents = marketplace_total_cents(sales)
+
+    new_values = {
+        "end_cash_cents": session.end_cash_cents,
+        "delta_cents": session.delta_cents,
+        "status": session.status.value,
+        "review_note": session.review_note,
+        "beverages_cash_cents": session.beverages_cash_cents,
+    }
+
+    audit = CashDrawerAudit(
+        company_id=session.company_id,
+        cash_drawer_session_id=session.id,
+        actor_user_id=actor_user_id,
+        action=CashDrawerAuditAction.SET_END,
+        old_values_json=old_values,
+        new_values_json=new_values,
+        reason=ADMIN_FORCE_CLOSE_REVIEW_NOTE,
+    )
+    db.add(audit)
+
+    audit_log = AuditLog(
+        company_id=session.company_id,
+        actor_user_id=actor_user_id,
+        action="CASH_DRAWER_ADMIN_FORCE_CLOSE",
+        entity_type="cash_drawer_session",
+        entity_id=session.id,
+        metadata_json={
+            "status": session.status.value,
+            "review_note": session.review_note,
+            "time_entry_id": str(session.time_entry_id),
+            "employee_id": str(session.employee_id),
+        },
+    )
+    db.add(audit_log)
+
+    await db.flush()
+    return session
+
+
 async def edit_cash_drawer_session(
     db: AsyncSession,
     company_id: UUID,

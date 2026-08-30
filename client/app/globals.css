@@ -269,8 +269,13 @@
   }
   .bg-red-50,
   .bg-red-50\/40,
-  .bg-red-50\/50 {
+  .bg-red-50\/50,
+  .bg-red-50\/70 {
     background-color: rgb(239 68 68 / 0.12);
+  }
+  .hover\:bg-red-50:hover,
+  .hover\:bg-red-50\/70:hover {
+    background-color: rgb(239 68 68 / 0.18);
   }
   .bg-orange-50,
   .bg-orange-50\/40 {

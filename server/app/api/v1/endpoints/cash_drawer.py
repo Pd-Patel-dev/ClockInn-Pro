@@ -35,6 +35,8 @@ from app.services.cash_drawer_service import (
     review_cash_drawer_session,
     verify_cash_drawer_session,
     delete_cash_drawer_session,
+    get_open_company_cash_drawer,
+    admin_force_close_open_cash_drawer,
 )
 
 logger = logging.getLogger(__name__)
@@ -310,6 +312,59 @@ async def export_cash_drawer(
                 prod_detail="Export failed. Please try again or check server logs.",
             ),
         )
+
+
+@router.get("/active")
+@handle_endpoint_errors(operation_name="get_admin_active_cash_drawer")
+async def get_admin_active_cash_drawer(
+    current_user: User = Depends(require_permission("cash_drawer")),
+    db: AsyncSession = Depends(get_db),
+):
+    """Company-wide OPEN cash drawer for the admin Drawer Log banner."""
+    active = await get_open_company_cash_drawer(db, current_user.company_id)
+    if not active:
+        return {"active_drawer": None}
+
+    time_entry = (
+        await db.execute(select(TimeEntry).where(TimeEntry.id == active["time_entry_id"]))
+    ).scalar_one_or_none()
+    session = await get_cash_drawer_session(db, current_user.company_id, active["session_id"])
+    current_cash = getattr(session, "current_cash_cents", None) if session else None
+
+    return {
+        "active_drawer": {
+            "session_id": str(active["session_id"]),
+            "employee_id": str(active["employee_id"]),
+            "employee_name": active["employee_name"],
+            "start_cash_cents": int(active["start_cash_cents"] or 0),
+            "start_counted_at": session.start_counted_at.isoformat() if session else None,
+            "clock_in_at": time_entry.clock_in_at.isoformat() if time_entry and time_entry.clock_in_at else None,
+            "current_cash_cents": int(current_cash) if current_cash is not None else None,
+        }
+    }
+
+
+@router.post("/active/close")
+@handle_endpoint_errors(operation_name="admin_close_active_cash_drawer")
+async def admin_close_active_cash_drawer(
+    current_user: User = Depends(require_permission("cash_drawer")),
+    db: AsyncSession = Depends(get_db),
+):
+    """Force-close the OPEN drawer without an ending count (needs review)."""
+    session = await admin_force_close_open_cash_drawer(
+        db,
+        current_user.company_id,
+        current_user.id,
+    )
+    await db.commit()
+    emp_result = await db.execute(select(User).where(User.id == session.employee_id))
+    employee = emp_result.scalar_one_or_none()
+    return {
+        "ok": True,
+        "employee_name": employee.name if employee else "Unknown",
+        "session_id": str(session.id),
+        "status": session.status.value,
+    }
 
 
 @router.get("/{session_id}", response_model=CashDrawerSessionDetailResponse)

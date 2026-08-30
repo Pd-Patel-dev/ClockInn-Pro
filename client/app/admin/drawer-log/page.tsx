@@ -52,6 +52,16 @@ type MarketplaceSaleRow = {
   payment?: 'cash' | 'card'
 }
 
+interface ActiveDrawer {
+  session_id: string
+  employee_id: string
+  employee_name: string
+  start_cash_cents: number
+  start_counted_at: string | null
+  clock_in_at: string | null
+  current_cash_cents: number | null
+}
+
 const editSchema = z.object({
   start_cash_cents: z.string().optional(),
   end_cash_cents: z.string().optional(),
@@ -128,17 +138,17 @@ function StatCard({
 function statusChipClass(status: string) {
   switch (status) {
     case 'OPEN':
-      return 'bg-amber-50 text-amber-800 ring-amber-200/80'
+      return 'bg-amber-50 text-amber-800 ring-amber-200/80 dark:bg-amber-400/15 dark:text-amber-200 dark:ring-amber-400/35'
     case 'CLOSED':
-      return 'bg-emerald-50 text-emerald-700 ring-emerald-200/80'
+      return 'bg-emerald-50 text-emerald-700 ring-emerald-200/80 dark:bg-emerald-400/15 dark:text-emerald-200 dark:ring-emerald-400/35'
     case 'REVIEW_NEEDED':
-      return 'bg-red-50 text-red-700 ring-red-200/80'
+      return 'bg-red-50 text-red-800 ring-red-200/80 dark:bg-red-400/20 dark:text-red-200 dark:ring-red-400/40'
     case 'UNVERIFIED':
-      return 'bg-sky-50 text-sky-800 ring-sky-200/80'
+      return 'bg-sky-50 text-sky-800 ring-sky-200/80 dark:bg-sky-400/15 dark:text-sky-200 dark:ring-sky-400/35'
     case 'VERIFIED':
-      return 'bg-emerald-50 text-emerald-700 ring-emerald-200/80'
+      return 'bg-emerald-50 text-emerald-700 ring-emerald-200/80 dark:bg-emerald-400/15 dark:text-emerald-200 dark:ring-emerald-400/35'
     default:
-      return 'bg-slate-50 text-slate-600 ring-slate-200'
+      return 'bg-slate-50 text-slate-600 ring-slate-200 dark:bg-white/5 dark:text-slate-300 dark:ring-white/10'
   }
 }
 
@@ -181,6 +191,9 @@ export default function AdminShiftLogPage() {
   const [deleting, setDeleting] = useState(false)
   const [showDetailPanel, setShowDetailPanel] = useState(false)
   const [detailSession, setDetailSession] = useState<CashDrawerSession | null>(null)
+  const [activeDrawer, setActiveDrawer] = useState<ActiveDrawer | null>(null)
+  const [closingActive, setClosingActive] = useState(false)
+  const [showCloseActiveDialog, setShowCloseActiveDialog] = useState(false)
 
   const editForm = useForm<EditForm>({
     resolver: zodResolver(editSchema),
@@ -213,6 +226,15 @@ export default function AdminShiftLogPage() {
     fetchUser()
   }, [router])
 
+  const fetchActiveDrawer = useCallback(async () => {
+    try {
+      const response = await api.get('/admin/cash-drawers/active')
+      setActiveDrawer(response.data?.active_drawer ?? null)
+    } catch {
+      setActiveDrawer(null)
+    }
+  }, [])
+
   const fetchSessions = useCallback(async () => {
     setLoadingSessions(true)
     try {
@@ -238,8 +260,9 @@ export default function AdminShiftLogPage() {
   useEffect(() => {
     if (user) {
       fetchSessions()
+      fetchActiveDrawer()
     }
-  }, [user, fetchSessions])
+  }, [user, fetchSessions, fetchActiveDrawer])
 
   const handleEdit = (session: CashDrawerSession) => {
     setSelectedSession(session)
@@ -265,6 +288,24 @@ export default function AdminShiftLogPage() {
   const handleViewFullDetails = (session: CashDrawerSession) => {
     setDetailSession(session)
     setShowDetailPanel(true)
+  }
+
+  const closeActiveDrawer = async () => {
+    setClosingActive(true)
+    try {
+      const res = await api.post('/admin/cash-drawers/active/close')
+      toast.success(
+        `Closed ${res.data?.employee_name || 'the'} drawer. It needs Drop & Sales review.`
+      )
+      setShowCloseActiveDialog(false)
+      setActiveDrawer(null)
+      fetchSessions()
+      fetchActiveDrawer()
+    } catch (error: any) {
+      toast.error(error.response?.data?.detail || 'Failed to close the active drawer')
+    } finally {
+      setClosingActive(false)
+    }
   }
 
   const onSubmitDelete = async () => {
@@ -534,6 +575,40 @@ export default function AdminShiftLogPage() {
             />
           </div>
 
+          {activeDrawer && (
+            <div className="flex flex-col gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-4 dark:border-emerald-400/30 dark:bg-emerald-950/70 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex min-w-0 items-start gap-3">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-slate-900 text-xs font-semibold text-white dark:bg-emerald-400 dark:text-slate-950">
+                  {initials(activeDrawer.employee_name)}
+                </div>
+                <div className="min-w-0">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-emerald-800 dark:text-emerald-300">
+                    Active drawer
+                  </p>
+                  <p className="mt-0.5 truncate text-sm font-semibold text-slate-900 dark:text-white">
+                    {activeDrawer.employee_name}
+                  </p>
+                  <p className="mt-0.5 text-xs tabular-nums text-slate-600 dark:text-emerald-100/80">
+                    Start {formatCurrency(activeDrawer.start_cash_cents)}
+                    {activeDrawer.clock_in_at
+                      ? ` · In ${format(new Date(activeDrawer.clock_in_at), 'h:mma')}`
+                      : activeDrawer.start_counted_at
+                        ? ` · ${format(new Date(activeDrawer.start_counted_at), 'MMM d, h:mma')}`
+                        : ''}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowCloseActiveDialog(true)}
+                disabled={closingActive}
+                className="shrink-0 rounded-xl bg-slate-900 px-3.5 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-slate-800 disabled:opacity-50 dark:bg-emerald-400 dark:text-slate-950 dark:hover:bg-emerald-300"
+              >
+                Close active drawer
+              </button>
+            </div>
+          )}
+
           {forgotPunchCount > 0 && (
             <div className="flex flex-wrap items-center gap-1.5 rounded-2xl border border-amber-200/80 bg-amber-50 px-4 py-3 text-sm text-amber-950">
               <span className="font-semibold">
@@ -714,9 +789,9 @@ export default function AdminShiftLogPage() {
                             key={session.id}
                             className={`border-l-4 transition-colors ${
                               discrepancy
-                                ? 'border-l-red-400 bg-red-50/70 hover:bg-red-50'
+                                ? 'border-l-red-400 bg-red-50/70 hover:bg-red-50 dark:bg-red-500/10 dark:hover:bg-red-500/15'
                                 : forgot
-                                  ? 'border-l-amber-300 bg-amber-50/40 hover:bg-amber-50/70'
+                                  ? 'border-l-amber-300 bg-amber-50/40 hover:bg-amber-50/70 dark:bg-amber-500/10 dark:hover:bg-amber-500/15'
                                   : 'border-l-transparent hover:bg-slate-50/90'
                             }`}
                           >
@@ -785,7 +860,7 @@ export default function AdminShiftLogPage() {
                                 <button
                                   type="button"
                                   onClick={() => handleViewFullDetails(session)}
-                                  className="rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
+                                  className="rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 dark:border-white/15 dark:text-slate-200 dark:hover:bg-white/10"
                                 >
                                   Details
                                 </button>
@@ -1142,6 +1217,21 @@ export default function AdminShiftLogPage() {
             </div>
           </div>
         )}
+
+        <ConfirmationDialog
+          isOpen={showCloseActiveDialog}
+          onCancel={() => setShowCloseActiveDialog(false)}
+          onConfirm={closeActiveDrawer}
+          title="Close active drawer?"
+          message={
+            activeDrawer
+              ? `This will close ${activeDrawer.employee_name}'s open drawer without an ending cash count. The session will need Drop & Sales review. Another employee can then activate the drawer.`
+              : 'Close the open cash drawer without an ending count?'
+          }
+          confirmText={closingActive ? 'Closing…' : 'Close drawer'}
+          cancelText="Cancel"
+          type="warning"
+        />
 
         <ConfirmationDialog
           isOpen={showDeleteDialog}
