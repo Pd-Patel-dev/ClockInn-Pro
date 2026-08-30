@@ -100,6 +100,22 @@ async def get_employee_permission_view(
     effective = sorted(await get_effective_feature_permissions(db, employee))
     actor_perms = await get_effective_feature_permissions(db, actor)
 
+    punch_role_allowed = True
+    if employee.company_id:
+        from app.models.company import Company
+        from app.services.company_service import (
+            get_company_settings,
+            is_punch_allowed_for_role,
+        )
+
+        company = (
+            await db.execute(select(Company).where(Company.id == employee.company_id))
+        ).scalar_one_or_none()
+        if company:
+            punch_role_allowed = is_punch_allowed_for_role(
+                get_company_settings(company), employee.role
+            )
+
     catalog = []
     for key in sorted(OVERRIDABLE_FEATURE_KEYS):
         meta = FEATURE_PERMISSION_META[key]
@@ -126,6 +142,7 @@ async def get_employee_permission_view(
         "effective": effective,
         "catalog": catalog,
         "locked": employee.role in (UserRole.ADMIN, UserRole.DEVELOPER),
+        "punch_role_allowed": punch_role_allowed,
     }
 
 

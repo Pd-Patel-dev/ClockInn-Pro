@@ -65,9 +65,10 @@ async def get_me(
         company_name = user.company.name
 
     # If company has email verification disabled, report as verified so app does not redirect to verify-email
-    from app.services.company_service import get_company_settings
+    from app.services.company_service import get_company_settings, employee_may_punch
     email_verified = user.email_verified
     verification_required = user.verification_required
+    settings = {}
     if user.company:
         settings = get_company_settings(user.company)
         if not settings.get("email_verification_required", True):
@@ -75,6 +76,7 @@ async def get_me(
             verification_required = False
     
     effective = await get_effective_feature_permissions(db, user)
+    can_punch = bool(user.company) and await employee_may_punch(db, settings, user)
 
     return UserMeResponse(
         id=user.id,
@@ -98,6 +100,7 @@ async def get_me(
         created_at=user.created_at,
         last_verified_at=user.last_verified_at,
         has_pin=bool(user.pin_hash),
+        can_punch=can_punch,
     )
 
 

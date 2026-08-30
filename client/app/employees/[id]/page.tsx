@@ -752,7 +752,10 @@ export default function EmployeeDetailPage() {
             )}
 
             {activeTab === 'permissions' && !showEditEmployee && (
-              <EmployeePermissionsPanel employeeId={employeeId} />
+              <EmployeePermissionsPanel
+                key={`${employeeId}-${employee.role}`}
+                employeeId={employeeId}
+              />
             )}
           </>
         )}

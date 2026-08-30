@@ -443,7 +443,9 @@ function AdminSettingsPageInner() {
             )
           ),
           punch_allowed_roles:
-            response.data.settings.punch_allowed_roles ?? [...DEFAULT_PUNCH_ALLOWED_ROLES],
+            response.data.settings.punch_allowed_roles?.length
+              ? response.data.settings.punch_allowed_roles
+              : [...DEFAULT_PUNCH_ALLOWED_ROLES],
         })
         
         // Reset cash drawer form
@@ -527,7 +529,10 @@ function AdminSettingsPageInner() {
         schedule_day_end_hour: data.schedule_day_end_hour,
         auto_clock_out_enabled: data.auto_clock_out_enabled,
         auto_clock_out_grace_minutes: data.auto_clock_out_grace_hours * 60,
-        punch_allowed_roles: data.punch_allowed_roles || [],
+        punch_allowed_roles:
+          data.punch_allowed_roles && data.punch_allowed_roles.length > 0
+            ? data.punch_allowed_roles
+            : [...DEFAULT_PUNCH_ALLOWED_ROLES],
       }
       
       logger.debug('Updating settings', { updateData })
@@ -563,7 +568,9 @@ function AdminSettingsPageInner() {
             )
           ),
           punch_allowed_roles:
-            response.data.settings.punch_allowed_roles ?? [...DEFAULT_PUNCH_ALLOWED_ROLES],
+            response.data.settings.punch_allowed_roles?.length
+              ? response.data.settings.punch_allowed_roles
+              : [...DEFAULT_PUNCH_ALLOWED_ROLES],
         }, { keepDefaultValues: false })
       }, 50)
       
@@ -1603,7 +1610,7 @@ function AdminSettingsPageInner() {
               </div>
 
               <div className="border-t border-slate-200 pt-6">
-                <SectionTitle tip="Choose which employee types can use Punch In / Out on the dashboard. Unchecked roles will not see the punch button.">
+                <SectionTitle tip="This is what allows clock-in for each employee type. Housekeeping must be checked here or they will be blocked even if Clock in / out is on in employee Access permissions. You can still Grant Clock in / out on one employee to override.">
                   Punch In / Out access
                 </SectionTitle>
                 <Controller

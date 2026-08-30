@@ -218,9 +218,15 @@ async def check_kiosk_pin(
     from app.services.company_service import (
         get_company_settings,
         assert_kiosk_role_allowed,
+        employee_may_punch,
     )
     company_settings_early = get_company_settings(company)
     assert_kiosk_role_allowed(company_settings_early, matching_employee.role)
+    if not await employee_may_punch(db, company_settings_early, matching_employee):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Your employee type is not allowed to punch in/out. Contact your administrator.",
+        )
     
     # Check if employee's email is verified (respects company email_verification_required)
     from app.services.verification_service import check_verification_required_for_user

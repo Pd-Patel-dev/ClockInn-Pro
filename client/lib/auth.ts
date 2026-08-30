@@ -42,6 +42,7 @@ export interface User {
   created_at?: string | null
   last_verified_at?: string | null
   has_pin?: boolean
+  can_punch?: boolean
 }
 
 export interface JwtPayload {

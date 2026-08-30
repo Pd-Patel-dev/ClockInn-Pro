@@ -27,7 +27,9 @@ export function isPunchAllowed(
 ): boolean {
   if (!role) return false
   const allowed =
-    punchAllowedRoles == null ? [...DEFAULT_PUNCH_ALLOWED_ROLES] : punchAllowedRoles
+    !punchAllowedRoles || punchAllowedRoles.length === 0
+      ? [...DEFAULT_PUNCH_ALLOWED_ROLES]
+      : punchAllowedRoles
   return allowed.includes(role)
 }
 

@@ -81,7 +81,7 @@ ROLE_PERMISSIONS: dict[UserRole, set[str]] = {
 FEATURE_PERMISSION_META: dict[str, dict[str, str]] = {
     "clock": {
         "label": "Clock in / out",
-        "description": "Punch time from the portal",
+        "description": "Punch time from the portal or kiosk. If this role is unchecked under Settings → Punch In / Out access, Grant this to allow this person anyway.",
     },
     "schedule": {
         "label": "View schedules",

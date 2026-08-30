@@ -22,6 +22,7 @@ type PermissionView = {
   effective: string[]
   catalog: CatalogItem[]
   locked: boolean
+  punch_role_allowed?: boolean
 }
 
 type Mode = 'inherit' | 'grant' | 'deny'
@@ -192,6 +193,13 @@ export default function EmployeePermissionsPanel({ employeeId }: { employeeId: s
                     )}
                   </div>
                   <p className="mt-0.5 text-xs text-slate-500">{item.description}</p>
+                  {item.key === 'clock' && view.punch_role_allowed === false && mode !== 'grant' && (
+                    <p className="mt-1 text-xs text-amber-800">
+                      This role is unchecked in Settings → Payroll → Punch In / Out access, so
+                      they cannot clock in until you Grant Clock in / out here or check the role
+                      there.
+                    </p>
+                  )}
                 </div>
                 <div className="flex shrink-0 rounded-lg border border-slate-200 p-0.5">
                   {(['inherit', 'grant', 'deny'] as Mode[]).map((m) => {

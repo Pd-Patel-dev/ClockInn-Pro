@@ -132,10 +132,10 @@ async def punch(
     
     company_settings = get_company_settings(company)
     from app.services.company_service import (
-        is_punch_allowed_for_role,
+        employee_may_punch,
         assert_kiosk_role_allowed,
     )
-    if not is_punch_allowed_for_role(company_settings, employee.role):
+    if not await employee_may_punch(db, company_settings, employee):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Your employee type is not allowed to punch in/out. Contact your administrator.",

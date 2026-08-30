@@ -137,10 +137,12 @@ export default function DashboardPage() {
         try {
           const companyRes = await api.get('/company/info')
           const roles = companyRes.data?.settings?.punch_allowed_roles as string[] | undefined
-          setCanPunch(isPunchAllowed(currentUser.role, roles))
+          setCanPunch(
+            currentUser.can_punch === true || isPunchAllowed(currentUser.role, roles),
+          )
           setCashDrawerEnabled(companyRes.data?.settings?.cash_drawer_enabled === true)
         } catch {
-          setCanPunch(isPunchAllowed(currentUser.role, null))
+          setCanPunch(currentUser.can_punch === true || isPunchAllowed(currentUser.role, null))
           setCashDrawerEnabled(false)
         }
       } catch {

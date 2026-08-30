@@ -119,7 +119,7 @@ export default function MyPunchPage() {
           const roles =
             (settings.punch_allowed_roles as string[] | undefined) ??
             [...DEFAULT_PUNCH_ALLOWED_ROLES]
-          if (!isPunchAllowed(currentUser.role, roles)) {
+          if (!isPunchAllowed(currentUser.role, roles) && currentUser.can_punch !== true) {
             setMessage('Your employee type is not allowed to punch in/out. Contact your administrator.')
             setLoadingStatus(false)
             return
@@ -132,7 +132,7 @@ export default function MyPunchPage() {
             Boolean(cashEnabled && (requiredForAll || requiredRoles.includes(currentUser.role))),
           )
         } catch {
-          if (!isPunchAllowed(currentUser.role, null)) {
+          if (!isPunchAllowed(currentUser.role, null) && currentUser.can_punch !== true) {
             setMessage('Your employee type is not allowed to punch in/out. Contact your administrator.')
             setLoadingStatus(false)
             return

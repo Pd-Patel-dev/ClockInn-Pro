@@ -183,6 +183,7 @@ class UserMeResponse(BaseModel):
     created_at: Optional[datetime] = None
     last_verified_at: Optional[datetime] = None
     has_pin: bool = False
+    can_punch: bool = False
 
     class Config:
         from_attributes = True

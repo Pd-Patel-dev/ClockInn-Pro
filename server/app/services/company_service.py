@@ -80,20 +80,55 @@ _ROLE_DISPLAY_NAMES = {
 }
 
 
+def _role_str(role) -> str:
+    return role.value if hasattr(role, "value") else str(role)
+
+
+def normalized_punch_allowed_roles(settings: Dict) -> List[str]:
+    """Company punch-access list. Empty/missing means all default operational roles."""
+    allowed = settings.get("punch_allowed_roles")
+    if not allowed:
+        return list(DEFAULT_PUNCH_ALLOWED_ROLES)
+    return [str(r) for r in allowed]
+
+
 def is_punch_allowed_for_role(settings: Dict, role) -> bool:
     """Return True if this employee type may punch for the company."""
-    role_str = role.value if hasattr(role, "value") else str(role)
-    allowed = settings.get("punch_allowed_roles")
-    if allowed is None:
-        allowed = DEFAULT_PUNCH_ALLOWED_ROLES
-    return role_str in allowed
+    return _role_str(role) in normalized_punch_allowed_roles(settings)
+
+
+async def employee_may_punch(db: AsyncSession, settings: Dict, employee: User) -> bool:
+    """Whether this person may clock in/out.
+
+    Company Punch In / Out access is the role default. An explicit employee
+    Grant of Clock in/out overrides a role that is unchecked there. Deny blocks.
+    """
+    from app.services.effective_permission_service import (
+        get_effective_feature_permissions,
+        list_overrides_for_user,
+    )
+
+    if employee.role in (UserRole.ADMIN, UserRole.DEVELOPER):
+        return False
+
+    effective = await get_effective_feature_permissions(db, employee)
+    if "clock" not in effective:
+        return False
+    if is_punch_allowed_for_role(settings, employee.role):
+        return True
+    if not employee.company_id:
+        return False
+    overrides = await list_overrides_for_user(
+        db, company_id=employee.company_id, user_id=employee.id
+    )
+    return any(o.permission_key == "clock" and o.effect == "grant" for o in overrides)
 
 
 def is_kiosk_allowed_for_role(settings: Dict, role) -> bool:
     """Return True if this employee type may use the company kiosk."""
     role_str = role.value if hasattr(role, "value") else str(role)
     allowed = settings.get("kiosk_allowed_roles")
-    if allowed is None:
+    if not allowed:
         allowed = DEFAULT_KIOSK_ALLOWED_ROLES
     return role_str in allowed
 
@@ -312,7 +347,11 @@ async def update_company_settings(
     if data.kiosk_allowed_ips is not None:
         current_settings["kiosk_allowed_ips"] = data.kiosk_allowed_ips
     if data.punch_allowed_roles is not None:
-        current_settings["punch_allowed_roles"] = data.punch_allowed_roles
+        current_settings["punch_allowed_roles"] = (
+            list(data.punch_allowed_roles)
+            if data.punch_allowed_roles
+            else list(DEFAULT_PUNCH_ALLOWED_ROLES)
+        )
     if data.kiosk_allowed_roles is not None:
         current_settings["kiosk_allowed_roles"] = data.kiosk_allowed_roles
     if data.marketplace_items is not None:
