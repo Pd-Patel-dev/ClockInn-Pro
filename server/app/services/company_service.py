@@ -338,9 +338,26 @@ async def update_company_settings(
     if "payroll_reminder_enabled" in data.model_fields_set and data.payroll_reminder_enabled is not None:
         current_settings["payroll_reminder_enabled"] = data.payroll_reminder_enabled
 
-    # Company-level kiosk flag (column on companies, not settings_json)
-    if getattr(data, "kiosk_enabled", None) is not None:
-        company.kiosk_enabled = bool(data.kiosk_enabled)
+    # Company-level kiosk flag (column on companies, not settings_json).
+    # Marketplace must not turn off the PIN pad for Housekeeping and other roles —
+    # Front Desk is blocked at punch time when marketplace is on.
+    fields_set = data.model_fields_set
+    explicit_kiosk = getattr(data, "kiosk_enabled", None)
+    marketplace_on = bool(
+        current_settings.get("marketplace_enabled")
+        if "marketplace_enabled" not in fields_set
+        else data.marketplace_enabled
+    )
+    if "marketplace_enabled" in fields_set and data.marketplace_enabled:
+        if "kiosk_enabled" not in fields_set or explicit_kiosk is False:
+            company.kiosk_enabled = True
+        else:
+            company.kiosk_enabled = bool(explicit_kiosk)
+    elif explicit_kiosk is not None:
+        company.kiosk_enabled = bool(explicit_kiosk)
+    elif marketplace_on and not company.kiosk_enabled and "kiosk_allowed_roles" in fields_set:
+        # Saving who can use the kiosk implies turning the PIN pad back on.
+        company.kiosk_enabled = True
 
     logger.info(f"Settings after update: {current_settings}")
     

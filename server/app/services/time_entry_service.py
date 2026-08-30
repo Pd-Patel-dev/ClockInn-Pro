@@ -223,23 +223,32 @@ async def punch(
             cash_session = result.scalar_one_or_none()
             
             if cash_session:
-                if cash_end_cents is None:
-                    raise HTTPException(
-                        status_code=status.HTTP_400_BAD_REQUEST,
-                        detail="Ending cash count is required to clock out",
-                    )
-                # Close cash drawer session
-                await close_cash_drawer_session(
-                    db,
-                    company_id,
-                    open_entry.id,
-                    cash_end_cents,
-                    CashCountSource.KIOSK if source == TimeEntrySource.KIOSK else CashCountSource.WEB,
-                    collected_cash_cents=collected_cash_cents,
-                    drop_amount_cents=drop_amount_cents,
-                    beverages_cash_cents=beverages_cash_cents,
-                    current_cash_cents=current_cash_cents,
+                from app.models.cash_drawer import CashDrawerStatus
+
+                drawer_status = (
+                    cash_session.status.value
+                    if hasattr(cash_session.status, "value")
+                    else str(cash_session.status)
                 )
+                # Admin (or auto clock-out) may already have force-closed the drawer.
+                # Do not require ending cash or try to close it again.
+                if drawer_status == CashDrawerStatus.OPEN.value:
+                    if cash_end_cents is None:
+                        raise HTTPException(
+                            status_code=status.HTTP_400_BAD_REQUEST,
+                            detail="Ending cash count is required to clock out",
+                        )
+                    await close_cash_drawer_session(
+                        db,
+                        company_id,
+                        open_entry.id,
+                        cash_end_cents,
+                        CashCountSource.KIOSK if source == TimeEntrySource.KIOSK else CashCountSource.WEB,
+                        collected_cash_cents=collected_cash_cents,
+                        drop_amount_cents=drop_amount_cents,
+                        beverages_cash_cents=beverages_cash_cents,
+                        current_cash_cents=current_cash_cents,
+                    )
             
             open_entry.clock_out_at = now
             open_entry.status = TimeEntryStatus.CLOSED

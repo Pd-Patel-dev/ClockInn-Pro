@@ -140,7 +140,6 @@ const cashDrawerSettingsSchema = z.object({
 
 const marketplaceSettingsSchema = z.object({
   marketplace_enabled: z.boolean(),
-  disable_company_kiosk: z.boolean().optional(),
   marketplace_items: z.array(marketplaceItemSchema).optional(),
 })
 
@@ -243,6 +242,7 @@ function AdminSettingsPageInner() {
     configuration?: any
   } | null>(null)
   const [kioskUrl, setKioskUrl] = useState<string>('')
+  const [kioskEnabled, setKioskEnabled] = useState(true)
   const [kioskNetworkRestrictionEnabled, setKioskNetworkRestrictionEnabled] = useState(false)
   const [kioskAllowedIpsText, setKioskAllowedIpsText] = useState('')
   const [kioskAllowedRoles, setKioskAllowedRoles] = useState<string[]>([
@@ -291,11 +291,9 @@ function AdminSettingsPageInner() {
     resolver: zodResolver(marketplaceSettingsSchema),
     defaultValues: {
       marketplace_enabled: false,
-      disable_company_kiosk: true,
     },
   })
   const marketplaceEnabled = watchMarketplace('marketplace_enabled')
-  const disableCompanyKiosk = watchMarketplace('disable_company_kiosk')
   const [marketplaceItems, setMarketplaceItems] = useState<
     { id: string; label: string; price_cents: number }[]
   >([])
@@ -464,7 +462,6 @@ function AdminSettingsPageInner() {
         resetMarketplace({
           marketplace_enabled:
             response.data.settings.marketplace_enabled ?? items.length > 0,
-          disable_company_kiosk: !(response.data.kiosk_enabled ?? true),
         })
         resetGeofence({
           geofence_enabled: response.data.settings.geofence_enabled ?? false,
@@ -472,6 +469,11 @@ function AdminSettingsPageInner() {
           office_longitude: response.data.settings.office_longitude ?? undefined,
           geofence_radius_meters: response.data.settings.geofence_radius_meters ?? 100,
         })
+        const marketplaceOn =
+          response.data.settings.marketplace_enabled ?? items.length > 0
+        setKioskEnabled(
+          Boolean(response.data.kiosk_enabled) || Boolean(marketplaceOn),
+        )
         setKioskNetworkRestrictionEnabled(response.data.settings.kiosk_network_restriction_enabled ?? false)
         setKioskAllowedIpsText((response.data.settings.kiosk_allowed_ips || []).join('\n'))
         setKioskAllowedRoles(
@@ -651,24 +653,23 @@ function AdminSettingsPageInner() {
           price_cents: Math.max(0, Math.round(Number(i.price_cents) || 0)),
         })),
       }
-      // When marketplace is on, optionally turn off company kiosk (FD must use portal)
-      if (data.marketplace_enabled && data.disable_company_kiosk) {
-        updateData.kiosk_enabled = false
+      // Keep the PIN pad on for Housekeeping and other roles. Front Desk is
+      // blocked from kiosk in punch logic while marketplace is on.
+      if (data.marketplace_enabled) {
+        updateData.kiosk_enabled = true
       }
       const response = await api.put('/admin/company/settings', updateData)
       setCompanyInfo(response.data)
+      setKioskEnabled(response.data.kiosk_enabled ?? true)
       const items = response.data.settings.marketplace_items ?? []
       setMarketplaceItems(items)
       resetMarketplace({
         marketplace_enabled:
           response.data.settings.marketplace_enabled ?? items.length > 0,
-        disable_company_kiosk: !(response.data.kiosk_enabled ?? true),
       })
-      if (data.marketplace_enabled && data.disable_company_kiosk) {
-        toast.success('Marketplace enabled. Company kiosk disabled — Front Desk must punch via portal.')
-      } else if (data.marketplace_enabled) {
+      if (data.marketplace_enabled) {
         toast.success(
-          'Marketplace enabled. Front Desk is blocked from kiosk and must punch via portal.'
+          'Marketplace enabled. Front Desk must punch via portal. Other roles can still use the kiosk.'
         )
       } else {
         toast.success('Marketplace settings updated successfully!')
@@ -728,8 +729,10 @@ function AdminSettingsPageInner() {
         kiosk_network_restriction_enabled: kioskNetworkRestrictionEnabled,
         kiosk_allowed_ips: ips,
         kiosk_allowed_roles: kioskAllowedRoles,
+        kiosk_enabled: kioskEnabled,
       })
       setCompanyInfo(response.data)
+      setKioskEnabled(response.data.kiosk_enabled ?? true)
       setKioskNetworkRestrictionEnabled(response.data.settings.kiosk_network_restriction_enabled ?? false)
       setKioskAllowedIpsText((response.data.settings.kiosk_allowed_ips || []).join('\n'))
       setKioskAllowedRoles(
@@ -2045,44 +2048,18 @@ function AdminSettingsPageInner() {
                 {marketplaceEnabled && (
                   <div
                     role="alert"
-                    className="mt-3 space-y-3 rounded-xl border border-sky-200 bg-sky-50 px-3 py-3 text-sm text-sky-950 dark:border-sky-500/30 dark:bg-sky-500/10 dark:text-sky-100"
+                    className="mt-3 space-y-2 rounded-xl border border-sky-200 bg-sky-50 px-3 py-3 text-sm text-sky-950 dark:border-sky-500/30 dark:bg-sky-500/10 dark:text-sky-100"
                   >
                     <p>
                       <span className="font-semibold">Front Desk portal only.</span> While
                       Marketplace is on, Front Desk cannot punch at the kiosk — they must log
                       in and punch from the dashboard so cart and drawer stay on one device.
                     </p>
-                    <Controller
-                      name="disable_company_kiosk"
-                      control={controlMarketplace}
-                      render={({ field }) => (
-                        <label className="flex items-start gap-2">
-                          <input
-                            type="checkbox"
-                            checked={!!field.value}
-                            onChange={(e) => field.onChange(e.target.checked)}
-                            onBlur={field.onBlur}
-                            className="mt-0.5 rounded border-slate-300 text-slate-900 focus:ring-slate-900/20"
-                          />
-                          <span>
-                            <span className="font-medium">Disable company kiosk</span>
-                            <span className="mt-0.5 block text-sky-900/80 dark:text-sky-200/80">
-                              Recommended. Turns off the PIN pad for everyone when you save.
-                              Leave unchecked only if other roles still need the kiosk (Front
-                              Desk will still be blocked).
-                            </span>
-                          </span>
-                        </label>
-                      )}
-                    />
-                    {marketplaceEnabled &&
-                      !disableCompanyKiosk &&
-                      companyInfo?.kiosk_enabled && (
-                        <p className="text-xs text-sky-900/70 dark:text-sky-200/70">
-                          Company kiosk is currently enabled. Front Desk PIN punches will be
-                          rejected until they use the portal.
-                        </p>
-                      )}
+                    <p className="text-sky-900/80 dark:text-sky-200/80">
+                      Housekeeping and other roles can still use the kiosk. Choose who on the
+                      Kiosk tab. Saving Marketplace turns the company kiosk back on if it was
+                      off.
+                    </p>
                   </div>
                 )}
               </div>
@@ -2347,6 +2324,35 @@ function AdminSettingsPageInner() {
         {/* Kiosk Tab - Admin Only */}
         {activeTab === 'kiosk' && user?.role === 'ADMIN' && (
           <div className="space-y-6">
+            <div className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm">
+              <SectionTitle
+                as="h2"
+                tip="Turn the shared PIN pad on or off for the company. When Marketplace is on, Front Desk is blocked even if the kiosk is on."
+              >
+                Company kiosk
+              </SectionTitle>
+              <div className="space-y-3 px-5 py-5 sm:px-6">
+                <label className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={kioskEnabled}
+                    onChange={(e) => setKioskEnabled(e.target.checked)}
+                    className="rounded border-slate-300 text-slate-900 focus:ring-slate-900/20"
+                  />
+                  <span className="text-sm font-medium text-slate-700">Enable company kiosk</span>
+                </label>
+                {companyInfo && !companyInfo.kiosk_enabled && (
+                  <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                    The PIN pad is currently off for everyone, so role settings below have no
+                    effect. Enable it and save so Housekeeping and other roles can punch.
+                    {companyInfo.settings?.marketplace_enabled
+                      ? ' Front Desk will still be blocked while Marketplace is on.'
+                      : ''}
+                  </p>
+                )}
+              </div>
+            </div>
+
             <div className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm">
               <SectionTitle
                 as="h2"

@@ -1,3 +1,4 @@
+
 """fix_role_permissions_company_id
 
 Revision ID: 018_fix_role_permissions

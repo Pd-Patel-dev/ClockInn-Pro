@@ -126,7 +126,7 @@ class CompanySettingsUpdate(BaseModel):
     )
     kiosk_enabled: Optional[bool] = Field(
         None,
-        description="Enable or disable the company kiosk (PIN pad). Recommended off when Marketplace is on for Front Desk.",
+        description="Enable or disable the company kiosk PIN pad. When Marketplace is on, Front Desk is blocked from kiosk; other roles can still use it.",
     )
     auto_clock_out_enabled: Optional[bool] = Field(
         None,

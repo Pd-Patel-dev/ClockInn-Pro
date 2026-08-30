@@ -129,7 +129,7 @@ class Settings(BaseSettings):
     # Rate Limiting (global middleware by IP; see app.middleware.rate_limit)
     RATE_LIMIT_ENABLED: bool = True
     RATE_LIMIT_PER_MINUTE: int = Field(
-        default=60,
+        default=300,
         description="Max requests per IP per rolling 60s window for most API routes.",
     )
     RATE_LIMIT_AUTH_KIOSK_PER_MINUTE: int = Field(

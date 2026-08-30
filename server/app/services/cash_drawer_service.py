@@ -5,7 +5,7 @@ Handles cash drawer session creation, updates, and business logic.
 """
 from typing import Optional, Dict, List
 from uuid import UUID
-from datetime import datetime, date
+from datetime import datetime, date, timezone
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_, func, or_, delete
 from fastapi import HTTPException, status
@@ -493,47 +493,60 @@ async def force_deactivate_cash_drawer_for_auto_clock_out(
 ADMIN_FORCE_CLOSE_REVIEW_NOTE = (
     "Drawer closed by an administrator. Ending cash was not counted."
 )
+ADMIN_FORCE_CLOSE_PUNCH_NOTE = (
+    "Clocked out because an administrator closed the cash drawer."
+)
 
 
-async def admin_force_close_open_cash_drawer(
+def _status_value(status) -> str:
+    return status.value if hasattr(status, "value") else str(status)
+
+
+async def _clock_out_open_time_entry_for_admin_drawer_close(
     db: AsyncSession,
-    company_id: UUID,
-    actor_user_id: UUID,
-) -> CashDrawerSession:
-    """Admin closes the company-wide OPEN drawer without an ending count.
-
-    Marks REVIEW_NEEDED so Drop & Sales can still be verified. Another Front Desk
-    employee can then activate the drawer.
-    """
+    session: CashDrawerSession,
+) -> bool:
+    """Close the linked punch so another employee can clock in and activate the drawer."""
     result = await db.execute(
-        select(CashDrawerSession).where(
+        select(TimeEntry).where(
             and_(
-                CashDrawerSession.company_id == company_id,
-                CashDrawerSession.status == CashDrawerStatus.OPEN,
+                TimeEntry.id == session.time_entry_id,
+                TimeEntry.clock_out_at.is_(None),
             )
         )
-        .order_by(CashDrawerSession.created_at.desc())
-        .limit(1)
     )
-    session = result.scalar_one_or_none()
-    if not session:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="No active cash drawer to close",
-        )
+    entry = result.scalar_one_or_none()
+    if not entry:
+        return False
 
+    entry.clock_out_at = datetime.now(timezone.utc)
+    entry.status = TimeEntryStatus.CLOSED
+    entry.note = (
+        ADMIN_FORCE_CLOSE_PUNCH_NOTE[:500]
+        if not entry.note
+        else f"{entry.note} | {ADMIN_FORCE_CLOSE_PUNCH_NOTE}"[:500]
+    )
+    return True
+
+
+async def _mark_open_drawer_review_needed(
+    db: AsyncSession,
+    session: CashDrawerSession,
+    actor_user_id: UUID,
+) -> bool:
+    """Force-close one OPEN drawer without an ending count. Returns whether a punch was closed."""
     from app.services.marketplace_service import marketplace_total_cents, normalize_sales
     from sqlalchemy.orm.attributes import flag_modified
 
     old_values = {
         "end_cash_cents": session.end_cash_cents,
         "delta_cents": session.delta_cents,
-        "status": session.status.value if hasattr(session.status, "value") else str(session.status),
+        "status": _status_value(session.status),
         "review_note": session.review_note,
     }
 
     session.end_cash_cents = None
-    session.end_counted_at = datetime.utcnow()
+    session.end_counted_at = datetime.now(timezone.utc)
     session.end_count_source = CashCountSource.WEB
     session.delta_cents = None
     session.status = CashDrawerStatus.REVIEW_NEEDED
@@ -550,39 +563,74 @@ async def admin_force_close_open_cash_drawer(
     new_values = {
         "end_cash_cents": session.end_cash_cents,
         "delta_cents": session.delta_cents,
-        "status": session.status.value,
+        "status": _status_value(session.status),
         "review_note": session.review_note,
         "beverages_cash_cents": session.beverages_cash_cents,
     }
 
-    audit = CashDrawerAudit(
-        company_id=session.company_id,
-        cash_drawer_session_id=session.id,
-        actor_user_id=actor_user_id,
-        action=CashDrawerAuditAction.SET_END,
-        old_values_json=old_values,
-        new_values_json=new_values,
-        reason=ADMIN_FORCE_CLOSE_REVIEW_NOTE,
+    db.add(
+        CashDrawerAudit(
+            company_id=session.company_id,
+            cash_drawer_session_id=session.id,
+            actor_user_id=actor_user_id,
+            action=CashDrawerAuditAction.SET_END,
+            old_values_json=old_values,
+            new_values_json=new_values,
+            reason=ADMIN_FORCE_CLOSE_REVIEW_NOTE,
+        )
     )
-    db.add(audit)
+    clocked_out = await _clock_out_open_time_entry_for_admin_drawer_close(db, session)
+    db.add(
+        AuditLog(
+            company_id=session.company_id,
+            actor_user_id=actor_user_id,
+            action="CASH_DRAWER_ADMIN_FORCE_CLOSE",
+            entity_type="cash_drawer_session",
+            entity_id=session.id,
+            metadata_json={
+                "status": _status_value(session.status),
+                "review_note": session.review_note,
+                "time_entry_id": str(session.time_entry_id),
+                "employee_id": str(session.employee_id),
+                "clocked_out_time_entry": clocked_out,
+            },
+        )
+    )
+    return clocked_out
 
-    audit_log = AuditLog(
-        company_id=session.company_id,
-        actor_user_id=actor_user_id,
-        action="CASH_DRAWER_ADMIN_FORCE_CLOSE",
-        entity_type="cash_drawer_session",
-        entity_id=session.id,
-        metadata_json={
-            "status": session.status.value,
-            "review_note": session.review_note,
-            "time_entry_id": str(session.time_entry_id),
-            "employee_id": str(session.employee_id),
-        },
+
+async def admin_force_close_open_cash_drawer(
+    db: AsyncSession,
+    company_id: UUID,
+    actor_user_id: UUID,
+) -> CashDrawerSession:
+    """Admin closes every company-wide OPEN drawer without an ending count.
+
+    Marks REVIEW_NEEDED so Drop & Sales can still be verified, and clocks out the
+    linked punch so another Front Desk employee can activate the drawer.
+    """
+    result = await db.execute(
+        select(CashDrawerSession)
+        .where(
+            and_(
+                CashDrawerSession.company_id == company_id,
+                CashDrawerSession.status == CashDrawerStatus.OPEN,
+            )
+        )
+        .order_by(CashDrawerSession.created_at.desc())
     )
-    db.add(audit_log)
+    sessions = result.scalars().all()
+    if not sessions:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No active cash drawer to close",
+        )
+
+    for session in sessions:
+        await _mark_open_drawer_review_needed(db, session, actor_user_id)
 
     await db.flush()
-    return session
+    return sessions[0]
 
 
 async def edit_cash_drawer_session(

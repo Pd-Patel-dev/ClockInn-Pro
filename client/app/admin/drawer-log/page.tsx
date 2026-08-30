@@ -291,11 +291,12 @@ export default function AdminShiftLogPage() {
   }
 
   const closeActiveDrawer = async () => {
+    if (closingActive) return
     setClosingActive(true)
     try {
       const res = await api.post('/admin/cash-drawers/active/close')
       toast.success(
-        `Closed ${res.data?.employee_name || 'the'} drawer. It needs Drop & Sales review.`
+        `Closed ${res.data?.employee_name || 'the'} drawer and clocked them out. Another employee can activate it now.`
       )
       setShowCloseActiveDialog(false)
       setActiveDrawer(null)
@@ -1225,8 +1226,8 @@ export default function AdminShiftLogPage() {
           title="Close active drawer?"
           message={
             activeDrawer
-              ? `This will close ${activeDrawer.employee_name}'s open drawer without an ending cash count. The session will need Drop & Sales review. Another employee can then activate the drawer.`
-              : 'Close the open cash drawer without an ending count?'
+              ? `This will close ${activeDrawer.employee_name}'s open drawer without an ending cash count and clock them out. The session will need Drop & Sales review. Another employee can then activate the drawer.`
+              : 'Close the open cash drawer without an ending count and clock the employee out?'
           }
           confirmText={closingActive ? 'Closing…' : 'Close drawer'}
           cancelText="Cancel"

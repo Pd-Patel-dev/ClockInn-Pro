@@ -350,7 +350,7 @@ async def admin_close_active_cash_drawer(
     current_user: User = Depends(require_permission("cash_drawer")),
     db: AsyncSession = Depends(get_db),
 ):
-    """Force-close the OPEN drawer without an ending count (needs review)."""
+    """Force-close the OPEN drawer without an ending count, and clock the employee out."""
     session = await admin_force_close_open_cash_drawer(
         db,
         current_user.company_id,
@@ -363,7 +363,8 @@ async def admin_close_active_cash_drawer(
         "ok": True,
         "employee_name": employee.name if employee else "Unknown",
         "session_id": str(session.id),
-        "status": session.status.value,
+        "status": session.status.value if hasattr(session.status, "value") else str(session.status),
+        "clocked_out": True,
     }
 
 
